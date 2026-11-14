@@ -2538,6 +2538,14 @@ def touches_symbol(path, sym, op):
         return True
     return starts[0] < hi and starts[0] + len(old) > lo
 
+def sym_range(path, sym):
+    """(start, end) lines of a definition or # Stage anchor in a file, or None when it cannot be found."""
+    if not os.path.isfile(path):
+        return None
+    lines = decode_bytes(read_bytes(path))[0].split("\n")
+    lo, hi, note = resolve_scope(path, lines, sym)
+    return None if note else (lo, hi)
+
 def scope_overlap(paths_a, paths_b):
     """Entry pairs that can claim the same code: nesting fixed parts, except two definitions of one file, which overlap only when one contains the other."""
     out = []
@@ -2545,7 +2553,11 @@ def scope_overlap(paths_a, paths_b):
         for y in paths_b:
             (px, sx, _), (py, sy, _) = scope_item(x), scope_item(y)
             if sx and sy and px == py:
-                if sx == sy or sx.startswith(sy + ".") or sy.startswith(sx + "."):
+                rx, ry = sym_range(px, sx), sym_range(py, sy)
+                if rx and ry:
+                    if rx[0] < ry[1] and ry[0] < rx[1]:
+                        out.append((x, y))
+                elif sx == sy or sx.startswith(sy + ".") or sy.startswith(sx + "."):
                     out.append((x, y))
                 continue
             a, b = literal_base(px), literal_base(py)
@@ -2617,7 +2629,7 @@ def apply_scope_change(P):
     print("  [SCOPE] %s %s%s" % (me, event["kind"], (": " + event["aim"] + " | " + ", ".join(event["paths"])) if event["paths"] else ""))
     if event["kind"] == "scope set":
         files = repo_files(".")
-        covered = [f for f in files if any(scope_path_covers(f, g) for g in event["paths"])]
+        covered = [f for f in files if any(scope_path_covers(f, g) for g in event["paths"] if not scope_item(g)[1])]
         if files and (len(covered) > 200 or len(covered) * 3 > len(files)):
             print("  [SCOPE WIDE] this scope covers %d of %d files, and every other session is refused all of them: narrow it to the files this task changes and widen it later if needed." % (len(covered), len(files)))
         if any(literal_base(g) in ("", "docs", "docs/trees") for g in event["paths"]):
@@ -3164,7 +3176,7 @@ def print_card(shell, workspace):
   @CAMPAIGN <name> | <word> = <meaning>; ...      starts a sweep (only when the user asks): its verdict words, a footer line and the [L1-Campaign] rule while it runs; Tree probes show <<verdict: ...>> on marked nodes
   @CAMPAIGN_END <name>                            ends the sweep and removes every verdict it recorded
   @SCOPE <aim> | <path or glob>, ...              declares or changes this session's write scope; other sessions are told once; their scopes are refused to this session's file changes
-  (a scope entry may be file#Class.method, claiming only that definition so others can still edit the rest of the file, or end with ' depth N')
+  (a scope entry may be file#Class.method, file#Class.method > # Stage: Name or file## Stage: Name, claiming only that part so others can still edit the rest of the file, or end with ' depth N')
   @SCOPE_END    @SESSION_END                      release this session's scope / end the session; refused while its changes are uncommitted, unless followed by 'handover'
   @MESSAGE <session> | <text>                     a note for another session, shown once on its next run (labelled as from an AI, not the user)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
