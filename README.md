@@ -27,7 +27,7 @@ Lost an output, or pasted twice? Paste the same script again. An identical re-pa
 
 ## Several chats on one project
 
-Several chats can work in the same project at once, each on its own goal:
+Several chats can work in the same project at once, each with its own aim:
 
 - Each chat names itself with `@SESSION <name>` on every script and leaves the script number out; the harness assigns numbers under a lock, so two chats never collide.
 - Before changing files, a chat declares `@SCOPE <aim> | <paths or globs>`. A scope that overlaps another session's is refused when it is declared.
