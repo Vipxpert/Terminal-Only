@@ -1073,6 +1073,55 @@ def save_history(P, raw_txt, hunk_log, files_log):
         except OSError:
             pass
 
+def ask_console(prompt):
+    """Ask the person at the terminal while the script itself arrives on stdin; None when no one is there (output captured, no console, or prompts turned off)."""
+    if os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
+        return None
+    try:
+        tin, tout = ("CONIN$", "CONOUT$") if os.name == "nt" else ("/dev/tty", "/dev/tty")
+        with open(tin, "r") as fi, open(tout, "w") as fo:
+            sys.stdout.flush()
+            fo.write(prompt)
+            fo.flush()
+            return fi.readline().strip()
+    except (OSError, ValueError):
+        return None
+
+def journal_entries(start, session):
+    """Journaled scripts of one chat (or of no chat) from number start on, newest first."""
+    out = []
+    for path in glob.glob(os.path.join(HISTORY_DIR, "*.json")):
+        e = load_json(path, None)
+        if e and e.get("num", -1) >= start and (e.get("session") or None) == (session or None):
+            out.append(e)
+    return sorted(out, key=lambda e: e["num"], reverse=True)
+
+def repaste_choice(rid, session):
+    """R(eplay), U(ndo) or E(xecute again) for a pasted script that already ran, asked at the terminal; R when no one can answer."""
+    ans = ask_console("\nThis script already ran: [%s]%s.\n  [R] replay its saved output   (Enter = R)\n  [U] undo it, and everything this chat did after it\n  [E] execute it again\n> " % (rid, " (chat %s)" % session if session else ""))
+    ans = (ans or "R")[:1].upper()
+    return ans if ans in ("R", "U", "E") else "R"
+
+def undo_from(start, session, state):
+    """Undo every journaled script of this chat from number start on, newest first, after a preview and the user's yes; committed scripts are kept."""
+    live = [e for e in journal_entries(start, session) if not all(f.get("undone") for f in e.get("files", {}).values())]
+    kept = [e for e in live if e["num"] <= state.get("committed_through", 0)]
+    todo = [e for e in live if e not in kept]
+    print("\n=== UNDO FROM SCRIPT %d (chat %s) ===" % (start, session or "none"))
+    for e in todo:
+        print("  [%s] %s: %s" % (e["id"], e.get("title", ""), ", ".join("/" + r for r in e.get("files", {})) or "no files"))
+    for e in kept:
+        print("  [KEPT] [%s] %s is already committed; undo leaves committed work alone" % (e["id"], e.get("title", "")))
+    if not todo:
+        print("  nothing to undo: no uncommitted file changes from this chat since that script")
+        return
+    if (ask_console("Undo these %d script(s)? (y/n) " % len(todo)) or "").lower()[:1] != "y":
+        print("  [UNDO CANCELLED] nothing was changed")
+        return
+    for e in todo:
+        run_undo(str(e["num"]), state)
+    print("  -> the files are back to how they were before script %d; in the chat, continue from the message before it." % start)
+
 def run_undo(spec, state):
     """Reverse journaled scripts newest-first: exact snapshot restore when the file is unchanged since, else reverse-diff."""
     nums = [int(x) for x in re.findall(r"\d+", spec)]
@@ -3160,6 +3209,7 @@ def print_card(shell, workspace):
   @RUN [--timeout <s>] <command>                  any other command (tests, builds, installs, CLI tools) in the workspace; default limit 300s; not undoable
   @INIT_DEBUG <slug>                              creates docs/debug/bug_<slug>.txt with its four sections and prints it
   @UNDO <hi>..<lo>  or  @UNDO <number>            reverses journaled scripts, newest first
+  (the user may also paste a script that already ran: at a terminal the harness asks [R]eplay / [U]ndo it and that chat's later scripts / [E]xecute again)
 """ + (GIT_CARD if MODE == "git" else "  @GIT_INIT [Name <email>]                        makes this folder a git repository (main, default .gitignore, numbering and undo carried over, optional identity for this repository only); other git directives work from then on, even in the same script\n") + """Scopes: TOP | EOF (append; OLD CODE empty) | Name | Class.method | Parent > # Stage anchor | tree node path (a > b)
 A hunk applies only where OLD CODE matches exactly one place, searched in the scope first, then in the whole file.
 @UNDO needs its own script. Commits may open a script that then changes files: the commit runs first and the file changes are skipped if it fails.
@@ -3249,26 +3299,47 @@ def main():
         print("  [SIDE] runs outside the numbering: no script number used, nothing journaled")
     elif P["num"] is None:
         prior = None if P["repeatable"] else find_run_by_key(payload_key(raw_txt))
+        choice = repaste_choice(prior.get("id"), P["session"]) if prior else "R"
+        if prior and choice == "U":
+            m = re.search(r"-(\d+)$", prior.get("id") or "")
+            if m:
+                undo_from(int(m.group(1)), P["session"], state)
+            return print_footer(state)
+        if prior and choice == "E":
+            print("  [EXECUTE AGAIN] [%s] runs again under a new number" % prior.get("id"))
+            prior = None
         if prior:
             print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again. Its saved output:" % prior.get("id"))
             print(prior.get("output", "").rstrip("\n"))
-            print("\n  -> to run it again on purpose (for example after the user changed something), change its title.")
+            print("\n  -> to run it again on purpose, change its title; at a terminal the user is asked instead: replay, undo, or execute again.")
             return print_footer(state)
         assign_number(P, state)
         assigned = True
         print("  [ASSIGNED] " + P["id"])
     elif P["num"] <= state["last_num"]:
         prior = find_run(P["num"])
-        if prior and prior.get("key") == payload_key(raw_txt):
+        same = bool(prior) and prior.get("key") == payload_key(raw_txt)
+        choice = repaste_choice(P["id"], P["session"]) if same else "R"
+        if same and choice == "U":
+            undo_from(P["num"], P["session"], state)
+            return print_footer(state)
+        if same and choice == "E":
+            print("  [EXECUTE AGAIN] [%s] runs again under a new number" % P["id"])
+            P["id"] = re.sub(r"-\d+$", "", P["id"])
+            assign_number(P, state)
+            assigned = True
+            print("  [ASSIGNED] " + P["id"])
+        elif same:
             print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again. Its saved output:" % P["id"])
             print(prior.get("output", "").rstrip("\n"))
             return print_footer(state)
-        if prior or not read_only(P):
+        elif prior or not read_only(P):
             print("  [STALE OR DUPLICATE SCRIPT] [%s] is not newer than the last executed script [%s]. Nothing was run." % (P["id"], state["last_id"]))
             print("  -> Use the next script number printed below; do not reuse an executed number.")
             return print_footer(state)
-        rerun = True
-        print("  [RE-RUN] [%s] is older than [%s] but only reads and has no saved output, so it runs again; the numbering is unchanged." % (P["id"], state["last_id"]))
+        else:
+            rerun = True
+            print("  [RE-RUN] [%s] is older than [%s] but only reads and has no saved output, so it runs again; the numbering is unchanged." % (P["id"], state["last_id"]))
     for w in P["warnings"]:
         print("  [WARNING] " + w)
     if not rerun and not P["side"] and not assigned and not claim_number(P, state):
