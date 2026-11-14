@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.5
+
 - `gofmt -w` formats Go files after a hunk, so tabs pasted as spaces no longer roll the file back; only real syntax errors do.
 - A `@GIT_COMMIT` path list without `@END_GIT_COMMIT` closes at the next directive instead of dropping the commit.
 - The cross-process state lock treats Windows' "delete pending" error as busy, so concurrent sessions no longer crash on it.
