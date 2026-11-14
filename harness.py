@@ -3193,7 +3193,7 @@ def print_card(shell, workspace):
   <replacement lines; leave empty to delete the old lines>
   === [END HUNK] ===
   (or, in place of +++ [NEW CODE] +++ and its lines: +++ [LINE EDITS] +++ then one edit per line: 'N: new text' replaces line N,
-   'N-' deletes it, 'N+ text' inserts after it (0 = before line 1); N counts the recited OLD CODE lines from 1, so it is always verified)
+   'N-' deletes it, 'N+ text' inserts after it (0 = before line 1); N counts the recited OLD CODE lines from 1, not counting blank lines before the first or after the last, so it is always verified)
   @NEW_FILE /<path>  <content>  @END_NEW_FILE     each on its own line; rejected if the file exists
   @DELETE_FILE /<path>
   @RENAME /<old> -> /<new>                        later hunks in the same script use the new path
@@ -3364,8 +3364,8 @@ def main():
     globals()["CURRENT_SCRIPT"], globals()["CURRENT_RUN"] = P["id"], "%s@%.6f" % (P["id"], time.time())
     enforce_brake(P)
     send_messages(P)
-    if P["scope"] is not None or P["scope_end"] or P["session_end"]:
-        apply_scope_change(P)
+    if P["scope"] is not None:
+        apply_scope_change(dict(P, scope_end=False, session_end=False))
     expand_text_ops(P)
     guard_ops(P)
     if P["goal"]:
@@ -3394,6 +3394,9 @@ def main():
             hunk_log, files_log = execute_ops(P["ops"])
             if files_log:
                 save_history(P, raw_txt, hunk_log, files_log)
+    if P["scope_end"] or P["session_end"]:
+        _DIRTY.clear()
+        apply_scope_change(dict(P, scope=None))
     if P["notes"]:
         execute_note_ops(P["notes"])
     run_shell = state.get("shell") or shell

@@ -54,6 +54,10 @@ def main():
         f.write("- changed a\n")
     out = run("@GIT_COMMIT fix: change a with its changelog line", "/a.txt", "/CHANGELOG.md", "@END_GIT_COMMIT")
     check("a fix commit that includes CHANGELOG.md gets no reminder", "[COMMITTED]" in out and "CHANGELOG.md was not" not in out, out)
+    run("@SESSION s1 | aim", "@SCOPE work | a.txt")
+    run("@SESSION s1 | aim", "@FILE /a.txt", "@HUNK TOP | e", "--- [OLD CODE] ---", "d", "+++ [NEW CODE] +++", "e", "=== [END HUNK] ===")
+    out = run("@SESSION s1 | aim", "@GIT_COMMIT chore: e", "/a.txt", "@END_GIT_COMMIT", "@SCOPE_END")
+    check("a commit and a scope release in one script: the commit goes first", "[COMMITTED]" in out and "scope released" in out and "RELEASE REFUSED" not in out, out)
     if shutil.which("gofmt"):
         with open(os.path.join(WS, "m.go"), "w", newline="\n") as f:
             f.write("package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n}\n")

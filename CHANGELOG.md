@@ -5,6 +5,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 ## Unreleased
 
 - Scopes on `# Stage` anchors (`file#Class.method > # Stage: Name`, `file## Stage: Name`) are compared by line range, so claiming a function that contains another session's stage is refused; claims on part of a file no longer trigger the width warning.
+- A script that commits its work and releases its scope (`@SCOPE_END` / `@SESSION_END`) now commits first, so the release is no longer refused.
 
 ## 3.5
 
