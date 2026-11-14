@@ -2,7 +2,7 @@
 #* Utility setup [One-Time, User-Performed]
 [Why This Exists — Read Once, Do Not Echo]:
 1. One Folder Serves Every Project: `harness.py` and this file live together in one folder (`~/.llm_harness`). Each script names its project with an `@WORKSPACE` line, so scripts can be pasted from any terminal folder and two projects can never be confused. Every project keeps two kinds of state. Project memory (pinned goal and notes) lives in `.llm_harness/` at the project root and travels with the project; commit it in git projects. Machine-local history (script numbering and undo journal) lives inside `.git/llm_harness/` for git projects, or `.llm_harness/` without git, and starts fresh on a new clone.
-2. The User Installs, the AI Never Re-Types: `harness.py` is static Python stdlib (about 1,800 lines). The user saves it by hand once; the AI only checks that the handshake is visible.
+2. The User Installs, the AI Never Re-Types: `harness.py` is one static Python file using only the standard library. The user saves it by hand once; the AI only checks that the handshake is visible.
 3. Three Facts Shape Everything Below:
    - A rule that is complete in its short form IS the rule. Each `L1 Rule` line in this file is the only copy of that rule; no paragraph restates it.
    - Only rules that do not show up in every turn are repeated: rare-event rules and prohibitions. The AI never echoes them. After every run, `harness.py` reads the `L1 Rule` lines out of this file and prints them, together with the pinned goal, at the end of its output. A rule tagged `(git)` is printed only for git projects. Editing a line here changes what is printed everywhere.
