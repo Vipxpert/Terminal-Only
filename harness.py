@@ -643,6 +643,7 @@ def parse_payload(txt):
             i += 1
             continue
         d, arg = m.group(1), (m.group(2) or "").strip()
+        P.setdefault("seen", set()).add("@" + d)
         if d == "SCRIPT":
             mm = re.match(r"^\[([^\]:]+)(?::\s*([^\]]*))?\]", arg)
             if mm:
@@ -3479,7 +3480,7 @@ def main():
         return print_footer(state)
     if P["session"]:
         known = set(DIRECTIVES.split())
-        P["used"] = sorted(d for d in ("@" + m for m in re.findall(r"(?m)^\s*@([A-Z_]+)", raw_txt)) if d in known)
+        P["used"] = sorted(d for d in P.get("seen", ()) if d in known)
         touch_session(P)
         check_waiting(P["session"])
         if not P.get("again"):

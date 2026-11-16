@@ -41,6 +41,11 @@ def main():
     out = run("beta | other work", "@LIST_DIR /")
     line = commands_line(out)
     check("another chat keeps its own record", "@GREP" in line and "@FIND" in line and "@LIST_DIR" not in line, line)
+    with open(os.path.join(WS, "b.txt"), "w") as f:
+        f.write("@VERDICT appears in this text line\n")
+    out = run("alpha | look around", "@TEXT_REPLACE /b.txt | expect 1 | edit", "--- [OLD TEXT] ---", "@VERDICT appears in this text line", "+++ [NEW TEXT] +++", "@VERDICT appeared in this text line", "=== [END TEXT] ===")
+    line = commands_line(out)
+    check("text inside a replacement is not counted as a used command", " @VERDICT " in line + " " and "@TEXT_REPLACE" not in line, line)
     out = run("alpha | look around", "@HELP COMMANDS")
     check("@HELP COMMANDS prints the full list", "=== HELP: all commands ===" in out and "@CAMPAIGN_END" in out.split("=== HELP: all commands ===")[1].split("===")[0], out)
     print("test workspace: " + WS)
