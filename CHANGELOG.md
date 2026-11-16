@@ -11,7 +11,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - In a chat, the footer's `[L1-Commands]` lists only the commands that chat has not used yet (directives it sent, not text inside hunks or replacements); `@HELP COMMANDS` prints the full list.
 - Work refused because another session holds it is remembered under WAITING ON, the holder is told once, `[UNBLOCKED]` announces when it is free, and `@SESSION_END` waits for it unless followed by `drop`.
 - Notes can be aimed at particular chats or a session-name pattern (`@NOTE_ADD for <sessions> | <text>`); only those chats see them in their footers, and `@NOTE_LIST` shows each note's audience.
-- Rules: reason comments (`Why:`) record non-obvious constraints, workarounds and orderings right at the code, and are kept while their reason holds, beside the `# Stage` anchors used for navigation.
+- Rules: reason comments (`Comment:`) record non-obvious constraints, workarounds and orderings directly above the code they cover, and are kept while their reason holds, beside the `# Stage` anchors used for navigation.
 
 ## 3.5
 
