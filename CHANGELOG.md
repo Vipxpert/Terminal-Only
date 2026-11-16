@@ -14,6 +14,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - Rules: reason comments (`Comment:`) record non-obvious constraints, workarounds and orderings directly above the code they cover, and are kept while their reason holds, beside the `# Stage` anchors used for navigation.
 - `@PART <i>/<n>` lets one reply carry several scripts (for example a long command run apart from many inspections); only the last part prints the goal, notes and standing rules.
 - Each chat keeps its own verdict on a path: a second chat's verdict no longer overwrites the first, listings, reads and tree marks show both, and `| clear` removes only the calling chat's.
+- Releasing a scope (`@SCOPE_END`, `@SESSION_END` or the user's `--release`) prints `[WAKE]` for every chat that was waiting on it, with its chat address, so the user can open it.
 
 ## 3.5
 

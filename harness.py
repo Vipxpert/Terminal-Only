@@ -2669,6 +2669,13 @@ def scope_owner(path, me, op=None):
                     return name, dict(sc, owned=item)
     return None, None
 
+def wake_waiters(reg, holder, freed):
+    """When a scope is released, name the chats that were waiting on it so the user can open them; their next run says [UNBLOCKED]."""
+    for name, r in sorted(reg.items()):
+        hits = [w["path"] for w in r.get("waiting", []) if w.get("owner") == holder and freed and scope_overlap([w["path"]], freed)]
+        if name != holder and hits:
+            print("  [WAKE] session %s was waiting on %s%s: open that chat so it resumes (its next run says [UNBLOCKED])" % (name, ", ".join("/" + h for h in hits[:4]), chat_link(name)))
+
 def apply_scope_change(P):
     """@SCOPE / @SCOPE_END / @SESSION_END: update this session's write scope, refusing overlaps, and log the change for the other sessions."""
     me = P["session"]
@@ -2688,7 +2695,9 @@ def apply_scope_change(P):
                 print("  [RELEASE REFUSED] this session's changes are not committed yet: %s" % ", ".join("/" + p for p in pending[:8]))
                 print("  -> commit them first, or write '@SCOPE_END handover' (or '@SESSION_END handover') to leave them to another session; the hand-over is announced.")
                 return
+            freed = (rec.get("scope") or {}).get("paths", [])
             rec["scope"] = None
+            wake_waiters(reg, me, freed)
             rec["handed_over"] = sorted(set(rec.get("handed_over", [])) | set(pending))
             kind = "session ended" if P["session_end"] else "scope released"
             if pending:
@@ -2964,7 +2973,9 @@ def session_cli(flag):
             print("no session named %s; sessions: %s" % (sess, ", ".join(sorted(reg)) or "none"))
             return
         if flag == "--release":
+            freed = (reg[sess].get("scope") or {}).get("paths", [])
             reg.pop(sess)
+            wake_waiters(reg, sess, freed)
             kind = "session released by the user"
         else:
             reg[sess]["brake"] = None
