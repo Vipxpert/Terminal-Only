@@ -8,6 +8,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - A script that commits its work and releases its scope (`@SCOPE_END` / `@SESSION_END`) now commits first, so the release is no longer refused.
 - Each session can remember its chat's address: asked once at the terminal or set with `--link`, and shown in the session list and in every refusal involving that session.
 - Terminal questions discard anything typed or pasted before they appear, so a second paste can no longer answer them; only web addresses are stored as chat addresses, and a bad one is asked for again.
+- In a chat, the footer's `[L1-Commands]` lists only the commands that chat has not used yet; `@HELP COMMANDS` prints the full list.
 
 ## 3.5
 

@@ -2470,6 +2470,7 @@ def touch_session(P):
         rec["last_active"], rec["last_script"] = time.time(), P["id"]
         if P.get("session_aim"):
             rec["aim"] = P["session_aim"]
+        rec["used"] = sorted(set(rec.get("used", [])) | set(P.get("used", [])))
         reg[P["session"]] = rec
         save_json(sessions_path(), reg)
 
@@ -3050,7 +3051,12 @@ def print_footer(state):
         print("=== L1 CONTRACT (standing rules; apply, never echo) ===")
         for tag, body in rules:
             print("%s %s" % (tag, body.strip().strip("`").strip()))
-    print("[L1-Commands] " + " ".join(DIRECTIVES.split()) + " | syntax of any one: @HELP <name>")
+    used = set((load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("used", [])) if CURRENT_SESSION and state is not None else set()
+    if used:
+        rest = [d for d in DIRECTIVES.split() if d not in used]
+        print("[L1-Commands] not used yet in this chat: %s | %d already used | full list: @HELP COMMANDS | syntax of any one: @HELP <name>" % (" ".join(rest) or "(none: every command has been used)", len(used)))
+    else:
+        print("[L1-Commands] " + " ".join(DIRECTIVES.split()) + " | syntax of any one: @HELP <name>")
 
 def enter_workspace(path):
     """chdir into the project a script names. Returns an error message, or None on success."""
@@ -3198,6 +3204,9 @@ def print_help(name, shell):
     with contextlib.redirect_stdout(buf):
         print_card(shell, os.path.abspath("."))
     key = "@" + name.strip().lstrip("@").upper()
+    if key == "@COMMANDS":
+        print("\n=== HELP: all commands ===\n  " + " ".join(DIRECTIVES.split()) + "\n  syntax of any one: @HELP <name>")
+        return
     out, keep = [], False
     for ln in buf.getvalue().split("\n"):
         s = ln.strip()
@@ -3424,6 +3433,8 @@ def main():
         print("  -> write @SCRIPT [<ACT>: <title>] without a number and the harness assigns a free one.")
         return print_footer(state)
     if P["session"]:
+        known = set(DIRECTIVES.split())
+        P["used"] = sorted(d for d in ("@" + m for m in re.findall(r"(?m)^\s*@([A-Z_]+)", raw_txt)) if d in known)
         touch_session(P)
         if not P.get("again"):
             ask_chat_link(P["session"])
