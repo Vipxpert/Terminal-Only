@@ -1321,7 +1321,7 @@ def run_git_ops(ops):
                 foreign = [(p, foreign_uncommitted(p)) for p in paths]
                 foreign = [(p, s) for p, s in foreign if s]
                 if foreign:
-                    return fail("these paths hold uncommitted changes from other active sessions, and committing them would take that work along: %s (they commit theirs, hand it over, or the user runs --release)" % "; ".join("%s: %s" % (p, ", ".join(s)) for p, s in foreign))
+                    return fail("these paths hold uncommitted changes from other active sessions, and committing them would take that work along: %s (they commit theirs, hand it over, or the user runs --release)" % "; ".join("%s: %s" % (p, ", ".join(n + chat_link(n) for n in s)) for p, s in foreign))
             rc, _, err = run_git(["add", "-A", "--"] + paths)
             if rc != 0:
                 return fail("git add: " + err)
@@ -2459,6 +2459,48 @@ def touch_session(P):
         reg[P["session"]] = rec
         save_json(sessions_path(), reg)
 
+def chat_link(name):
+    """' (chat: <address>)' for a session whose chat address is known, else ''."""
+    rec = load_json(sessions_path(), {}).get(name) or {}
+    return " (chat: %s)" % rec["link"] if rec.get("link") else ""
+
+def ask_chat_link(name):
+    """Once per session, at a terminal: ask for the chat's address, so other chats can point the user back to it."""
+    if not name:
+        return
+    rec = load_json(sessions_path(), {}).get(name) or {}
+    if rec.get("link") or rec.get("link_asked"):
+        return
+    ans = ask_console("\nSession %s has no chat address yet. Paste this chat's address from the browser, so other chats can point you back to it (Enter to skip): " % name)
+    if ans is None:
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        if name in reg:
+            if ans.strip():
+                reg[name]["link"] = ans.strip()
+            reg[name]["link_asked"] = True
+            save_json(sessions_path(), reg)
+
+def link_cli():
+    """User-only command: harness.py --workspace <folder> --link <session> <chat address>."""
+    args = sys.argv[1:]
+    i = args.index("--link")
+    sess = args[i + 1] if len(args) > i + 1 else ""
+    link = args[i + 2] if len(args) > i + 2 else ""
+    err = enter_workspace(arg_value("--workspace"))
+    if err or not sess or not link:
+        print("usage: harness.py --workspace <project folder> --link <session> <chat address>" + ((" | " + err) if err else ""))
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        if sess not in reg:
+            print("no session named %s in this project; sessions: %s" % (sess, ", ".join(sorted(reg)) or "none"))
+            return
+        reg[sess]["link"], reg[sess]["link_asked"] = link, True
+        save_json(sessions_path(), reg)
+    print("LINKED: session %s -> %s" % (sess, link))
+
 def print_sessions(current):
     reg = load_json(sessions_path(), {})
     if not reg:
@@ -2470,7 +2512,8 @@ def print_sessions(current):
         sc = rec.get("scope")
         scope = "%s (%s)" % (sc.get("aim") or "no aim", ", ".join(sc.get("paths", []))) if sc else "none"
         brake = " | BRAKED by %s" % rec["brake"]["from"] if rec.get("brake") else ""
-        return "aim: %s | write scope: %s | last %s, %s%s" % (rec.get("aim") or "not set", scope, rec.get("last_script", "?"), when, brake)
+        link = " | chat: %s" % rec["link"] if rec.get("link") else ""
+        return "aim: %s | write scope: %s | last %s, %s%s%s" % (rec.get("aim") or "not set", scope, rec.get("last_script", "?"), when, brake, link)
     if current in reg:
         print("=== THIS SESSION: %s | %s ===" % (current, describe(reg[current])))
     others = sorted(((n, r) for n, r in reg.items() if n != current), key=lambda kv: -kv[1].get("last_active", 0))
@@ -2615,7 +2658,7 @@ def apply_scope_change(P):
             if clashes:
                 print("  [SCOPE REFUSED] this scope overlaps another session's; scopes are unchanged:")
                 for name, x, y in clashes[:6]:
-                    print("    %s  overlaps  %s's  %s" % (x, name, y))
+                    print("    %s  overlaps  %s's  %s%s" % (x, name, y, chat_link(name)))
                 print("  -> narrow the scope, or tell the user: they can have that session release its scope, or grant this session the overlap with their own --grant command.")
                 return
             rec["scope"] = {"aim": aim.strip(), "paths": paths}
@@ -2645,7 +2688,7 @@ def guard_ops(P):
             rel = path.strip().replace("\\", "/").lstrip("/") if path else ""
             owner, sc = scope_owner(rel, P["session"], op) if rel else (None, None)
             if owner:
-                op["blocked"] = "inside session %s's scope (%s): %s; tell the user, who can coordinate or --grant it" % (owner, sc.get("owned"), sc.get("aim") or "no aim")
+                op["blocked"] = "inside session %s's scope (%s): %s%s; tell the user, who can coordinate or --grant it" % (owner, sc.get("owned"), sc.get("aim") or "no aim", chat_link(owner))
                 break
             others = foreign_uncommitted(rel) if rel and P["session"] else []
             if others and rel not in warned:
@@ -3274,6 +3317,8 @@ def main():
     if "--version" in sys.argv[1:]:
         print("llm_harness v%s" % VERSION)
         return
+    if "--link" in sys.argv[1:]:
+        return link_cli()
     for flag in ("--release", "--unbrake"):
         if flag in sys.argv[1:]:
             return session_cli(flag)
@@ -3319,7 +3364,7 @@ def main():
             return print_footer(state)
         if prior and choice == "E":
             print("  [EXECUTE AGAIN] [%s] runs again under a new number" % prior.get("id"))
-            prior = None
+            prior, P["again"] = None, True
         if prior:
             print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again. Its saved output:" % prior.get("id"))
             print(prior.get("output", "").rstrip("\n"))
@@ -3337,7 +3382,7 @@ def main():
             return print_footer(state)
         if same and choice == "E":
             print("  [EXECUTE AGAIN] [%s] runs again under a new number" % P["id"])
-            P["id"] = re.sub(r"-\d+$", "", P["id"])
+            P["id"], P["again"] = re.sub(r"-\d+$", "", P["id"]), True
             assign_number(P, state)
             assigned = True
             print("  [ASSIGNED] " + P["id"])
@@ -3360,6 +3405,8 @@ def main():
         return print_footer(state)
     if P["session"]:
         touch_session(P)
+        if not P.get("again"):
+            ask_chat_link(P["session"])
     globals()["CURRENT_SESSION"] = P["session"]
     globals()["CURRENT_SCRIPT"], globals()["CURRENT_RUN"] = P["id"], "%s@%.6f" % (P["id"], time.time())
     enforce_brake(P)
