@@ -2537,6 +2537,8 @@ def print_sessions(current):
         return "aim: %s | write scope: %s | last %s, %s%s%s" % (rec.get("aim") or "not set", scope, rec.get("last_script", "?"), when, brake, link)
     if current in reg:
         print("=== THIS SESSION: %s | %s ===" % (current, describe(reg[current])))
+        if reg[current].get("waiting"):
+            print("=== WAITING ON (blocked work to resume, never to drop silently): %s ===" % "; ".join("/%s held by %s%s since %s" % (w["path"], w["owner"], chat_link(w["owner"]), w.get("script") or "?") for w in reg[current]["waiting"]))
     others = sorted(((n, r) for n, r in reg.items() if n != current), key=lambda kv: -kv[1].get("last_active", 0))
     if others:
         print("=== OTHER SESSIONS (newest first) ===")
@@ -2654,6 +2656,10 @@ def apply_scope_change(P):
     with state_lock():
         reg = load_json(sessions_path(), {})
         rec = reg.setdefault(me, {})
+        if P["session_end"] and rec.get("waiting") and not re.search(r"\b(drop|handover)\b", str(P["session_end"]).lower()):
+            print("  [SESSION END REFUSED] this session still waits on blocked work: %s" % "; ".join("/%s (held by %s)" % (w["path"], w["owner"]) for w in rec["waiting"][:6]))
+            print("  -> finish it once it is free, or end with '@SESSION_END drop' to give it up and tell the user what is left undone.")
+            return
         if P["session_end"] or P["scope_end"]:
             pending = own_uncommitted(me)
             if pending and "handover" not in str(P["session_end"] or P["scope_end"]).lower():
@@ -2681,6 +2687,8 @@ def apply_scope_change(P):
                 for name, x, y in clashes[:6]:
                     print("    %s  overlaps  %s's  %s%s" % (x, name, y, chat_link(name)))
                 print("  -> narrow the scope, or tell the user: they can have that session release its scope, or grant this session the overlap with their own --grant command.")
+                note_waiting(reg, me, [(x, name) for name, x, y in clashes])
+                save_json(sessions_path(), reg)
                 return
             rec["scope"] = {"aim": aim.strip(), "paths": paths}
             event = {"session": me, "kind": "scope set", "aim": aim.strip(), "paths": paths}
@@ -2699,22 +2707,58 @@ def apply_scope_change(P):
         if any(literal_base(g) in ("", "docs", "docs/trees") for g in event["paths"]):
             print("  -> tree files are shared by every session: claim the tree_*.txt files this task edits, not the whole trees folder.")
 
+def note_waiting(reg, me, items, notify=True):
+    """Remember work session me could not do because another session holds it, and (once per item) tell the holder; call inside state_lock."""
+    rec = reg.setdefault(me, {})
+    have = {(w["path"], w["owner"]) for w in rec.get("waiting", [])}
+    for path, owner in items:
+        if owner == me or (path, owner) in have:
+            continue
+        have.add((path, owner))
+        rec.setdefault("waiting", []).append({"path": path, "owner": owner, "script": CURRENT_SCRIPT, "time": time.time()})
+        if notify and owner in reg:
+            log_event({"session": me, "kind": "message", "to": owner, "text": "session %s is blocked by your scope on %s%s: finish and release it, or hand it over (sent by the harness)" % (me, path, chat_link(me))})
+
+def check_waiting(me):
+    """Tell a session, once, when work it was blocked on is free again; the rest stays on its WAITING ON line."""
+    if not me:
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        rec = reg.get(me) or {}
+        still, freed = [], []
+        for w in rec.get("waiting", []):
+            sc = (reg.get(w["owner"]) or {}).get("scope") or {}
+            held = bool(sc) and not granted(me, literal_base(scope_item(w["path"])[0])) and bool(scope_overlap([w["path"]], sc.get("paths", [])))
+            (still if held else freed).append(w)
+        if freed:
+            rec["waiting"] = still
+            save_json(sessions_path(), reg)
+    for w in freed:
+        print("  [UNBLOCKED] /%s is free now (session %s no longer holds it); you were blocked on it in %s: resume that work" % (w["path"], w["owner"], w.get("script") or "?"))
+
 def guard_ops(P):
     """Refuse file changes that fall inside another session's declared scope, unless the user granted them."""
     if not P["ops"]:
         return
-    warned = set()
+    warned, blocked = set(), []
     for op in P["ops"]:
         for path in (op.get("file"), op.get("to")):
             rel = path.strip().replace("\\", "/").lstrip("/") if path else ""
             owner, sc = scope_owner(rel, P["session"], op) if rel else (None, None)
             if owner:
                 op["blocked"] = "inside session %s's scope (%s): %s%s; tell the user, who can coordinate or --grant it" % (owner, sc.get("owned"), sc.get("aim") or "no aim", chat_link(owner))
+                blocked.append((rel, owner))
                 break
             others = foreign_uncommitted(rel) if rel and P["session"] else []
             if others and rel not in warned:
                 warned.add(rel)
                 print("  [SHARED FILE] /%s holds uncommitted changes from session %s: your edit lands in the same file, and you cannot commit it until they commit or hand theirs over." % (rel, ", ".join(others)))
+    if blocked and P["session"]:
+        with state_lock():
+            reg = load_json(sessions_path(), {})
+            note_waiting(reg, P["session"], blocked)
+            save_json(sessions_path(), reg)
 
 def watch_other_scopes(me):
     """Fingerprints of the files inside other sessions' scopes, taken before @RUN so changes made by commands can be reported."""
@@ -2852,6 +2896,7 @@ def send_messages(P):
                 print("  [NOT SENT] %s to '%s': %s" % (kind, parts[0], "no text" if to in reg and to != me else "no other session by that name (see the sessions list)"))
                 continue
             if kind == "scope request":
+                note_waiting(reg, me, [(p.strip().replace("\\", "/").lstrip("/"), to) for p in (parts[1] if len(parts) > 1 else "").split(",") if p.strip()], notify=False)
                 text = "asks for write access to " + text
             if kind == "brake":
                 reg[to]["brake"] = {"from": me, "text": text}
@@ -3249,7 +3294,7 @@ def print_card(shell, workspace):
   @CAMPAIGN_END <name>                            ends the sweep and removes every verdict it recorded
   @SCOPE <aim> | <path or glob>, ...              declares or changes this session's write scope; other sessions are told once; their scopes are refused to this session's file changes
   (a scope entry may be file#Class.method, file#Class.method > # Stage: Name or file## Stage: Name, claiming only that part so others can still edit the rest of the file, or end with ' depth N')
-  @SCOPE_END    @SESSION_END                      release this session's scope / end the session; refused while its changes are uncommitted, unless followed by 'handover'
+  @SCOPE_END    @SESSION_END                      release this session's scope / end the session; refused while its changes are uncommitted, unless followed by 'handover'; @SESSION_END also waits for blocked work listed under WAITING ON, unless followed by 'drop'
   @MESSAGE <session> | <text>                     a note for another session, shown once on its next run (labelled as from an AI, not the user)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
@@ -3436,6 +3481,7 @@ def main():
         known = set(DIRECTIVES.split())
         P["used"] = sorted(d for d in ("@" + m for m in re.findall(r"(?m)^\s*@([A-Z_]+)", raw_txt)) if d in known)
         touch_session(P)
+        check_waiting(P["session"])
         if not P.get("again"):
             ask_chat_link(P["session"])
     globals()["CURRENT_SESSION"] = P["session"]
