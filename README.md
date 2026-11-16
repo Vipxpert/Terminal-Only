@@ -159,3 +159,9 @@ Work on this repository through the harness itself, with this folder as the work
 - You are in the loop for every step: one script per turn, pasted by hand.
 - Day-to-day use is on Windows PowerShell; the bash path is exercised less.
 - Graph searches pay CBM's start-up cost, a few seconds per run.
+
+## Tools evaluated and not used
+
+- RTK (output compression for agent command-line tools): tested in this flow and saved nothing, because the harness already prints compact, purpose-built output and the chat receives it by paste.
+- Headroom and Caveman: aimed at agent apps rather than web chat, so they do not fit a paste-based workflow.
+- Ponytails: not relevant to this flow.
