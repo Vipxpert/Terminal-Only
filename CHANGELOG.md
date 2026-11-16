@@ -12,6 +12,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - Work refused because another session holds it is remembered under WAITING ON, the holder is told once, `[UNBLOCKED]` announces when it is free, and `@SESSION_END` waits for it unless followed by `drop`.
 - Notes can be aimed at particular chats or a session-name pattern (`@NOTE_ADD for <sessions> | <text>`); only those chats see them in their footers, and `@NOTE_LIST` shows each note's audience.
 - Rules: reason comments (`Comment:`) record non-obvious constraints, workarounds and orderings directly above the code they cover, and are kept while their reason holds, beside the `# Stage` anchors used for navigation.
+- `@PART <i>/<n>` lets one reply carry several scripts (for example a long command run apart from many inspections); only the last part prints the goal, notes and standing rules.
+- Each chat keeps its own verdict on a path: a second chat's verdict no longer overwrites the first, listings, reads and tree marks show both, and `| clear` removes only the calling chat's.
 
 ## 3.5
 

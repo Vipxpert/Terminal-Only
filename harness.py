@@ -608,7 +608,7 @@ def check_files(changed, pre):
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
-              "@MESSAGE @SCOPE_REQUEST @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END")
+              "@MESSAGE @SCOPE_REQUEST @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
 
@@ -627,7 +627,7 @@ def parse_payload(txt):
          "runs": [], "finds": [], "greps": [],
          "list_dir": [], "list_rec": [], "undo": None, "git": [], "git_status": False, "git_init": False, "side": False, "session": None,
          "scope": None, "scope_end": False, "session_end": False, "session_aim": None, "msgs": [], "brake_ack": False, "repeatable": False,
-         "verdicts": [], "verdict_lists": [], "campaigns": [], "warnings": []}
+         "verdicts": [], "verdict_lists": [], "campaigns": [], "part": None, "warnings": []}
     lines = txt.split("\n")
     n, i, cur_file, stray = len(lines), 0, None, []
 
@@ -670,6 +670,12 @@ def parse_payload(txt):
             P["verdict_lists"].append(arg)
         elif d in ("CAMPAIGN", "CAMPAIGN_END"):
             P["campaigns"].append((d, arg))
+        elif d == "PART":
+            pm = re.match(r"^(\d+)\s*/\s*(\d+)$", arg)
+            if pm and 1 <= int(pm.group(1)) <= int(pm.group(2)):
+                P["part"] = (int(pm.group(1)), int(pm.group(2)))
+            else:
+                P["warnings"].append("expected '@PART <i>/<n>', e.g. @PART 1/2")
         elif d == "REPEATABLE":
             P["repeatable"] = True
         elif d == "BRAKE_ACK":
@@ -1787,11 +1793,17 @@ def tree_node_paths(lines):
     return out
 
 def tree_verdict_mark(verdicts, path):
-    v = verdicts.get(path) if path else None
-    if not v:
-        return ""
-    new, changed, gone = verdict_changes(v, path)
-    return "  <<verdict: %s%s%s>>" % (v["verdict"], " (campaign %s)" % v["campaign"] if v.get("campaign") else "", ", STALE" if new or changed or gone else "")
+    """The <<verdict: ...>> mark for a tree node: every chat's verdict on that path, with stale flags."""
+    recs = [v for _, p, v in verdict_items(verdicts) if p == path] if path else []
+    marks = []
+    for v in recs:
+        new, changed, gone = verdict_changes(v, path)
+        marks.append("%s%s%s%s" % (v["verdict"], " by %s" % (v.get("session") or "none") if len(recs) > 1 else "", " (campaign %s)" % v["campaign"] if v.get("campaign") else "", ", STALE" if new or changed or gone else ""))
+    return "  <<verdict: %s>>" % "; ".join(marks) if marks else ""
+
+def verdict_items(verdicts):
+    """(key, path, record) for every verdict; each chat keeps its own verdict on a path (older files keyed by path alone still read)."""
+    return [(k, v.get("path") or k.split("\t")[0], v) for k, v in verdicts.items()]
 
 def active_campaigns():
     try:
@@ -2148,7 +2160,7 @@ def refs_in_scope(rel, lines, target):
     if external:
         print("  external calls: " + ", ".join(sorted(external)[:40]))
 
-CURRENT_SCRIPT, CURRENT_RUN = None, None
+CURRENT_SCRIPT, CURRENT_RUN, CURRENT_PART = None, None, None
 
 def inspections_path():
     return os.path.join(HARNESS_DIR, "inspections.json")
@@ -2250,8 +2262,13 @@ def record_verdicts(P):
             if not target or not word:
                 print("  [VERDICT REFUSED] expected '@VERDICT <path> | <verdict> | <note>' (or '| clear'): %s" % arg)
                 continue
+            key = target + "\t" + (CURRENT_SESSION or "")
+            legacy = data["verdicts"].get(target)
+            if legacy is not None and legacy.get("session") == CURRENT_SESSION:
+                data["verdicts"].pop(target)
+                data["verdicts"].setdefault(key, dict(legacy, path=target))
             if word.lower() == "clear":
-                print("  [VERDICT CLEARED] /%s" % target if data["verdicts"].pop(target, None) else "  [VERDICT] nothing to clear at /%s" % target)
+                print("  [VERDICT CLEARED] /%s" % target if data["verdicts"].pop(key, None) else "  [VERDICT] this chat has no verdict to clear at /%s" % target)
                 continue
             inv = verdict_inventory(target)
             if inv is None:
@@ -2260,8 +2277,9 @@ def record_verdicts(P):
             camps = [c for c, cv in data.get("campaigns", {}).items() if word in cv.get("legend", {})]
             if data.get("campaigns") and not camps:
                 print("  -> '%s' is not a word of any active campaign's legend (%s); recorded as an ordinary verdict" % (word, "; ".join("%s: %s" % (c, ", ".join(cv.get("legend", {}))) for c, cv in data["campaigns"].items())))
-            data["verdicts"][target] = {"verdict": word, "note": " | ".join(parts[2:]), "session": CURRENT_SESSION, "script": CURRENT_SCRIPT, "time": time.time(), "inventory": inv, "campaign": camps[0] if camps else None}
-            print("  [VERDICT] /%s: %s%s (%d fingerprint(s) kept)" % (target, word, (" - " + " | ".join(parts[2:])) if parts[2:] else "", len(inv)))
+            data["verdicts"][key] = {"path": target, "verdict": word, "note": " | ".join(parts[2:]), "session": CURRENT_SESSION, "script": CURRENT_SCRIPT, "time": time.time(), "inventory": inv, "campaign": camps[0] if camps else None}
+            others = sorted("%s (%s)" % (v["verdict"], v.get("session") or "none") for k, p, v in verdict_items(data["verdicts"]) if p == target and k != key)
+            print("  [VERDICT] /%s: %s%s (%d fingerprint(s) kept)%s" % (target, word, (" - " + " | ".join(parts[2:])) if parts[2:] else "", len(inv), ("; other chats' verdicts here: " + ", ".join(others)) if others else ""))
         os.makedirs(WORKSPACE_NOTES_DIR, exist_ok=True)
         save_json(verdicts_path(), data)
     if MODE == "git" and run_git(["check-ignore", "-q", verdicts_path().replace("\\", "/")])[0] == 0:
@@ -2270,12 +2288,12 @@ def record_verdicts(P):
 def show_verdicts_for(rel, scoped):
     """While reading code, show each verdict that covers it (once per run), with a stale warning when its area changed since."""
     data = load_json(verdicts_path(), {"verdicts": {}})["verdicts"]
-    for target, v in sorted(data.items()):
+    for key, target, v in sorted(verdict_items(data), key=lambda t: (t[1], t[2].get("session") or "")):
         base = target.split("#")[0]
         covers = target in scoped if "#" in target else (rel == base or rel.startswith(base + "/") or not base)
-        if not covers or target in _VERDICT_SHOWN:
+        if not covers or key in _VERDICT_SHOWN:
             continue
-        _VERDICT_SHOWN.add(target)
+        _VERDICT_SHOWN.add(key)
         new, changed, gone = verdict_changes(v, target)
         stale = " [STALE VERDICT: %d new, %d changed, %d deleted since]" % (len(new), len(changed), len(gone)) if new or changed or gone else ""
         print("  [VERDICT] /%s: %s%s (session %s)%s" % (target, v["verdict"], (" - " + v["note"]) if v.get("note") else "", v.get("session") or "none", stale))
@@ -2284,21 +2302,22 @@ def list_verdicts(arg):
     """@VERDICTS [all | stale | session <name>]: verdicts as path, tree description and conclusion; a parent verdict hides children that say the same."""
     data = load_json(verdicts_path(), {"verdicts": {}})["verdicts"]
     a = arg.strip()
+    rows = verdict_items(data)
     if a.lower().startswith("session "):
         who = a.split(None, 1)[1].strip()
-        items, label = {p: v for p, v in data.items() if v.get("session") == who}, "session " + who
+        rows, label = [r for r in rows if r[2].get("session") == who], "session " + who
     elif a.lower() in ("all", "stale"):
-        items, label = dict(data), a.lower()
+        label = a.lower()
     elif CURRENT_SESSION:
-        items, label = {p: v for p, v in data.items() if v.get("session") == CURRENT_SESSION}, "session " + CURRENT_SESSION
+        rows, label = [r for r in rows if r[2].get("session") == CURRENT_SESSION], "session " + CURRENT_SESSION
     else:
-        items, label = dict(data), "all"
+        label = "all"
     print("\n=== VERDICTS (%s) ===" % label)
     shown = 0
-    for p in sorted(items):
-        v, base = items[p], p.split("#")[0]
-        above = [q for q in items if q != p and "#" not in q and (base == q or base.startswith(q + "/") or not q)]
-        if above and items[max(above, key=len)]["verdict"] == v["verdict"]:
+    for key, p, v in sorted(rows, key=lambda t: (t[1], t[2].get("session") or "")):
+        base = p.split("#")[0]
+        above = [(q, w) for k2, q, w in rows if k2 != key and "#" not in q and w.get("session") == v.get("session") and (base == q or base.startswith(q + "/") or not q)]
+        if above and max(above, key=lambda t: len(t[0]))[1]["verdict"] == v["verdict"]:
             continue
         new, changed, gone = verdict_changes(v, p)
         if a.lower() == "stale" and not (new or changed or gone):
@@ -3085,6 +3104,9 @@ def print_footer(state):
     """Every run ends with the next free number, the pinned goal and the standing rules that apply to this workspace's mode."""
     if state is not None:
         print("\n=== NEXT SCRIPT NUMBER: %d ===" % (state["last_num"] + 1))
+        if CURRENT_PART and CURRENT_PART[0] < CURRENT_PART[1]:
+            print("=== PART %d of %d: the goal, notes and standing rules follow after part %d ===" % (CURRENT_PART[0], CURRENT_PART[1], CURRENT_PART[1]))
+            return
         print_goal(state)
         print_footer_notes()
         print_footer_campaigns()
@@ -3307,7 +3329,8 @@ def print_card(shell, workspace):
   @GOAL <text>                                    pins the user's long-term goal in .llm_harness/goal.md (travels with the project); every run prints it in the footer
   @SIDE                                           runs the script outside the numbering (its @SCRIPT needs no number; only reads, searches and @RUN), so a second chat can work in a project another chat drives; an identical re-paste replays
   @REPEATABLE                                     the script runs on every paste, also an identical one, so the user can rerun it or edit its values by hand (no number; only reads, searches and @RUN)
-  @VERDICT <folder, file or file#Class.method> | <verdict> | <note>   a conclusion about that area, kept in .llm_harness/verdicts.json (travels with git); later changes there mark it STALE; '| clear' removes it
+  @PART <i>/<n>                                   one of n scripts sent in the same reply (e.g. a long @RUN kept apart from many probes); only part n prints the goal, notes and standing rules
+  @VERDICT <folder, file or file#Class.method> | <verdict> | <note>   a conclusion about that area, kept in .llm_harness/verdicts.json (travels with git); later changes there mark it STALE; each chat keeps its own verdict on a path; '| clear' removes this chat's
   @VERDICTS [all | stale | session <name>]       lists verdicts with the tree's description; a folder verdict hides children that say the same (default: this session's)
   @CAMPAIGN <name> | <word> = <meaning>; ...      starts a sweep (only when the user asks): its verdict words, a footer line and the [L1-Campaign] rule while it runs; Tree probes show <<verdict: ...>> on marked nodes
   @CAMPAIGN_END <name>                            ends the sweep and removes every verdict it recorded
@@ -3505,6 +3528,7 @@ def main():
             ask_chat_link(P["session"])
     globals()["CURRENT_SESSION"] = P["session"]
     globals()["CURRENT_SCRIPT"], globals()["CURRENT_RUN"] = P["id"], "%s@%.6f" % (P["id"], time.time())
+    globals()["CURRENT_PART"] = P.get("part")
     enforce_brake(P)
     send_messages(P)
     if P["scope"] is not None:
