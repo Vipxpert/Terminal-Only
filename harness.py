@@ -1073,6 +1073,19 @@ def save_history(P, raw_txt, hunk_log, files_log):
         except OSError:
             pass
 
+def drain_console(fi):
+    """Throw away input already waiting at the terminal (a second paste, keys typed ahead), so only what the user types after the question counts."""
+    try:
+        if os.name == "nt":
+            import msvcrt
+            while msvcrt.kbhit():
+                msvcrt.getwch()
+        else:
+            import termios
+            termios.tcflush(fi.fileno(), termios.TCIFLUSH)
+    except Exception:
+        pass
+
 def ask_console(prompt):
     """Ask the person at the terminal while the script itself arrives on stdin; None when no one is there (output captured, no console, or prompts turned off)."""
     if os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
@@ -1081,6 +1094,7 @@ def ask_console(prompt):
         tin, tout = ("CONIN$", "CONOUT$") if os.name == "nt" else ("/dev/tty", "/dev/tty")
         with open(tin, "r") as fi, open(tout, "w") as fo:
             sys.stdout.flush()
+            drain_console(fi)
             fo.write(prompt)
             fo.flush()
             return fi.readline().strip()
@@ -2462,17 +2476,23 @@ def touch_session(P):
 def chat_link(name):
     """' (chat: <address>)' for a session whose chat address is known, else ''."""
     rec = load_json(sessions_path(), {}).get(name) or {}
-    return " (chat: %s)" % rec["link"] if rec.get("link") else ""
+    return " (chat: %s)" % rec["link"] if valid_link(rec.get("link")) else ""
+
+def valid_link(link):
+    return bool(link) and re.match(r"^https?://\S+$", link.strip()) is not None
 
 def ask_chat_link(name):
     """Once per session, at a terminal: ask for the chat's address, so other chats can point the user back to it."""
     if not name:
         return
     rec = load_json(sessions_path(), {}).get(name) or {}
-    if rec.get("link") or rec.get("link_asked"):
+    if valid_link(rec.get("link")) or (rec.get("link_asked") and not rec.get("link")):
         return
     ans = ask_console("\nSession %s has no chat address yet. Paste this chat's address from the browser, so other chats can point you back to it (Enter to skip): " % name)
     if ans is None:
+        return
+    if ans.strip() and not valid_link(ans):
+        print("  [NOT SAVED] that is not a web address (it should start with http); you will be asked again, or use --link %s <address>" % name)
         return
     with state_lock():
         reg = load_json(sessions_path(), {})
@@ -2489,8 +2509,8 @@ def link_cli():
     sess = args[i + 1] if len(args) > i + 1 else ""
     link = args[i + 2] if len(args) > i + 2 else ""
     err = enter_workspace(arg_value("--workspace"))
-    if err or not sess or not link:
-        print("usage: harness.py --workspace <project folder> --link <session> <chat address>" + ((" | " + err) if err else ""))
+    if err or not sess or not valid_link(link):
+        print("usage: harness.py --workspace <project folder> --link <session> <chat address starting with http>" + ((" | " + err) if err else ""))
         return
     with state_lock():
         reg = load_json(sessions_path(), {})
@@ -2512,7 +2532,7 @@ def print_sessions(current):
         sc = rec.get("scope")
         scope = "%s (%s)" % (sc.get("aim") or "no aim", ", ".join(sc.get("paths", []))) if sc else "none"
         brake = " | BRAKED by %s" % rec["brake"]["from"] if rec.get("brake") else ""
-        link = " | chat: %s" % rec["link"] if rec.get("link") else ""
+        link = " | chat: %s" % rec["link"] if valid_link(rec.get("link")) else ""
         return "aim: %s | write scope: %s | last %s, %s%s%s" % (rec.get("aim") or "not set", scope, rec.get("last_script", "?"), when, brake, link)
     if current in reg:
         print("=== THIS SESSION: %s | %s ===" % (current, describe(reg[current])))

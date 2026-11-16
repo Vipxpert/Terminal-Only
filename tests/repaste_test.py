@@ -17,9 +17,9 @@ def run(text):
     return p.stdout.decode("utf-8", "replace").split("=== L1 CONTRACT")[0].replace("\r", "")
 
 
-def run_tty(text, keys):
-    """Run the harness with the script on stdin and a pseudo-terminal for the question; keys are typed ahead."""
-    import pty
+def run_tty(text, keys, limit=20):
+    """Run the harness with the script on stdin and a pseudo-terminal for its questions; each line of keys answers the next question once it appears; killed after limit seconds."""
+    import pty, select, signal, time
     path = os.path.join(tempfile.mkdtemp(), "payload.txt")
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
@@ -27,16 +27,24 @@ def run_tty(text, keys):
     if pid == 0:
         os.dup2(os.open(path, os.O_RDONLY), 0)
         os.execv(sys.executable, [sys.executable, HARNESS])
-    os.write(fd, keys.encode())
-    out = b""
-    while True:
-        try:
-            chunk = os.read(fd, 65536)
-        except OSError:
-            break
-        if not chunk:
-            break
-        out += chunk
+    answers = keys.split("\n")[:-1] if keys else []
+    out, mark, end = b"", 0, time.time() + limit
+    while time.time() < end:
+        r, _, _ = select.select([fd], [], [], 0.3)
+        if r:
+            try:
+                chunk = os.read(fd, 65536)
+            except OSError:
+                break
+            if not chunk:
+                break
+            out += chunk
+        tail = out[mark:].decode("utf-8", "replace").rstrip(" ")
+        if answers and (tail.endswith(">") or tail.endswith("(y/n)") or tail.endswith("skip):")):
+            os.write(fd, (answers.pop(0) + "\n").encode())
+            mark = len(out)
+    else:
+        os.kill(pid, signal.SIGKILL)
     os.waitpid(pid, 0)
     return out.decode("utf-8", "replace").split("=== L1 CONTRACT")[0].replace("\r", "")
 
