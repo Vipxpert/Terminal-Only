@@ -787,13 +787,15 @@ def parse_payload(txt):
             if not arg:
                 P["warnings"].append("@NOTE_ADD needs non-empty text")
             else:
-                P["notes"].append({"action": "add", "text": arg})
+                who, text = note_audience(arg)
+                P["notes"].append({"action": "add", "text": text, "for": who})
         elif d == "NOTE_EDIT":
             nm = re.match(r"^(N\d+)\s+(.+)$", arg)
             if not nm:
                 P["warnings"].append("expected '@NOTE_EDIT <note-id> <text>'")
             else:
-                P["notes"].append({"action": "edit", "id": nm.group(1).upper(), "text": nm.group(2)})
+                who, text = note_audience(nm.group(2))
+                P["notes"].append({"action": "edit", "id": nm.group(1).upper(), "text": text, "for": who})
         elif d == "NOTE_REMOVE":
             if not re.fullmatch(r"N\d+", arg, re.IGNORECASE):
                 P["warnings"].append("expected '@NOTE_REMOVE <note-id>'")
@@ -3076,7 +3078,8 @@ def print_footer_notes():
     except (OSError, ValueError):
         return
     for note in notes:
-        print("=== NOTE %s (the user's): %s ===" % (note["id"], note["text"]))
+        if note_for(note, CURRENT_SESSION):
+            print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", for this chat" if note.get("for") else "", note["text"]))
 
 def print_footer(state):
     """Every run ends with the next free number, the pinned goal and the standing rules that apply to this workspace's mode."""
@@ -3133,6 +3136,18 @@ NOTE_HEADER_RE = re.compile(r"^<!-- llm_harness_notes_next_id: (\d+) -->$")
 NOTE_ENTRY_RE = re.compile(r"^- \[(N\d+)\] (.+)$")
 
 
+def note_audience(arg):
+    """'for <session>, <pattern> | <text>' -> ([sessions or patterns], text); plain text -> (None, text), a note for every chat."""
+    m = re.match(r"^for\s+([^|]+)\|\s*(.+)$", arg.strip(), re.IGNORECASE)
+    if not m:
+        return None, arg.strip()
+    return [x.strip() for x in m.group(1).split(",") if x.strip()], m.group(2).strip()
+
+def note_for(note, session):
+    """True when a note is for every chat, or names this chat (patterns like migration-* allowed)."""
+    who = note.get("for")
+    return not who or bool(session) and any(fnmatch.fnmatchcase(session.lower(), w.lower()) for w in who)
+
 def load_workspace_notes():
     """Load (notes, next_id); refuse to overwrite a manually damaged notes file."""
     if not os.path.isfile(WORKSPACE_NOTES_PATH):
@@ -3156,7 +3171,8 @@ def load_workspace_notes():
         if note_id in seen:
             raise ValueError("duplicate note ID in notes.md: %s" % note_id)
         seen.add(note_id)
-        notes.append({"id": note_id, "text": text})
+        fm = re.match(r"^\[for: ([^\]]+)\] (.+)$", text)
+        notes.append({"id": note_id, "text": fm.group(2) if fm else text, "for": [x.strip() for x in fm.group(1).split(",") if x.strip()] if fm else None})
         next_id = max(next_id, int(note_id[1:]) + 1)
     return notes, next_id
 
@@ -3169,7 +3185,7 @@ def write_workspace_notes(notes, next_id):
         with open(tmp, "w", encoding="utf-8", newline="\n") as f:
             f.write("<!-- llm_harness_notes_next_id: %d -->\n" % next_id)
             for note in notes:
-                f.write("- [%s] %s\n" % (note["id"], note["text"]))
+                f.write("- [%s] %s%s\n" % (note["id"], "[for: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
         os.replace(tmp, WORKSPACE_NOTES_PATH)
     finally:
         if os.path.exists(tmp):
@@ -3189,7 +3205,7 @@ def print_workspace_notes():
         print("(none)")
         return
     for note in notes:
-        print("  [%s] %s" % (note["id"], note["text"]))
+        print("  [%s] %s%s" % (note["id"], "[for: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
 
 
 def execute_note_ops(ops):
@@ -3205,7 +3221,7 @@ def execute_note_ops(ops):
 
             if action == "add":
                 note_id = "N%03d" % next_id
-                notes.append({"id": note_id, "text": op["text"]})
+                notes.append({"id": note_id, "text": op["text"], "for": op.get("for")})
                 write_workspace_notes(notes, next_id + 1)
                 print("  [NOTE ADDED] %s" % note_id)
 
@@ -3215,6 +3231,8 @@ def execute_note_ops(ops):
                     print("  [NOTE ERROR] note ID not found: %s" % op["id"])
                     continue
                 found["text"] = op["text"]
+                if op.get("for") is not None:
+                    found["for"] = op["for"]
                 write_workspace_notes(notes, next_id)
                 print("  [NOTE EDITED] %s" % op["id"])
 
@@ -3299,7 +3317,7 @@ def print_card(shell, workspace):
   @MESSAGE <session> | <text>                     a note for another session, shown once on its next run (labelled as from an AI, not the user)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
-  @NOTE_ADD <text>                                adds a persistent workspace note
+  @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD for <session>, <pattern> | <text>' shows it only to those chats (patterns like migration-*)
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_REMOVE <note-id>                          removes an existing note
   @NOTE_LIST                                      prints all workspace notes
