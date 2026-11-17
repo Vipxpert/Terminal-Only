@@ -29,6 +29,7 @@
     ├── claim_test.py (Claim before change: refused outside the own scope, allowed with a claim in the same script or a user grant, unlimited without a session)
     ├── commands_test.py (The footer lists the commands a chat has not used yet, each chat keeps its own record, the full list without a session and with @HELP COMMANDS)
     ├── comments_test.py (A change deleting a Comment line prints [COMMENT REMOVED] with its text; kept Comment lines and ordinary comments are not flagged)
+    ├── delete_test.py (@DELETE_FILE on files, folders and globs goes through the journal and @UNDO restores it, binary files included; claims apply per file; undo skips files another chat holds)
     ├── hints_test.py (Refusal hints point at the stated reason; a space-separated @SCOPE gets the comma hint; no tree reminder for names the trees already describe)
     ├── undo_file_test.py (@UNDO <script> | /path restores only that file, also across a range; scripts that never touched it are passed over)
     ├── changed_rules_test.py (A rule that changed since a chat last saw it is marked [CHANGED] once; new chats and runs without a session see no marks)
