@@ -1,4 +1,4 @@
-# llm_harness
+# Terminal Only (Chat Interface LLM Harness)
 
 A workflow harness for doing real coding work with an AI **chat interface** (ChatGPT, Claude, Gemini in a browser) instead of an agent app.
 
