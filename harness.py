@@ -6,7 +6,7 @@
 #   python harness.py --workspace "<project folder>"
 import os, sys, re, json, glob, time, zlib, base64, fnmatch, hashlib, shutil, contextlib, subprocess, warnings
 
-VERSION = "3.5"
+VERSION = "3.6"
 WORKSPACE_NOTES_DIR = ".llm_harness"
 MODE = "git"
 HARNESS_DIR = os.path.join(".git", "llm_harness")
@@ -2650,6 +2650,9 @@ def scope_overlap(paths_a, paths_b):
                 continue
             a, b = literal_base(px), literal_base(py)
             if a == "" or b == "" or a == b or a.startswith(b + "/") or b.startswith(a + "/"):
+                dx, dy = scope_item(x)[2], scope_item(y)[2]
+                if (dy is not None and a.startswith(b + "/") and not within_depth(a, b, dy)) or (dx is not None and b.startswith(a + "/") and not within_depth(b, a, dx)):
+                    continue
                 out.append((x, y))
     return out
 
@@ -2768,6 +2771,11 @@ def check_waiting(me):
     for w in freed:
         print("  [UNBLOCKED] /%s is free now (session %s no longer holds it); you were blocked on it in %s: resume that work" % (w["path"], w["owner"], w.get("script") or "?"))
 
+def own_scope_covers(me, rel):
+    """True when this session's own scope, or a user grant, covers the file (a definition entry counts for its whole file here)."""
+    sc = (load_json(sessions_path(), {}).get(me) or {}).get("scope") or {}
+    return granted(me, rel) or any(scope_path_covers(rel, e) for e in sc.get("paths", []))
+
 def guard_ops(P):
     """Refuse file changes that fall inside another session's declared scope, unless the user granted them."""
     if not P["ops"]:
@@ -2780,6 +2788,9 @@ def guard_ops(P):
             if owner:
                 op["blocked"] = "inside session %s's scope (%s): %s%s; tell the user, who can coordinate or --grant it" % (owner, sc.get("owned"), sc.get("aim") or "no aim", chat_link(owner))
                 blocked.append((rel, owner))
+                break
+            if rel and P["session"] and not own_scope_covers(P["session"], rel):
+                op["blocked"] = "outside this session's write scope: claim it with @SCOPE <aim> | <paths> (a claim in the same script runs before the changes) and resend"
                 break
             others = foreign_uncommitted(rel) if rel and P["session"] else []
             if others and rel not in warned:

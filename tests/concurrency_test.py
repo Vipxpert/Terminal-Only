@@ -18,6 +18,8 @@ def main():
     for i in range(1, n + 1):
         with open(os.path.join(ws, "f%d.py" % i), "w") as f:
             f.write("v = 0\n")
+    for name, rem in (("etl", 1), ("docs", 0)):
+        subprocess.run([sys.executable, harness], input=("\n".join(["@SCRIPT [P: claim]", "@SESSION " + name, "@WORKSPACE " + ws, "@SCOPE bump | " + ", ".join("f%d.py" % i for i in range(1, n + 1) if i % 2 == rem), ""])).encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     pause = "Start-Sleep -Milliseconds 300" if os.name == "nt" else "sleep 0.3"
     procs = []
     for i in range(1, n + 1):
@@ -43,8 +45,8 @@ def main():
     for i in range(1, n + 1):
         with open(os.path.join(ws, "f%d.py" % i), encoding="utf-8") as f:
             changed += ("v = %d" % i) in f.read()
-    checks = [("unique numbers 1..%d" % n, sorted(numbers) == list(range(1, n + 1))),
-              ("state ends at %d" % n, state.get("last_num") == n),
+    checks = [("unique numbers 3..%d (after the two claims)" % (n + 2), sorted(numbers) == list(range(3, n + 3))),
+              ("state ends at %d" % (n + 2), state.get("last_num") == n + 2),
               ("both sessions registered", sorted(sessions) == ["docs", "etl"]),
               ("all %d files changed" % n, changed == n)]
     for name, ok in checks:

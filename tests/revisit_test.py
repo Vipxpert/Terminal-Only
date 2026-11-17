@@ -31,7 +31,7 @@ def main():
     check("an overlapping range over the same unchanged method is reported", "[REVISIT] /m.py Box.first() was read" in out and "by session alpha" in out, out)
     out = run("@PROBE /m.py | Scope | Box.first", session="beta")
     check("another session sees who read it before", "Box.first() was read" in out, out)
-    run("@FILE /m.py", "@HUNK Box.first | change", "--- [OLD CODE] ---", "        a = 1", "+++ [NEW CODE] +++", "        a = 10", "=== [END HUNK] ===", session="alpha")
+    run("@SCOPE change | m.py", "@FILE /m.py", "@HUNK Box.first | change", "--- [OLD CODE] ---", "        a = 1", "+++ [NEW CODE] +++", "        a = 10", "=== [END HUNK] ===", session="alpha")
     out = run("@PROBE /m.py | Lines | 3-5", session="alpha")
     check("a changed method is not reported", "Box.first() was read" not in out, out)
     out = run("@PROBE /m.py | Scope | Box.second", "@PROBE /m.py | Lines | 7-9", session="alpha")

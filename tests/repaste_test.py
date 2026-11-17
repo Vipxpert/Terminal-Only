@@ -61,10 +61,10 @@ def check(name, ok, out=""):
 
 
 def main():
-    first = payload(WS, "C: create a", "alpha", "@NEW_FILE /a.txt", "first version", "@END_NEW_FILE")
+    first = payload(WS, "C: create a", "alpha", "@SCOPE work | a.txt", "@NEW_FILE /a.txt", "first version", "@END_NEW_FILE")
     run(first)
-    run(payload(WS, "C: change a", "alpha", "@FILE /a.txt", "@HUNK TOP | change", "--- [OLD CODE] ---", "first version", "+++ [NEW CODE] +++", "second version", "=== [END HUNK] ==="))
-    run(payload(WS, "C: create b", "beta", "@NEW_FILE /b.txt", "other chat", "@END_NEW_FILE"))
+    run(payload(WS, "C: change a", "alpha", "@SCOPE work | a.txt", "@FILE /a.txt", "@HUNK TOP | change", "--- [OLD CODE] ---", "first version", "+++ [NEW CODE] +++", "second version", "=== [END HUNK] ==="))
+    run(payload(WS, "C: create b", "beta", "@SCOPE work | b.txt", "@NEW_FILE /b.txt", "other chat", "@END_NEW_FILE"))
     out = run(first)
     check("without a terminal a re-paste just replays", "[REPLAY]" in out and "This script already ran" not in out, out)
     if os.name == "nt":
@@ -85,7 +85,7 @@ def main():
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=GWS)
     subprocess.run(["git", "config", "user.email", "t@t"], cwd=GWS)
     subprocess.run(["git", "config", "user.name", "t"], cwd=GWS)
-    make = payload(GWS, "C: create c", "alpha", "@NEW_FILE /c.txt", "committed text", "@END_NEW_FILE")
+    make = payload(GWS, "C: create c", "alpha", "@SCOPE work | c.txt", "@NEW_FILE /c.txt", "committed text", "@END_NEW_FILE")
     run(make)
     run(payload(GWS, "G: commit c", "alpha", "@GIT_COMMIT chore: c", "/c.txt", "@END_GIT_COMMIT"))
     out = run_tty(make, "U\ny\n")

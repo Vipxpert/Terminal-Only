@@ -45,7 +45,7 @@ def main():
     check("once the holder lets go, the waiting session hears [UNBLOCKED]", "[UNBLOCKED] /a.txt is free now" in out and "=== WAITING ON" not in out, out)
     out = run("beta | needs a", "@GREP holds")
     check("[UNBLOCKED] is said only once", "[UNBLOCKED]" not in out, out)
-    out = run("beta | needs a", *edit("/a.txt", "alpha holds this line", "beta changed this line"))
+    out = run("beta | needs a", "@SCOPE edit a | a.txt", *edit("/a.txt", "alpha holds this line", "beta changed this line"))
     check("the resumed change now goes through", "beta changed this line" in open(os.path.join(WS, "a.txt")).read(), out)
     run("delta | wants a too", "@GREP holds")
     run("beta | needs a", "@SCOPE edit a | a.txt")

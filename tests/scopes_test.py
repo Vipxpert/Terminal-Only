@@ -60,7 +60,7 @@ def main():
     out = run("api", "@UNDO 1..999")
     check("B's undo skips A's scripts", "[UNDO SKIPPED]" in out and "belongs to session etl" in out, out)
     out = run("etl", "@SCOPE_END")
-    out = run("api", *hunk("/docs/c.txt", "x = 0", "x = 9"))
+    out = run("api", "@SCOPE api and docs | src/api/**, docs/c.txt", *hunk("/docs/c.txt", "x = 0", "x = 9"))
     check("after A releases its scope, B may edit there", "[OK] /docs/c.txt" in out and "etl scope released" in out, out)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)

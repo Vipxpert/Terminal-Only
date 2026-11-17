@@ -4,6 +4,11 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.6
+
+- A chat with a session changes only files inside its own write scope or a user grant; anything else is refused, and a claim in the same script counts.
+- Fixed: a folder scope with a depth no longer counts as overlapping files below that depth.
+
 - Scopes on `# Stage` anchors (`file#Class.method > # Stage: Name`, `file## Stage: Name`) are compared by line range, so claiming a function that contains another session's stage is refused; claims on part of a file no longer trigger the width warning.
 - A script that commits its work and releases its scope (`@SCOPE_END` / `@SESSION_END`) now commits first, so the release is no longer refused.
 - Each session can remember its chat's address: asked once at the terminal or set with `--link`, and shown in the session list and in every refusal involving that session.
