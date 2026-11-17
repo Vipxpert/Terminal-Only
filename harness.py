@@ -1020,7 +1020,8 @@ def execute_ops(ops):
                 op["status"] = "ALREADY APPLIED"
             else:
                 cur[rel] = None
-                op["status"] = "OK"
+                num = re.search(r"(\d+)$", CURRENT_SCRIPT or "")
+                op["status"], op["detail"] = "OK", "recoverable: @UNDO %s | /%s" % (num.group(1), rel) if num else None
                 touch(rel)
         elif op["type"] == "rename":
             dst = safe_rel(op["to"])
@@ -1057,6 +1058,13 @@ def execute_ops(ops):
                 if mode:
                     os.chmod(rel, mode)
 
+    for d in sorted({op["folder"] for op in ops if op.get("type") == "delete" and op.get("folder") and op.get("status") == "OK"}, key=len, reverse=True):
+        for root, _, _ in sorted(os.walk(d, topdown=False), key=lambda t: -len(t[0])):
+            try:
+                if not os.listdir(root):
+                    os.rmdir(root)
+            except OSError:
+                pass
     checks, rolled = check_files(changed, pre) if changed else ({}, set())
     print("\n=== EXECUTION SCORECARD ===")
     for op in ops:
@@ -1213,6 +1221,10 @@ def run_undo(spec, state):
             print("  NOTE: this script was already committed; undo only edits the working tree.")
         for rel, fl in e["files"].items():
             if only and rel != only:
+                continue
+            holder = scope_owner(rel, CURRENT_SESSION)[0] if CURRENT_SESSION else None
+            if holder:
+                print("  [UNDO SKIPPED] /%s is inside session %s's scope%s; ask them, or the user, before undoing it" % (rel, holder, chat_link(holder)))
                 continue
             if fl.get("undone"):
                 print("  [ALREADY UNDONE] /" + rel)
@@ -3069,6 +3081,33 @@ def grant_cli():
         save_json(grants_path(), g)
     print("%s: session %s %s write access to %s despite other sessions' scopes" % (flag[2:].upper() + "ED" if flag == "--grant" else "REVOKED", sess, "gets" if flag == "--grant" else "loses", pattern))
 
+def expand_delete_ops(P):
+    """@DELETE_FILE on a folder or glob becomes one delete per file, so every file goes into the journal (recoverable with @UNDO) and claims apply file by file."""
+    out = []
+    for op in P["ops"]:
+        target = (op.get("file") or "").strip().replace("\\", "/").strip("/")
+        if op.get("type") != "delete" or op.get("malformed") or op.get("blocked") or not target or os.path.isfile(target):
+            out.append(op)
+            continue
+        if os.path.isdir(target):
+            files = sorted(os.path.join(r, f).replace("\\", "/") for r, _, fs in os.walk(target) for f in fs)
+        elif any(c in target for c in "*?["):
+            files = glob_files(target)
+        else:
+            out.append(op)
+            continue
+        files = [f for f in files if safe_rel(f) is not None]
+        if not files:
+            out.append(dict(op, blocked="nothing to delete: /%s holds or matches no file" % target))
+            continue
+        size = sum(os.path.getsize(f) for f in files)
+        if size > 50 * 1024 * 1024:
+            out.append(dict(op, blocked="/%s holds %d MB, too much for the undo bin; delete it with @RUN only if losing it for good is fine" % (target, size // 1048576)))
+            continue
+        for f in files:
+            out.append({"type": "delete", "file": f, "scope": "TOP", "label": "Delete file (in /%s)" % target, "folder": target if os.path.isdir(target) else None})
+    P["ops"] = out
+
 def expand_text_ops(P):
     """Check each @TEXT_REPLACE's total match count against its expect, then turn it into one edit per file it touches."""
     out = []
@@ -3454,7 +3493,7 @@ def print_card(shell, workspace):
   (or, in place of +++ [NEW CODE] +++ and its lines: +++ [LINE EDITS] +++ then one edit per line: 'N: new text' replaces line N,
    'N-' deletes it, 'N+ text' inserts after it (0 = before line 1); N counts the recited OLD CODE lines from 1, not counting blank lines before the first or after the last, so it is always verified)
   @NEW_FILE /<path>  <content>  @END_NEW_FILE     each on its own line; rejected if the file exists
-  @DELETE_FILE /<path>
+  @DELETE_FILE /<path, folder or glob>             each file goes into the script's journal first: recoverable with @UNDO <n> (or @UNDO <n> | /path); emptied folders are removed
   @RENAME /<old> -> /<new>                        later hunks in the same script use the new path
   @TEXT_REPLACE <file, file#Class.method, folder or glob> | expect <N> | <label>   then these marker lines (one line of text each):
   --- [OLD TEXT] ---
@@ -3634,6 +3673,7 @@ def main():
     if P["scope"] is not None:
         apply_scope_change(dict(P, scope_end=False, session_end=False))
     expand_text_ops(P)
+    expand_delete_ops(P)
     guard_ops(P)
     if P["goal"]:
         state["goal"] = P["goal"]

@@ -12,6 +12,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - A standing rule that changed since a chat last saw it is printed once as `[CHANGED] [L1-...]` in that chat's footer.
 - Rules invite `+++ [LINE EDITS] +++` for small changes in long blocks and show its syntax; a hunk that resent a long, mostly unchanged block gets a `[TIP]` with how many line edits it would have needed.
 - Line edits that rewrite most of their block get the reverse `[TIP]`: plain `+++ [NEW CODE] +++` is clearer for rewrites. Tips never stop an edit.
+- `@DELETE_FILE` takes folders and globs; every deleted file goes into the script's journal first and the scorecard says how to get it back with `@UNDO`; claims apply file by file. Fixed: deleting a folder no longer reports "already applied" while doing nothing.
+- `@UNDO` skips files that another chat now holds, naming that chat.
 
 ## 3.6
 
