@@ -109,14 +109,14 @@ Script numbering, undo history, saved run outputs, the session list and the rere
 
 | Purpose | Directives |
 |---|---|
-| Change files | `@FILE` + `@HUNK`, `@NEW_FILE`, `@DELETE_FILE`, `@RENAME`, `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder) |
+| Change files | `@FILE` + `@HUNK` (with `+++ [LINE EDITS] +++` for a few lines inside a long block), `@NEW_FILE`, `@DELETE_FILE` (files, folders or globs; every file stays recoverable with `@UNDO`), `@RENAME`, `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder), `@REDO <n>` (rerun a failed script with small corrections) |
 | Read code | `@PROBE <file> \| Scope / Lines / TOC`, `@PROBE <file> \| Refs \| <scope>` (what a scope uses and where each piece is defined) |
-| Search | `@FIND` (files by name), `@GREP` (text or regex), `@XREF <name>` (references), `@XREF <name> \| callers / callees / impact` (code graph) |
+| Search | `@FIND` (files by name), `@GREP` (text or regex), both with an optional `| depth N`, `@XREF <name>` (references), `@XREF <name> \| callers / callees / impact` (code graph) |
 | Architecture tree | `@PROBE <tree> \| Tree \| <node> \| <depth>`, `@PROBE <tree> \| Check` (drift check) |
 | Dead code | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence) |
-| Run anything else | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools) |
-| Project memory | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST`, `@INIT_DEBUG` |
-| History | `@UNDO`, `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT`, `@GIT_FOLD` |
+| Run anything else | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once |
+| Project memory | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG` |
+| History | `@UNDO` (whole scripts, or one file with `| /path`), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT`, `@GIT_FOLD` |
 
 The syntax card printed by the handshake is the authoritative reference.
 
@@ -124,7 +124,12 @@ The syntax card printed by the handshake is the authoritative reference.
 
 - A hunk applies only where its old code matches exactly one place; a mismatch prints the real on-disk lines to rebuild from.
 - A Python or Go syntax error after patching restores the file.
-- Every change is journaled; `@UNDO` restores the exact previous files.
+- Every change is journaled; `@UNDO` restores the exact previous files, for whole scripts or one file (`@UNDO <n> | /path`), and skips files another chat now holds.
+- Deletions go through the journal too: `@DELETE_FILE` on a file, folder or glob keeps every file recoverable, and the scorecard says how to get it back. A change that deletes a `Comment` line (a recorded reason in the code) is flagged with `[COMMENT REMOVED]`.
+- When the harness patches itself, the previous version is kept as `harness.prev.py`.
+- Inspection memory: reads are fingerprinted, so reading an unchanged definition again prints `[REVISIT]` with who read it and when.
+- Failures and refusals end with a `->` line saying what to rebuild or check next; `[TIP]` lines point out cheaper edit forms. Neither blocks anything.
+- Script numbers are assigned by the harness under a cross-process lock, so several chats can paste at the same time.
 - Commits happen only through git directives, after you confirm the change works. The harness aborts during a merge or rebase, never pushes, and refuses `@RUN git commit` and similar commands.
 - Script numbers only go up: an old or reused number is refused, apart from the replay and re-run cases above. A second chat can work alongside with `@SIDE` scripts, which skip the numbering and may only read, search and run commands. A script marked `@REPEATABLE` runs on every paste, even an identical one, so you can rerun a test or tweak its values by hand; it may only read, search and run commands. To undo a stretch of a chat's work, paste the first script you regret into the terminal again: the harness asks whether to replay it, undo it together with everything that chat did after it (committed work is kept), or execute it again. The first time a chat's session runs at a terminal, the harness asks once for that chat's address (paste it from the browser, or press Enter to skip); the session list and every refusal involving that session then show it, so you can open the other chat. `--link <session> <address>` sets or changes it later. Work a chat could not do because another chat held the files stays listed under WAITING ON in its footer until it is free (then `[UNBLOCKED]` says so once), and that chat cannot end its session without finishing it or giving it up with `@SESSION_END drop`. A chat changes only files inside its own write scope (a claim in the same script counts, and so does a user grant); anything else is refused.
 
@@ -140,7 +145,7 @@ Install codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp) to enable 
 
 ## Rules (L1)
 
-`workflow_commands.txt` holds every rule exactly once. Its `L1 Rule` lines are printed in the footer after every run; rules tagged `(git)` print only for git projects. Edit a rule there and the next run everywhere uses the new wording.
+`workflow_commands.txt` holds every rule exactly once. Its `L1 Rule` lines are printed in the footer after every run; rules tagged `(git)` print only for git projects, and `(campaign)` rules only while a campaign runs. A rule with an `L1 Brief` line prints as that brief; the harness prints the full rule in its place after a failed change or command, or while a debug ledger is open, and `@HELP L1-<name>` prints any rule in full. A rule that changed since a chat last saw it is marked `[CHANGED]` once, a newly applying one `[NEW]`; a project without git says `NO GIT HERE`; and the command list shows only the commands that chat has not used yet. Edit a rule there and the next run everywhere uses the new wording.
 
 ## Repository layout
 
