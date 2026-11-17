@@ -32,7 +32,7 @@
     ├── hints_test.py (Refusal hints point at the stated reason; a space-separated @SCOPE gets the comma hint; no tree reminder for names the trees already describe)
     ├── undo_file_test.py (@UNDO <script> | /path restores only that file, also across a range; scripts that never touched it are passed over)
     ├── changed_rules_test.py (A rule that changed since a chat last saw it is marked [CHANGED] once; new chats and runs without a session see no marks)
-    ├── tip_test.py (A hunk resending a long, mostly unchanged block gets a [TIP] for +++ [LINE EDITS] +++; line-edit hunks, short blocks and rewrites get none)
+    ├── tip_test.py (A hunk resending a long, mostly unchanged block gets a [TIP] for +++ [LINE EDITS] +++; line edits rewriting most of their block get the reverse tip for NEW CODE; short blocks and small line edits get none; tips never stop an edit)
     ├── concurrency_test.py (Starts many harness processes at once against a temporary workspace and checks that every script got a unique number, the state stayed consistent and every change landed)
     ├── depth_test.py (One glob rule for @FIND, @GREP, @LIST_RECURSIVE and @TEXT_REPLACE, and '| depth N' on each)
     ├── handoff_test.py (Session aims, release and commit guards for uncommitted work, hand-over, shared-file warning, messages, scope requests, the brake and the user's --release / --unbrake, in a git workspace)
