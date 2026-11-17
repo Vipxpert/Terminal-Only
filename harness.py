@@ -905,6 +905,22 @@ def tree_sync_reminder(changed, pre):
             print("  " + n)
         print("  -> no tree file under /docs/trees/ was updated in this script: send the matching tree hunk(s) in the next script, scoped by parent node path.")
 
+COMMENT_LINE_RE = re.compile(r"^\s*(#|//)\s*Comment\b")
+
+def report_removed_comments(changed, pre, rolled):
+    """A change that deletes a 'Comment' line (a recorded reason) is flagged, so the AI confirms the reason is really gone; nothing is refused."""
+    for rel in changed:
+        raw = (pre.get(rel) or {}).get("raw")
+        if raw is None or rel in rolled:
+            continue
+        old = [l.strip() for l in decode_bytes(raw)[0].split("\n") if COMMENT_LINE_RE.match(l)]
+        if not old:
+            continue
+        new = set(l.strip() for l in decode_bytes(read_bytes(rel))[0].split("\n")) if os.path.isfile(rel) else set()
+        for c in old:
+            if c not in new:
+                print("  [COMMENT REMOVED] /%s: %s -> confirm its reason no longer holds; if it still does, put it back" % (rel, c[:160]))
+
 def execute_ops(ops):
     """Apply ops on an in-memory view, flush once, syntax-check, print the scorecard. -> (hunk_log, files_log)"""
     cur, meta, pre, dirty, new_mode, fails = {}, {}, {}, [], {}, []
@@ -1025,6 +1041,7 @@ def execute_ops(ops):
         st = op["status"] + ((" (%s)" % op["detail"]) if op["detail"] and not diag else "")
         chk = (checks.get(files[-1]) or "UNCHANGED") if op["status"] in ("OK", "ROLLED BACK") else "-"
         print("  [%s] /%s | Scope: %s | %s | Check: %s" % (st, op["file"].lstrip("/"), op["scope"], op["label"], chk))
+    report_removed_comments(changed, pre, rolled)
     seen = set(op["status"] for op in ops)
     for st in ("MISMATCH", "AMBIGUOUS", "MALFORMED", "ROLLED BACK", "REFUSED"):
         if st in seen:

@@ -4,6 +4,9 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Rules: chats leave knowledge, not narration: non-obvious reasons go into `Comment` lines above the code they explain, optionally categorised as constraint, workaround, invariant, order or decision; a nuance in code not being changed is reported instead of commented.
+- A change that deletes a `Comment` line prints `[COMMENT REMOVED]` with its text, so the reason gets a second look; nothing is refused.
+
 ## 3.6
 
 - A chat with a session changes only files inside its own write scope or a user grant; anything else is refused, and a claim in the same script counts.
