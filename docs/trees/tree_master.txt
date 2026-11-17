@@ -31,6 +31,7 @@
     ├── comments_test.py (A change deleting a Comment line prints [COMMENT REMOVED] with its text; kept Comment lines and ordinary comments are not flagged)
     ├── delete_test.py (@DELETE_FILE on files, folders and globs goes through the journal and @UNDO restores it, binary files included; claims apply per file; undo skips files another chat holds)
     ├── git_mode_test.py (A project without git says NO GIT HERE and leaves out the git rules; after @GIT_INIT each chat is greeted once and the git rule is marked [NEW] once)
+    ├── brief_rules_test.py (A rule with a brief prints the brief, and the full rule in its place after a failed change or command or while a debug ledger is open; @HELP L1-<name> prints any rule in full)
     ├── hints_test.py (Refusal hints point at the stated reason; a space-separated @SCOPE gets the comma hint; no tree reminder for names the trees already describe)
     ├── undo_file_test.py (@UNDO <script> | /path restores only that file, also across a range; scripts that never touched it are passed over)
     ├── changed_rules_test.py (A rule that changed since a chat last saw it is marked [CHANGED] once; new chats and runs without a session see no marks)

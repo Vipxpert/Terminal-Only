@@ -5,7 +5,7 @@
 2. The User Installs, the AI Never Re-Types: `harness.py` is one static Python file using only the standard library. The user saves it by hand once; the AI only checks that the handshake is visible.
 3. Three Facts Shape Everything Below:
    - A rule that is complete in its short form IS the rule. Each `L1 Rule` line in this file is the only copy of that rule; no paragraph restates it.
-   - Only rules that do not show up in every turn are repeated: rare-event rules and prohibitions. The AI never echoes them. After every run, `harness.py` reads the `L1 Rule` lines out of this file and prints them, together with the pinned goal, at the end of its output. A rule tagged `(git)` is printed only for git projects. Editing a line here changes what is printed everywhere.
+   - Only rules that do not show up in every turn are repeated: rare-event rules and prohibitions. The AI never echoes them. After every run, `harness.py` reads the `L1 Rule` lines out of this file and prints them, together with the pinned goal, at the end of its output. A rule tagged `(git)` is printed only for git projects. A rule that also has an `L1 Brief` line is printed as that brief, and the harness itself prints the full rule in its place whenever the brief's condition holds (see Collapsed rules at the end). Editing a line here changes what is printed everywhere.
    - What the harness can teach through its own output is not written here at all: the payload grammar arrives once in the handshake's SYNTAX CARD, and recovery instructions arrive as `->` lines at the moment a hunk fails, a tree update is missed, a command fails or a paste is stale.
 
 [Setup Checklist]:
@@ -133,3 +133,10 @@ Opportunistic alignment (`# Stage` comments, docstrings, tree sorting) exists ON
 
 - **L1 Rule — `[L1-Debug]`:** `Failed step or unexpected behaviour -> first reproduce, inspect and restore with commands or a small test script (@NEW_FILE it, @RUN it, @REPEATABLE to rerun it; delete it after, or keep it as a real test); change system code only when the cause is proven to be in that code | then A) belongs to a later milestone: say so, continue | B) cause unmistakable in visible code/logs: direct fix, ONCE per bug | C) needs a re-plan: propose it, wait for approval | else, or B spent, or 2 failed [C] on one bug -> STOP [C]: [DP] with @INIT_DEBUG <slug> (or ledger hunks) + the next @XREF/@PROBE | NEVER retry an Eliminated Approach | user-verified fix -> mark the ledger RESOLVED, graduate a non-obvious generic lesson to kb`
 #
+
+## Collapsed rules
+
+A rule with an L1 Brief line is printed as that brief; the harness prints the full rule in its place whenever one of the brief's conditions holds (failed: this run had a failed change or command; ledger: a debug ledger is not yet marked RESOLVED). @HELP L1-<name> prints any rule in full.
+
+- **L1 Brief — `[L1-Knowledge]` (failed, ledger):** `kb_<tech>.txt entries only for a cause proven by test, never project context; before writing one, read the full rule with @HELP L1-Knowledge`
+- **L1 Brief — `[L1-Debug]` (failed, ledger):** `failed step, reported bug or unexpected behaviour -> reproduce and inspect first, change code only for a proven cause, never retry an eliminated approach; before acting on it, read the full rule with @HELP L1-Debug`
