@@ -43,6 +43,15 @@ def main():
     write(BLOCK)
     out = run("@FILE /v.py", "@HUNK TOP | rewrite", "--- [OLD CODE] ---", *BLOCK, "+++ [NEW CODE] +++", *["other_%02d = %d" % (i, i) for i in range(12)], "=== [END HUNK] ===")
     check("a real rewrite gets no tip", "[OK] /v.py" in out and "[TIP]" not in out, out)
+    write(BLOCK)
+    out = run("@FILE /v.py", "@HUNK TOP | two values", "--- [OLD CODE] ---", *BLOCK, "+++ [LINE EDITS] +++", "3: value_02 = 20", "9: value_08 = 80", "=== [END HUNK] ===")
+    check("line edits that change a couple of lines in a long block get no tip", "[OK] /v.py" in out and "[TIP]" not in out, out)
+    write(BLOCK)
+    out = run("@FILE /v.py", "@HUNK TOP | reindent", "--- [OLD CODE] ---", *BLOCK[:6], "+++ [LINE EDITS] +++", "2-", "3-", "4: value_03 = 300", "5: value_04 = 400", "6: value_05 = 500", "=== [END HUNK] ===")
+    check("line edits that rewrite most of their block get the reverse tip", "[TIP] /v.py | reindent: these line edits change 5 of 6 lines; plain +++ [NEW CODE] +++ is clearer for rewrites" in out, out)
+    with open(os.path.join(WS, "v.py")) as f:
+        text = f.read()
+    check("the tip never stops the edit", "[OK] /v.py" in out and "value_05 = 500" in text and "value_01 = 1" not in text, out)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 

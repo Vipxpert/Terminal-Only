@@ -11,6 +11,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - `@UNDO <script> | /path` (or a range) restores only that file; the rest of those scripts stays.
 - A standing rule that changed since a chat last saw it is printed once as `[CHANGED] [L1-...]` in that chat's footer.
 - Rules invite `+++ [LINE EDITS] +++` for small changes in long blocks and show its syntax; a hunk that resent a long, mostly unchanged block gets a `[TIP]` with how many line edits it would have needed.
+- Line edits that rewrite most of their block get the reverse `[TIP]`: plain `+++ [NEW CODE] +++` is clearer for rewrites. Tips never stop an edit.
 
 ## 3.6
 

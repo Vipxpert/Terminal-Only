@@ -912,21 +912,23 @@ def tree_sync_reminder(changed, pre):
         print("  -> no tree file under /docs/trees/ was updated in this script: send the matching tree hunk(s) in the next script, scoped by parent node path.")
 
 def suggest_line_edits(ops):
-    """A hunk that resent a long, mostly unchanged block gets a one-line tip that +++ [LINE EDITS] +++ would have been shorter; nothing is refused."""
+    """Tips, never refusals: a hunk that resent a long, mostly unchanged block could have used +++ [LINE EDITS] +++; line edits that rewrite most of their block read better as +++ [NEW CODE] +++."""
     import difflib
     for op in ops:
-        if op.get("type") != "hunk" or op.get("status") != "OK" or op.get("line_edits"):
+        if op.get("type") != "hunk" or op.get("status") != "OK":
             continue
         old, new = (op.get("find") or "").split("\n"), (op.get("replace") or "").split("\n")
-        if len(old) < 10:
-            continue
         edits = same = 0
         for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
             if tag == "equal":
                 same += i2 - i1
             else:
                 edits += max(i2 - i1, j2 - j1)
-        if 0 < edits <= 3 and same >= 8:
+        if op.get("line_edits"):
+            touched = len(old) - same
+            if len(old) >= 4 and touched >= 3 and touched * 10 >= len(old) * 6:
+                print("  [TIP] /%s | %s: these line edits change %d of %d lines; plain +++ [NEW CODE] +++ is clearer for rewrites" % (op["file"].lstrip("/"), op["label"], touched, len(old)))
+        elif len(old) >= 10 and 0 < edits <= 3 and same >= 8:
             print("  [TIP] /%s | %s: this hunk resent %d unchanged lines to change %d; +++ [LINE EDITS] +++ would need %d line(s)" % (op["file"].lstrip("/"), op["label"], same, edits, edits))
 
 COMMENT_LINE_RE = re.compile(r"^\s*(#|//)\s*Comment\b")
