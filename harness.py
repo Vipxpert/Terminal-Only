@@ -808,10 +808,7 @@ def parse_payload(txt):
             else:
                 P["notes"].append({"action": "remove", "id": arg.upper()})
         elif d == "NOTE_LIST":
-            if arg:
-                P["warnings"].append("@NOTE_LIST takes no arguments")
-            else:
-                P["notes"].append({"action": "list"})
+            P["notes"].append({"action": "list", "query": arg})
         elif d == "PROBE":
             P["probes"].append(arg)
         elif d == "HELP":
@@ -3213,7 +3210,7 @@ def print_footer_notes():
         return
     for note in notes:
         if note_for(note, CURRENT_SESSION):
-            print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", for this chat" if note.get("for") else "", note["text"]))
+            print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", pinned to this chat" if note.get("for") else "", note["text"]))
 
 def rule_hash(body):
     return hashlib.sha1(body.strip().strip("`").strip().encode("utf-8")).hexdigest()[:12]
@@ -3299,7 +3296,7 @@ NOTE_ENTRY_RE = re.compile(r"^- \[(N\d+)\] (.+)$")
 
 def note_audience(arg):
     """'for <session>, <pattern> | <text>' -> ([sessions or patterns], text); plain text -> (None, text), a note for every chat."""
-    m = re.match(r"^for\s+([^|]+)\|\s*(.+)$", arg.strip(), re.IGNORECASE)
+    m = re.match(r"^(?:pin|for)\s+([^|]+)\|\s*(.+)$", arg.strip(), re.IGNORECASE)
     if not m:
         return None, arg.strip()
     return [x.strip() for x in m.group(1).split(",") if x.strip()], m.group(2).strip()
@@ -3332,7 +3329,7 @@ def load_workspace_notes():
         if note_id in seen:
             raise ValueError("duplicate note ID in notes.md: %s" % note_id)
         seen.add(note_id)
-        fm = re.match(r"^\[for: ([^\]]+)\] (.+)$", text)
+        fm = re.match(r"^\[(?:pin|for): ([^\]]+)\] (.+)$", text)
         notes.append({"id": note_id, "text": fm.group(2) if fm else text, "for": [x.strip() for x in fm.group(1).split(",") if x.strip()] if fm else None})
         next_id = max(next_id, int(note_id[1:]) + 1)
     return notes, next_id
@@ -3346,27 +3343,30 @@ def write_workspace_notes(notes, next_id):
         with open(tmp, "w", encoding="utf-8", newline="\n") as f:
             f.write("<!-- llm_harness_notes_next_id: %d -->\n" % next_id)
             for note in notes:
-                f.write("- [%s] %s%s\n" % (note["id"], "[for: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
+                f.write("- [%s] %s%s\n" % (note["id"], "[pin: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
         os.replace(tmp, WORKSPACE_NOTES_PATH)
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
 
 
-def print_workspace_notes():
-    """Print persistent notes belonging to the current workspace."""
+def print_workspace_notes(query=None):
+    """Print the workspace's notes; a search keeps notes whose category, pins or text contain every word of it (case-insensitive)."""
     try:
         notes, _ = load_workspace_notes()
     except (OSError, ValueError) as exc:
         print("WARNING: could not read workspace notes: %s" % exc)
         return
 
-    print("=== WORKSPACE NOTES ===")
+    words = (query or "").lower().split()
+    if words:
+        notes = [n for n in notes if all(w in ("%s %s" % (" ".join(n.get("for") or []), n["text"])).lower() for w in words)]
+    print("=== WORKSPACE NOTES%s ===" % (" matching '%s'" % query.strip() if words else ""))
     if not notes:
         print("(none)")
         return
     for note in notes:
-        print("  [%s] %s%s" % (note["id"], "[for: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
+        print("  [%s] %s%s" % (note["id"], "[pin: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
 
 
 def execute_note_ops(ops):
@@ -3377,7 +3377,7 @@ def execute_note_ops(ops):
             action = op["action"]
 
             if action == "list":
-                print_workspace_notes()
+                print_workspace_notes(op.get("query"))
                 continue
 
             if action == "add":
@@ -3479,10 +3479,10 @@ def print_card(shell, workspace):
   @MESSAGE <session> | <text>                     a note for another session, shown once on its next run (labelled as from an AI, not the user)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
-  @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD for <session>, <pattern> | <text>' shows it only to those chats (patterns like migration-*)
+  @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_REMOVE <note-id>                          removes an existing note
-  @NOTE_LIST                                      prints all workspace notes
+  @NOTE_LIST [words]                              prints all workspace notes, or those whose category, pins or text contain every word
   @FILE /<path>                                   selects the file for the hunks that follow
   @HUNK <scope> | <short label>                   then exactly these marker lines:
   --- [OLD CODE] ---

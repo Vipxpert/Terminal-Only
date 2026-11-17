@@ -14,6 +14,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - Line edits that rewrite most of their block get the reverse `[TIP]`: plain `+++ [NEW CODE] +++` is clearer for rewrites. Tips never stop an edit.
 - `@DELETE_FILE` takes folders and globs; every deleted file goes into the script's journal first and the scorecard says how to get it back with `@UNDO`; claims apply file by file. Fixed: deleting a folder no longer reports "already applied" while doing nothing.
 - `@UNDO` skips files that another chat now holds, naming that chat.
+- Notes are pinned with `@NOTE_ADD pin <sessions> | <text>` (`for` still works) and listed as `[pin: ...]`; `@NOTE_LIST <words>` finds notes by category (a leading `Bug:`, `Decision:` ...) or content.
+- Rules: no payload line may begin with an apostrophe followed by @, because PowerShell's script block ends there.
 
 ## 3.6
 
