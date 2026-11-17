@@ -10,6 +10,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - The tree reminder skips names the tree files already describe, and reports a removed name only while a tree still mentions it.
 - `@UNDO <script> | /path` (or a range) restores only that file; the rest of those scripts stays.
 - A standing rule that changed since a chat last saw it is printed once as `[CHANGED] [L1-...]` in that chat's footer.
+- Rules invite `+++ [LINE EDITS] +++` for small changes in long blocks and show its syntax; a hunk that resent a long, mostly unchanged block gets a `[TIP]` with how many line edits it would have needed.
 
 ## 3.6
 

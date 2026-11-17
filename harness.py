@@ -750,7 +750,7 @@ def parse_payload(txt):
                 else:
                     find_s = "\n".join(old).strip("\n")
                     repl_s = "\n".join(new).strip("\n") if find_s else "\n".join(new).rstrip("\n")
-                    P["ops"].append({"type": "hunk", "file": cur_file, "scope": scope, "label": label, "find": find_s, "replace": repl_s})
+                    P["ops"].append({"type": "hunk", "file": cur_file, "scope": scope, "label": label, "find": find_s, "replace": repl_s, "line_edits": lines[k].rstrip() == LINE_M})
                     i = e
         elif d == "TEXT_REPLACE":
             target, _, rest = arg.partition("|")
@@ -911,6 +911,24 @@ def tree_sync_reminder(changed, pre):
             print("  " + n)
         print("  -> no tree file under /docs/trees/ was updated in this script: send the matching tree hunk(s) in the next script, scoped by parent node path.")
 
+def suggest_line_edits(ops):
+    """A hunk that resent a long, mostly unchanged block gets a one-line tip that +++ [LINE EDITS] +++ would have been shorter; nothing is refused."""
+    import difflib
+    for op in ops:
+        if op.get("type") != "hunk" or op.get("status") != "OK" or op.get("line_edits"):
+            continue
+        old, new = (op.get("find") or "").split("\n"), (op.get("replace") or "").split("\n")
+        if len(old) < 10:
+            continue
+        edits = same = 0
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
+            if tag == "equal":
+                same += i2 - i1
+            else:
+                edits += max(i2 - i1, j2 - j1)
+        if 0 < edits <= 3 and same >= 8:
+            print("  [TIP] /%s | %s: this hunk resent %d unchanged lines to change %d; +++ [LINE EDITS] +++ would need %d line(s)" % (op["file"].lstrip("/"), op["label"], same, edits, edits))
+
 COMMENT_LINE_RE = re.compile(r"^\s*(#|//)\s*Comment\b")
 
 def report_removed_comments(changed, pre, rolled):
@@ -1048,6 +1066,7 @@ def execute_ops(ops):
         chk = (checks.get(files[-1]) or "UNCHANGED") if op["status"] in ("OK", "ROLLED BACK") else "-"
         print("  [%s] /%s | Scope: %s | %s | Check: %s" % (st, op["file"].lstrip("/"), op["scope"], op["label"], chk))
     report_removed_comments(changed, pre, rolled)
+    suggest_line_edits(ops)
     seen = set(op["status"] for op in ops)
     for st in ("MISMATCH", "AMBIGUOUS", "MALFORMED", "ROLLED BACK", "REFUSED"):
         if st in seen:
