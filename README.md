@@ -162,6 +162,11 @@ Work on this repository through the harness itself, with this folder as the work
 
 ## Tools evaluated and not used
 
-- RTK (output compression for agent command-line tools): tested in this flow and saved nothing, because the harness already prints compact, purpose-built output and the chat receives it by paste.
-- Headroom and Caveman: aimed at agent apps rather than web chat, so they do not fit a paste-based workflow.
-- Ponytails: not relevant to this flow.
+Coding agents print execution output (tool calls, paths, logs, progress) that is written for the agent itself; chat interfaces already explain things for people. This harness keeps the two layers apart: its own output is compact and written for the AI, and each reply's Talk part and checklist are written for you. That is why the tools below add little here. Their descriptions are as reported, not tested here, except RTK.
+
+- RTK: filters noisy terminal output (tests, git, logs, searches, builds). Tested in this flow: it saved nothing, because the harness output is already compact.
+- Headroom: compresses what an agent reads (tool output, files, context). It targets agent apps; here the chat receives only what the harness prints.
+- Caveman: shortens what an agent says (answer first, less filler). Replies here follow the Talk and manifest format instead.
+- Ponytail: pushes agents to reuse existing capabilities instead of overbuilding. A different problem, which the rules on the current request only and no unrequested refactors address.
+
+Execution and judgment are different jobs: significant architecture or business changes deserve an independent review by a second chat before they land.
