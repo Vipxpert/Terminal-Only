@@ -3155,6 +3155,26 @@ def print_footer_notes():
         if note_for(note, CURRENT_SESSION):
             print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", for this chat" if note.get("for") else "", note["text"]))
 
+def rule_hash(body):
+    return hashlib.sha1(body.strip().strip("`").strip().encode("utf-8")).hexdigest()[:12]
+
+def rules_seen(rules):
+    """The rule fingerprints this chat saw last time (returned), replaced by the current ones; without a session nothing is kept."""
+    if not CURRENT_SESSION:
+        return {}
+    try:
+        with state_lock():
+            reg = load_json(sessions_path(), {})
+            rec = reg.get(CURRENT_SESSION)
+            if rec is None:
+                return {}
+            old = rec.get("rules_seen", {})
+            rec["rules_seen"] = {tag: rule_hash(body) for tag, body in rules}
+            save_json(sessions_path(), reg)
+            return old
+    except Exception:
+        return {}
+
 def print_footer(state):
     """Every run ends with the next free number, the pinned goal and the standing rules that apply to this workspace's mode."""
     if state is not None:
@@ -3175,8 +3195,12 @@ def print_footer(state):
         return
     if rules:
         print("=== L1 CONTRACT (standing rules; apply, never echo) ===")
+        before = rules_seen(rules)
+        changed = [tag for tag, body in rules if tag in before and before[tag] != rule_hash(body)]
+        if changed:
+            print("  (rules marked [CHANGED] differ from what this chat saw last time: read them again)")
         for tag, body in rules:
-            print("%s %s" % (tag, body.strip().strip("`").strip()))
+            print("%s%s %s" % ("[CHANGED] " if tag in changed else "", tag, body.strip().strip("`").strip()))
     used = set((load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("used", [])) if CURRENT_SESSION and state is not None else set()
     if used:
         rest = [d for d in DIRECTIVES.split() if d not in used]
