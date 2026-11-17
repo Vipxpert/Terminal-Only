@@ -51,7 +51,7 @@ The harness is two files, `harness.py` and `workflow_commands.txt`, installed in
 
 2. Clone the harness into a folder of your choice, for example `E:\Work\Me`:
 
-        Set-Location E:\Work\Me; git clone https://github.com/Vipxpert/llm_harness.git
+        Set-Location E:\Work\Me; git clone https://github.com/Vipxpert/Terminal-Only.git llm_harness
 
 3. Run the setup from the clone (or double-click `setup.cmd` in Explorer):
 
@@ -69,7 +69,7 @@ The harness is two files, `harness.py` and `workflow_commands.txt`, installed in
 
 2. Clone the harness, for example into your home folder:
 
-        git clone https://github.com/Vipxpert/llm_harness.git ~/llm_harness
+        git clone https://github.com/Vipxpert/Terminal-Only.git ~/llm_harness
 
 3. Run the setup (it uses curl or wget for the optional CBM; `NO_PAUSE=1` skips the final pause):
 
