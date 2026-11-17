@@ -608,7 +608,7 @@ def check_files(changed, pre):
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
-              "@MESSAGE @SCOPE_REQUEST @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART")
+              "@MESSAGE @SCOPE_REQUEST @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
 
@@ -3159,6 +3159,32 @@ def side_allowed(P):
 def side_run_path(raw_txt):
     return os.path.join(runs_dir(), "side_%s.json" % payload_key(raw_txt)[:16])
 
+def expand_redo(raw):
+    """@REDO <n>, optionally followed by corrections (--- [OLD TEXT] --- / +++ [NEW TEXT] +++ / === [END TEXT] ===, each old text found exactly once): script n's saved text, corrected, replaces the @REDO block; the rest of this script stays. Returns (text, error)."""
+    lines = raw.split("\n")
+    at = [i for i, l in enumerate(lines) if re.match(r"^@REDO\s+\d+\s*$", l.strip())]
+    if not at:
+        return raw, None
+    i = at[0]
+    num = int(lines[i].split()[1])
+    run = find_run(num)
+    if not run or not run.get("payload"):
+        return raw, "@REDO %d: no saved text for script %d (only scripts run by a harness that keeps script text, and only the newest %d runs)" % (num, num, RUNS_KEEP)
+    text = "\n".join(l for l in run["payload"].split("\n") if not re.match(r"^@(SCRIPT|SESSION|WORKSPACE)\b", l.strip()))
+    j = i + 1
+    while j < len(lines) and lines[j].strip() == "--- [OLD TEXT] ---":
+        try:
+            k = next(x for x in range(j + 1, len(lines)) if lines[x].strip() == "+++ [NEW TEXT] +++")
+            e = next(x for x in range(k + 1, len(lines)) if lines[x].strip() == "=== [END TEXT] ===")
+        except StopIteration:
+            return raw, "@REDO %d: a correction needs --- [OLD TEXT] ---, +++ [NEW TEXT] +++ and === [END TEXT] ===" % num
+        old, new = "\n".join(lines[j + 1:k]), "\n".join(lines[k + 1:e])
+        if text.count(old) != 1:
+            return raw, "@REDO %d: a correction's old text is found %d times in script %d, not once: '%s'" % (num, text.count(old), num, old[:80])
+        text = text.replace(old, new)
+        j = e + 1
+    return "\n".join(lines[:i] + [text] + lines[j:]), None
+
 def save_run(P, raw_txt, body):
     """Keep a run's output (without its footer) for replay; only the newest RUNS_KEEP runs are kept."""
     d = runs_dir()
@@ -3169,7 +3195,7 @@ def save_run(P, raw_txt, body):
     for old in glob.glob(os.path.join(d, "%06d_*.json" % P["num"])):
         os.remove(old)
     name = "%06d_%s.json" % (P["num"], re.sub(r"[^A-Za-z0-9_-]", "_", P["id"]))
-    save_json(os.path.join(d, name), {"id": P["id"], "key": payload_key(raw_txt), "output": body})
+    save_json(os.path.join(d, name), {"id": P["id"], "key": payload_key(raw_txt), "output": body, "payload": raw_txt})
     runs = sorted(glob.glob(os.path.join(d, "*.json")))
     for stale in runs[:max(0, len(runs) - RUNS_KEEP)]:
         os.remove(stale)
@@ -3572,6 +3598,7 @@ def print_card(shell, workspace):
   @RUN [--timeout <s>] <command>                  any other command (tests, builds, installs, CLI tools) in the workspace; default limit 300s; not undoable
   @INIT_DEBUG <slug>                              creates docs/debug/bug_<slug>.txt with its four sections and prints it
   @UNDO <hi>..<lo>  or  @UNDO <number>            reverses journaled scripts, newest first; add '| /path' to restore only that file (e.g. @UNDO 117 | /bot.py), the rest of those scripts stays
+  @REDO <number>                                  runs that script's saved text again under this script's number; follow it with --- [OLD TEXT] --- / +++ [NEW TEXT] +++ / === [END TEXT] === corrections (each old text found once, may span lines) and any extra directives, instead of resending the whole script
   (the user may also paste a script that already ran: at a terminal the harness asks [R]eplay / [U]ndo it and that chat's later scripts / [E]xecute again)
 """ + (GIT_CARD if MODE == "git" else "  @GIT_INIT [Name <email>]                        makes this folder a git repository (main, default .gitignore, numbering and undo carried over, optional identity for this repository only); other git directives work from then on, even in the same script\n") + """Scopes: TOP | EOF (append; OLD CODE empty) | Name | Class.method | Parent > # Stage anchor | tree node path (a > b)
 A hunk applies only where OLD CODE matches exactly one place, searched in the scope first, then in the whole file.
@@ -3646,6 +3673,13 @@ def main():
         return print_footer(None)
     print("  Workspace: %s | %s" % (os.path.abspath("."), mode_label()))
     state = load_state()
+    if re.search(r"(?m)^@REDO\s+\d+\s*$", raw_txt):
+        raw_txt, redo_err = expand_redo(raw_txt)
+        if redo_err:
+            print("  [REFUSED] %s. Nothing was run." % redo_err)
+            return print_footer(state)
+        P = parse_payload(raw_txt)
+        print("  [REDO] runs the saved text of an earlier script, with its corrections")
     start, rerun, assigned = len(tee.text()), False, False
     if P["repeatable"] and (P["num"] is not None or not side_allowed(P)):
         print("  [REFUSED] a @REPEATABLE script has no number and may only read, search and @RUN, so running it again can never change files twice. Nothing was run.")

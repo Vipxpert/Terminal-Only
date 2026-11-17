@@ -18,6 +18,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - Rules: no payload line may begin with an apostrophe followed by @, because PowerShell's script block ends there.
 - A project without git says so in every footer (`NO GIT HERE`); when it becomes a git repository, each chat is told once and newly applying rules are marked `[NEW]` once.
 - Collapsed rules: a rule with an `L1 Brief` line prints as its brief, and the harness prints the full rule in its place when this run had a failure or a debug ledger is open; `@HELP L1-<name>` prints any rule in full. Knowledge and Debug collapse; the others stay in full.
+- `@REDO <n>` reruns script n's saved text under a new number, with `OLD TEXT` / `NEW TEXT` corrections and any extra directives, instead of resending the whole script; numbered runs now keep their script text.
 
 ## 3.6
 
