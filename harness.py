@@ -861,7 +861,7 @@ NEXT_STEPS = {
     "AMBIGUOUS": "resend ONLY that hunk with 2-3 more distinguishing context lines or a narrower scope.",
     "MALFORMED": "a marker line is missing (if the fence was cut short, write " + SENT_BT3 + " for three backticks); resend that hunk and every hunk after it.",
     "ROLLED BACK": "the file was restored to its pre-script state; resend every hunk for that file, corrected.",
-    "REFUSED": "use a path inside the workspace, written from its root (e.g. /src/app.py).",
+    "REFUSED": "each refusal above names its reason (a path not written from the workspace root, a missing @SCOPE claim, another chat's scope, a wrong count, a brake): fix that and resend only those operations.",
 }
 
 def structure_sig(text):
@@ -884,6 +884,11 @@ def tree_sync_reminder(changed, pre):
     def in_trees(anchor):
         name = re.sub(r"^\W*#?\s*(?:Stage|Step)\b\s*:?\s*", "", anchor).split(" (")[0].strip()
         return bool(name) and name in tree_text
+    def documented(x):
+        if ANCHOR_RE.match(x):
+            return in_trees(x)
+        name = x.split(".")[-1].split("(")[0].strip()
+        return bool(name) and re.search(r"\b%s\b" % re.escape(name), tree_text) is not None
     for rel in changed:
         if rel.startswith("docs/trees/"):
             continue
@@ -897,6 +902,7 @@ def tree_sync_reminder(changed, pre):
             tracked = any(in_trees(x) for x in before | after if ANCHOR_RE.match(x))
             keep = lambda x: tracked or not ANCHOR_RE.match(x)
             added, gone = [x for x in sorted(after - before) if keep(x)], [x for x in sorted(before - after) if keep(x)]
+            added, gone = [x for x in added if not documented(x)], [x for x in gone if documented(x)]
             if added or gone:
                 notes.append("/%s: %s" % (rel, ", ".join(["+" + x for x in added[:5]] + ["-" + x for x in gone[:5]])))
     if notes:
@@ -2730,6 +2736,10 @@ def apply_scope_change(P):
             paths = [x.strip().replace("\\", "/").lstrip("/") for x in raw.split(",") if x.strip()]
             if not paths:
                 print("  [REFUSED] @SCOPE needs '<aim> | <path or glob>, ...'. Scopes are unchanged.")
+                return
+            spaced = [x for x in paths if re.search(r"\s", scope_item(x)[0]) and not glob.glob(scope_item(x)[0])]
+            if spaced:
+                print("  [REFUSED] scope entry '%s' holds a space and names no existing path: separate scope paths with commas (a.py, b.py). Scopes are unchanged." % spaced[0])
                 return
             clashes = [(name, x, y) for name, other in reg.items() if name != me and other.get("scope")
                        for x, y in scope_overlap(paths, other["scope"].get("paths", [])) if not granted(me, literal_base(scope_item(x)[0]))]
