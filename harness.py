@@ -1075,6 +1075,8 @@ def execute_ops(ops):
     report_removed_comments(changed, pre, rolled)
     suggest_line_edits(ops)
     seen = set(op["status"] for op in ops)
+    if seen & {"MISMATCH", "AMBIGUOUS", "MALFORMED", "ROLLED BACK", "REFUSED"}:
+        globals()["RUN_FAILED"] = True
     for st in ("MISMATCH", "AMBIGUOUS", "MALFORMED", "ROLLED BACK", "REFUSED"):
         if st in seen:
             if st == "MALFORMED" and not any(op["status"] == "MALFORMED" and ("missing" in (op.get("detail") or "") or "expected '" in (op.get("detail") or "")) for op in ops):
@@ -1821,6 +1823,8 @@ def run_command(cmd, timeout, shell):
     for l in shown:
         print("  " + l[:400])
     print("  [exit %s | %.1fs]" % (code, time.time() - start))
+    if code != 0:
+        globals()["RUN_FAILED"] = True
     if code == "TIMEOUT":
         print("  -> the command hit the %ds limit and was stopped; use '@RUN --timeout <seconds> <command>' for longer jobs." % timeout)
     elif code != 0:
@@ -2220,6 +2224,7 @@ def refs_in_scope(rel, lines, target):
         print("  external calls: " + ", ".join(sorted(external)[:40]))
 
 CURRENT_SCRIPT, CURRENT_RUN, CURRENT_PART = None, None, None
+RUN_FAILED = False
 
 def inspections_path():
     return os.path.join(HARNESS_DIR, "inspections.json")
@@ -3235,6 +3240,27 @@ def rules_seen(rules):
     except Exception:
         return {}, None
 
+def open_ledgers():
+    """Debug ledgers (docs/debug/bug_*.txt) not yet marked RESOLVED."""
+    out = []
+    for p in sorted(glob.glob(os.path.join("docs", "debug", "bug_*.txt"))):
+        try:
+            if "RESOLVED" not in decode_bytes(read_bytes(p))[0]:
+                out.append(p.replace("\\", "/"))
+        except OSError:
+            pass
+    return out
+
+def brief_reason(conds):
+    """Why a rule with a brief is printed in full this run ('' while the brief is enough); the harness decides, never the AI."""
+    if "failed" in conds and RUN_FAILED:
+        return "this run had a failure"
+    if "ledger" in conds:
+        n = len(open_ledgers())
+        if n:
+            return "%d open debug ledger%s" % (n, "" if n == 1 else "s")
+    return ""
+
 def print_footer(state):
     """Every run ends with the next free number, the pinned goal and the standing rules that apply to this workspace's mode."""
     if state is not None:
@@ -3247,7 +3273,9 @@ def print_footer(state):
         print_footer_campaigns()
     try:
         with open(RULES_PATH, "r", encoding="utf-8") as f:
-            found = re.findall(r"(?m)^- \*\*L1 Rule\W*(\[[^\]]+\])`?\s*(?:\(([\w-]+)\))?[`:*\s]*(.*)$", f.read())
+            rules_text = f.read()
+        found = re.findall(r"(?m)^- \*\*L1 Rule\W*(\[[^\]]+\])`?\s*(?:\(([\w-]+)\))?[`:*\s]*(.*)$", rules_text)
+        briefs = {tag: ([c.strip().lower() for c in conds.split(",")], brief) for tag, conds, brief in re.findall(r"(?m)^- \*\*L1 Brief\W*(\[[^\]]+\])`?\s*\(([^)]*)\)[`:*\s]*(.*)$", rules_text)}
         modes = {"git": "git", "nogit": "nogit", "no-git": "nogit"}
         rules = [(tag, body) for tag, cond, body in found if not cond or (bool(active_campaigns()) if cond.lower() == "campaign" else modes.get(cond.lower(), MODE) == MODE)]
     except OSError:
@@ -3265,7 +3293,15 @@ def print_footer(state):
         elif changed or new:
             print("  (rules marked [CHANGED] or [NEW] differ from what this chat saw last time: read them again)")
         for tag, body in rules:
-            print("%s%s %s" % ("[CHANGED] " if tag in changed else ("[NEW] " if tag in new else ""), tag, body.strip().strip("`").strip()))
+            mark = "[CHANGED] " if tag in changed else ("[NEW] " if tag in new else "")
+            if tag in briefs:
+                why = brief_reason(briefs[tag][0])
+                if not why:
+                    print("%s%s (brief; full rule: @HELP %s) %s" % (mark, tag, tag.strip("[]"), briefs[tag][1].strip().strip("`").strip()))
+                    continue
+                print("%s%s (expanded: %s) %s" % (mark, tag, why, body.strip().strip("`").strip()))
+                continue
+            print("%s%s %s" % (mark, tag, body.strip().strip("`").strip()))
     used = set((load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("used", [])) if CURRENT_SESSION and state is not None else set()
     if used:
         rest = [d for d in DIRECTIVES.split() if d not in used]
@@ -3437,6 +3473,15 @@ def print_help(name, shell):
     with contextlib.redirect_stdout(buf):
         print_card(shell, os.path.abspath("."))
     key = "@" + name.strip().lstrip("@").upper()
+    if key.startswith("@L1-"):
+        try:
+            with open(RULES_PATH, "r", encoding="utf-8") as f:
+                hits = [(t, b) for t, _, b in re.findall(r"(?m)^- \*\*L1 Rule\W*(\[[^\]]+\])`?\s*(?:\(([\w-]+)\))?[`:*\s]*(.*)$", f.read()) if t.strip("[]").upper() == key[1:]]
+        except OSError:
+            hits = []
+        print("\n=== HELP: %s (full rule) ===" % key[1:])
+        print("  " + (hits[0][1].strip().strip("`").strip() if hits else "no such rule in workflow_commands.txt"))
+        return
     if key == "@COMMANDS":
         print("\n=== HELP: all commands ===\n  " + " ".join(DIRECTIVES.split()) + "\n  syntax of any one: @HELP <name>")
         return
