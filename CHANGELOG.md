@@ -16,6 +16,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - `@UNDO` skips files that another chat now holds, naming that chat.
 - Notes are pinned with `@NOTE_ADD pin <sessions> | <text>` (`for` still works) and listed as `[pin: ...]`; `@NOTE_LIST <words>` finds notes by category (a leading `Bug:`, `Decision:` ...) or content.
 - Rules: no payload line may begin with an apostrophe followed by @, because PowerShell's script block ends there.
+- A project without git says so in every footer (`NO GIT HERE`); when it becomes a git repository, each chat is told once and newly applying rules are marked `[NEW]` once.
 
 ## 3.6
 
