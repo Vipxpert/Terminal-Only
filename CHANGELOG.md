@@ -8,6 +8,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - A change that deletes a `Comment` line prints `[COMMENT REMOVED]` with its text, so the reason gets a second look; nothing is refused.
 - Fixed: the closing hint after `[REFUSED]` no longer always blames the path; it points at each refusal's stated reason. A space-separated `@SCOPE` entry that names nothing gets "separate scope paths with commas".
 - The tree reminder skips names the tree files already describe, and reports a removed name only while a tree still mentions it.
+- `@UNDO <script> | /path` (or a range) restores only that file; the rest of those scripts stays.
 
 ## 3.6
 

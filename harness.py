@@ -1170,9 +1170,11 @@ def undo_from(start, session, state):
 
 def run_undo(spec, state):
     """Reverse journaled scripts newest-first: exact snapshot restore when the file is unchanged since, else reverse-diff."""
+    spec, _, only = spec.partition("|")
+    only = only.strip().replace("\\", "/").lstrip("/")
     nums = [int(x) for x in re.findall(r"\d+", spec)]
     if not nums:
-        print("  [UNDO ERROR] expected '@UNDO <hi>..<lo>' or '@UNDO <num>', got: " + spec)
+        print("  [UNDO ERROR] expected '@UNDO <hi>..<lo>' or '@UNDO <num>', optionally followed by '| /path', got: " + spec)
         return
     hi, lo, seen = max(nums), min(nums), 0
     for path in sorted(glob.glob(os.path.join(HISTORY_DIR, "*.json")), reverse=True):
@@ -1182,11 +1184,15 @@ def run_undo(spec, state):
         if CURRENT_SESSION and e.get("session") and e.get("session") != CURRENT_SESSION:
             print("\n  [UNDO SKIPPED] [%s] belongs to session %s; undo it from that session." % (e["id"], e["session"]))
             continue
+        if only and only not in e.get("files", {}):
+            continue
         seen += 1
         print("\n=== REVERSING [%s: %s] ===" % (e["id"], e["title"]))
         if e["num"] <= state.get("committed_through", 0):
             print("  NOTE: this script was already committed; undo only edits the working tree.")
         for rel, fl in e["files"].items():
+            if only and rel != only:
+                continue
             if fl.get("undone"):
                 print("  [ALREADY UNDONE] /" + rel)
             elif sha_of(rel) == fl["post_sha"]:
@@ -1213,7 +1219,7 @@ def run_undo(spec, state):
                 fl["undone"] = done
         save_json(path, e)
     if not seen:
-        print("  [UNDO] no journaled scripts in range %d..%d" % (hi, lo))
+        print("  [UNDO] no journaled scripts in range %d..%d%s" % (hi, lo, " that changed /" + only if only else ""))
 
 # ---------------------------------------------------------------- Stage: Git
 
@@ -3428,7 +3434,7 @@ def print_card(shell, workspace):
    Globs: with a '/' they start at the workspace root and * stays in one folder, ** crosses folders; without a '/' they match file names at any depth.)
   @RUN [--timeout <s>] <command>                  any other command (tests, builds, installs, CLI tools) in the workspace; default limit 300s; not undoable
   @INIT_DEBUG <slug>                              creates docs/debug/bug_<slug>.txt with its four sections and prints it
-  @UNDO <hi>..<lo>  or  @UNDO <number>            reverses journaled scripts, newest first
+  @UNDO <hi>..<lo>  or  @UNDO <number>            reverses journaled scripts, newest first; add '| /path' to restore only that file (e.g. @UNDO 117 | /bot.py), the rest of those scripts stays
   (the user may also paste a script that already ran: at a terminal the harness asks [R]eplay / [U]ndo it and that chat's later scripts / [E]xecute again)
 """ + (GIT_CARD if MODE == "git" else "  @GIT_INIT [Name <email>]                        makes this folder a git repository (main, default .gitignore, numbering and undo carried over, optional identity for this repository only); other git directives work from then on, even in the same script\n") + """Scopes: TOP | EOF (append; OLD CODE empty) | Name | Class.method | Parent > # Stage anchor | tree node path (a > b)
 A hunk applies only where OLD CODE matches exactly one place, searched in the scope first, then in the whole file.
