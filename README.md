@@ -109,14 +109,14 @@ Script numbering, undo history, saved run outputs, the session list and the rere
 
 | Purpose | Directives |
 |---|---|
-| Change files | `@FILE` + `@HUNK` (with `+++ [LINE EDITS] +++` for a few lines inside a long block), `@NEW_FILE`, `@DELETE_FILE` (files, folders or globs; every file stays recoverable with `@UNDO`), `@RENAME`, `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder), `@REDO <n>` (rerun a failed script with small corrections) |
+| Change files | `@FILE` + `@HUNK` (with `+++ [LINE EDITS] +++` for a few lines inside a long block), `@NEW_FILE`, `@DELETE_FILE` (files, folders or globs; every file stays recoverable with `@UNDO`), `@RENAME` (a file or a whole folder, undoable), `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder), `@REDO <n>` (rerun a failed script with small corrections) |
 | Read code | `@PROBE <file> \| Scope / Lines / TOC`, `@PROBE <file> \| Refs \| <scope>` (what a scope uses and where each piece is defined) |
 | Search | `@FIND` (files by name), `@GREP` (text or regex), both with an optional `| depth N`, `@XREF <name>` (references), `@XREF <name> \| callers / callees / impact` (code graph) |
 | Architecture tree | `@PROBE <tree> \| Tree \| <node> \| <depth>`, `@PROBE <tree> \| Check` (drift check) |
 | Dead code | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence) |
 | Run anything else | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once |
 | Project memory | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG` |
-| History | `@UNDO` (whole scripts, or one file with `| /path`), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT`, `@GIT_FOLD` |
+| History | `@UNDO` (whole scripts, or one file with `| /path`), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG` |
 
 The syntax card printed by the handshake is the authoritative reference.
 
@@ -154,10 +154,13 @@ Install codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp) to enable 
 - `setup.cmd`, `setup.sh`: installers.
 - `docs/trees/tree_master.txt`: this project's architecture tree.
 - `.llm_harness/goal.md`, `.llm_harness/notes.md`: this project's memory.
+- `tests/`: the test suites; `python tests/run_all.py` runs them all.
+- `.github/workflows/tests.yml`: runs the suites on Windows and Linux for every push and pull request.
+- `CHANGELOG.md`: what changed in each release.
 
 ## Developing the harness
 
-Work on this repository through the harness itself, with this folder as the workspace, then copy `harness.py` and `workflow_commands.txt` into `~/.llm_harness` (or rerun setup). Keep the tree in sync in the same script as each change. After changing the harness, run `python tests/scopes_test.py` and `python tests/concurrency_test.py` through `@RUN`; each prints PASS or FAIL per check and tests the installed copy.
+Work on this repository through the harness itself, with this folder as the workspace, then copy `harness.py` and `workflow_commands.txt` into `~/.llm_harness` (or rerun setup). Keep the tree in sync in the same script as each change. After changing the harness, run `python tests/scopes_test.py` and `python tests/concurrency_test.py` through `@RUN`; each prints PASS or FAIL per check and tests the installed copy. `python tests/run_all.py [path to harness.py]` runs every suite in tests/ and prints one summary; GitHub Actions runs it on Windows and Linux for every push and pull request.
 
 ## Limitations
 
