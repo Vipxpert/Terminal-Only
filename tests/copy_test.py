@@ -1,5 +1,5 @@
 # /llm_harness/tests/copy_test.py
-"""Copy test for llm_harness: at a real terminal the harness waits for Enter after a run and copies the whole output to the clipboard through the system's tool (checked here with a stand-in xclip); nothing waits when the output is captured; any other answer skips the copy."""
+"""Copy test for llm_harness: at a real terminal the harness waits for a key after a run: C copies the whole output to the clipboard through the system's tool (checked here with a stand-in xclip), X skips, other keys are ignored; nothing waits when the output is captured."""
 import importlib.util, os, subprocess, sys, tempfile, time
 
 HARNESS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser("~"), ".llm_harness", "harness.py")
@@ -46,7 +46,7 @@ def pty_run(answer):
         if not chunk:
             break
         buf += chunk
-        if not sent and b"Press Enter to copy" in buf:
+        if not sent and b"Press C to copy" in buf:
             os.write(master, answer)
             sent = True
     os.waitpid(pid, 0)
@@ -72,13 +72,20 @@ def main():
     os.remove(CLIP)
     p = subprocess.run([sys.executable, HARNESS], input=script().encode(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60, env=dict(os.environ))
     check("captured output never waits for Enter and never copies", p.returncode == 0 and b"Press Enter" not in p.stdout and not os.path.exists(CLIP), p.stdout.decode("utf-8", "replace"))
-    out = pty_run(b"\n")
+    out = pty_run(b"c")
     with open(CLIP, "rb") as f:
         copied = f.read().decode("utf-8", "replace")
-    check("at a terminal, Enter copies the whole run output", "[COPIED]" in out and "=== RUN TIME" in copied and "=== GREP: nothing" in copied, out + copied)
+    check("at a terminal, one press of C copies the whole run output (no Enter needed)", "[COPIED]" in out and "=== RUN TIME" in copied and "=== GREP: nothing" in copied, out + copied)
     os.remove(CLIP)
-    out = pty_run(b"n\n")
-    check("any other answer skips the copy", "Press Enter to copy" in out and "[COPIED]" not in out and not os.path.exists(CLIP), out)
+    out = pty_run(b"x")
+    check("X skips the copy", "Press C to copy" in out and "[COPIED]" not in out and not os.path.exists(CLIP), out)
+    out = pty_run(b"\nzqc")
+    with open(CLIP, "rb") as f:
+        copied = f.read().decode("utf-8", "replace")
+    check("Enter and other keys are ignored until C or X is pressed", "[COPIED]" in out and "=== RUN TIME" in copied, out + copied)
+    os.remove(CLIP)
+    out = pty_run(b"\x1b")
+    check("Esc skips the copy too", "[COPIED]" not in out and not os.path.exists(CLIP), out)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 

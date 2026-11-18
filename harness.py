@@ -3456,16 +3456,67 @@ def copy_to_clipboard(text):
     except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)
 
+def ask_key(prompt, keys):
+    """Wait at the terminal for one of the keys in `keys` (lowercase letters), without needing Enter, and return it; Esc and Ctrl-C return the last key of `keys` (the way out) and every other key is ignored. None when no one is there (output captured, no console, or prompts turned off)."""
+    if os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
+        return None
+    way_out, key = keys[-1], None
+    try:
+        sys.stdout.flush()
+        if os.name == "nt":
+            import msvcrt
+            with open("CONOUT$", "w") as fo:
+                drain_console(None)
+                fo.write(prompt)
+                fo.flush()
+                try:
+                    while key is None:
+                        ch = msvcrt.getwch()
+                        if ch in ("\x00", "\xe0"):
+                            msvcrt.getwch()
+                        elif ch in ("\x03", "\x1b"):
+                            key = way_out
+                        elif ch.lower() in keys:
+                            key = ch.lower()
+                except KeyboardInterrupt:
+                    key = way_out
+                fo.write(key.upper() + "\n")
+            return key
+        import termios, tty
+        fd = os.open("/dev/tty", os.O_RDWR)
+        try:
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setcbreak(fd)
+                termios.tcflush(fd, termios.TCIFLUSH)
+                os.write(fd, prompt.encode("utf-8"))
+                while key is None:
+                    raw = os.read(fd, 1)
+                    ch = raw.decode("utf-8", "ignore")
+                    if not raw or ch == "\x1b":
+                        key = way_out
+                    elif ch.lower() in keys:
+                        key = ch.lower()
+            except KeyboardInterrupt:
+                key = way_out
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            os.write(fd, (key.upper() + "\n").encode("utf-8"))
+            return key
+        finally:
+            os.close(fd)
+    except Exception:
+        return None
+
 def offer_copy():
-    """At a real terminal, wait for Enter and copy the whole output of this run to the clipboard, so it can be pasted straight into the chat; any other input skips it. Nothing happens when the output is captured, no console is attached, or LLM_HARNESS_NO_COPY is set."""
+    """At a real terminal, wait for one key after a run: C copies the whole output to the clipboard, so it can be pasted straight into the chat; X (or Esc) skips; other keys are ignored. Nothing happens when the output is captured, no console is attached, or LLM_HARNESS_NO_COPY is set."""
     if os.environ.get("LLM_HARNESS_NO_COPY") or os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
         return
     text = getattr(sys.stdout, "text", None)
     text = text() if callable(text) else ""
     if not text.strip():
         return
-    ans = ask_console("\nPress Enter to copy this output to the clipboard (type anything, then Enter, to skip) ")
-    if ans != "":
+    if ask_key("\nPress C to copy this output to the clipboard, X to skip: ", "cx") != "c":
         return
     ok, how = copy_to_clipboard(text)
     print("  [COPIED] %d characters via %s. Paste them into the chat." % (len(text), how) if ok else "  [NOT COPIED] %s. Select the output by hand." % how)

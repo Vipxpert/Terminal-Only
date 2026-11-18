@@ -12,7 +12,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 - Fixed: a glob in `@SCOPE` collided with every file in the workspace (`/why*.txt`) or with other folders and extensions; it now collides only with files it really matches. A file name with a space can stay in scope after the file is deleted.
 - In a git project the harness commits its project memory (goal, notes, verdicts, `git.json`) after each script that changes it (not on a protected branch).
 - After three footer-only scripts in a row the footer says `LOOP CHECK` and the rules tell the AI to drop the manifest and ask the user whether they are still there.
-- At a terminal the harness offers to copy the run's output to the clipboard (Enter copies; `LLM_HARNESS_NO_COPY=1` turns it off).
+- At a terminal the harness offers to copy the run's output to the clipboard (press C to copy, X to skip; `LLM_HARNESS_NO_COPY=1` turns the prompt off).
 - Fixed: state files were rewritten in place, so another chat could read one empty or half-written (an empty `sessions.json` read as "no scope"); they are now replaced whole, and if a reader holds the file for seconds the save falls back to rewriting in place instead of failing.
 - The clipboard copy on Windows uses the clipboard API directly, with PowerShell as a fallback; when both fail, the message says why.
 - `@RUN` tells Python children to write UTF-8 to the pipe the harness reads, so Vietnamese and other non-Latin text prints correctly on Windows without `sys.stdout.reconfigure` in the script.
