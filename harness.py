@@ -1041,7 +1041,8 @@ def execute_ops(ops):
             elif text is None or dtext is not None:
                 op["status"], op["detail"] = "MISMATCH", "source missing" if text is None else "target already exists"
             else:
-                cur[dst], meta[dst], cur[rel] = text, meta[rel], None
+                # Comment (order): the header is normally fixed when files are written; doing it here lets later hunks in the same script match the file as it will end up
+                cur[dst], meta[dst], cur[rel] = ensure_line1_header(dst, text)[0], meta[rel], None
                 new_mode[dst] = pre[rel]["mode"]
                 op["status"] = "OK"
                 touch(rel)
@@ -3295,23 +3296,30 @@ def expand_delete_ops(P):
 
 def expand_text_ops(P):
     """Check each @TEXT_REPLACE's total match count against its expect, then turn it into one edit per file it touches."""
-    out = []
+    out, renames = [], {}
     for op in P["ops"]:
+        if op.get("type") == "rename" and not op.get("malformed") and not op.get("blocked"):
+            renames[op["to"].strip().replace("\\", "/").lstrip("/")] = op["file"].strip().replace("\\", "/").lstrip("/")
         if op.get("type") != "text" or op.get("malformed") or op.get("blocked"):
             out.append(op)
             continue
         path, _, scope = op["file"].partition("#")
         target = path.strip().replace("\\", "/").lstrip("/")
+        src_of = {}
         if target and os.path.isfile(target):
             files = [target]
+        elif target in renames and os.path.isfile(renames[target]):
+            # Comment (order): counting happens before anything runs, while the file still sits at its old path; the edit itself runs after the rename, in script order
+            files, src_of = [target], {target: renames[target]}
         else:
             named = glob_files(target) if any(c in target for c in "*?[") else [f for f in repo_files(".") if path_in(f, target or "**")]
             files = [f for f in named if within_depth(f, literal_base(target), op.get("depth"))]
         hits, per_file = [], []
         for f in files:
-            if safe_rel(f) is None or os.path.getsize(f) > 2000000:
+            src = src_of.get(f, f)
+            if safe_rel(src) is None or os.path.getsize(src) > 2000000:
                 continue
-            raw = read_bytes(f)
+            raw = read_bytes(src)
             if b"\0" in raw[:4096]:
                 continue
             lines = decode_bytes(raw)[0].split("\n")
@@ -3778,7 +3786,7 @@ def print_card(shell, workspace):
    'N-' deletes it, 'N+ text' inserts after it (0 = before line 1); N counts the recited OLD CODE lines from 1, not counting blank lines before the first or after the last, so it is always verified)
   @NEW_FILE /<path>  <content>  @END_NEW_FILE     each on its own line; rejected if the file exists
   @DELETE_FILE /<path, folder or glob>             each file goes into the script's journal first: recoverable with @UNDO <n> (or @UNDO <n> | /path); emptied folders are removed
-  @RENAME /<old> -> /<new>                        later hunks in the same script use the new path
+  @RENAME /<old> -> /<new>                        later hunks and @TEXT_REPLACE in the same script use the new path; the line-1 path header is rewritten to the new path, so later OLD CODE shows the new header
   @TEXT_REPLACE <file, file#Class.method, folder or glob> | expect <N> | <label>   then these marker lines (one line of text each):
   --- [OLD TEXT] ---
   <exact text, at least 12 characters, found exactly N times in that scope (default N = 1)>
