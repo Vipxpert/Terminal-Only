@@ -10,6 +10,7 @@ VERSION = "3.7"
 WORKSPACE_NOTES_DIR = ".llm_harness"
 MODE = "git"
 HARNESS_DIR = os.path.join(".git", "llm_harness")
+SHARED_DIR, GIT_DIR = HARNESS_DIR, ".git"
 HISTORY_DIR = os.path.join(HARNESS_DIR, "history")
 STATE_PATH = os.path.join(HARNESS_DIR, "state.json")
 CONFIG_PATH = os.path.join(HARNESS_DIR, "config.json")
@@ -606,7 +607,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -829,6 +830,14 @@ def parse_payload(txt):
             P["side"] = True
         elif d == "GIT_FOLD":
             P["git"].append({"kind": "fold", "n": int(arg) if arg.isdigit() else 0})
+        elif d == "GIT_BRANCH":
+            m = re.match(r"^(\S+)(?:\s+from\s+(\S+))?\s*$", arg)
+            P["git"].append({"kind": "branch", "name": m.group(1) if m else "", "base": m.group(2) if m else None})
+        elif d == "GIT_WORKTREE":
+            P["git"].append({"kind": "worktree", "args": arg.split()})
+        elif d == "GIT_TAG":
+            name, _, msg = arg.partition("|")
+            P["git"].append({"kind": "tag", "name": name.strip(), "msg": msg.strip()})
         elif d == "GIT_COMMIT":
             j = i + 1
             while j < n and lines[j].rstrip() != "@END_GIT_COMMIT" and not lines[j].lstrip().startswith("@"):
@@ -1261,7 +1270,7 @@ def run_git(args):
 
 def git_blockers():
     names = ("MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG", "index.lock")
-    return [x for x in names if os.path.exists(os.path.join(".git", x))]
+    return [x for x in names if os.path.exists(os.path.join(GIT_DIR, x))]
 
 GITIGNORE_DEFAULT = """# Machine-local harness state (numbering, undo journal, saved runs, graph stamp).
 # goal.md and notes.md are project memory and stay tracked.
@@ -1269,6 +1278,7 @@ GITIGNORE_DEFAULT = """# Machine-local harness state (numbering, undo journal, s
 !.llm_harness/goal.md
 !.llm_harness/notes.md
 !.llm_harness/verdicts.json
+!.llm_harness/git.json
 __pycache__/
 """
 
@@ -1347,6 +1357,159 @@ def git_status_report():
 
 MEMORY_FILES = {p: p for p in (WORKSPACE_NOTES_DIR + "/goal.md", WORKSPACE_NOTES_DIR + "/notes.md", WORKSPACE_NOTES_DIR + "/verdicts.json", ".gitignore")}
 
+COMMIT_TYPES = ("build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test")
+REPO_KINDS = ("branch", "worktree", "tag")
+ACTIVE_S = 15 * 60
+
+def repo_guard(what, clean=True, alone=True):
+    """The shared safety checks for operations that affect a whole checkout: no unfinished git operation, no local changes, no other active chat in this folder. '' when it is safe."""
+    blockers = git_blockers()
+    if blockers:
+        return "an unfinished git operation (%s) must be finished or aborted first" % ", ".join(blockers)
+    if clean:
+        _, st, _ = run_git(["status", "--porcelain"])
+        # Comment (decision): the harness's own project memory (.llm_harness/: notes, verdicts, git.json) changes outside commits; git itself refuses a switch that would overwrite it
+        if [l for l in st.splitlines() if l.strip() and not l[3:].strip('"').startswith(WORKSPACE_NOTES_DIR + "/")]:
+            return "this checkout has uncommitted or untracked changes; commit them (or ask the user) first"
+    if alone:
+        now = time.time()
+        busy = [nm for nm, rec in load_json(sessions_path(), {}).items() if nm != CURRENT_SESSION and (rec.get("scope") or now - rec.get("last_active", 0) < ACTIVE_S)]
+        if busy:
+            return "other chats are active in this checkout (%s), and %s would change the files under them; give each branch its own folder with @GIT_WORKTREE add instead" % (", ".join(sorted(busy)), what)
+    return ""
+
+def remember_base(branch, base):
+    """Git does not record where a branch was cut from, so the harness keeps it (shared by all worktrees)."""
+    path = os.path.join(SHARED_DIR, "branches.json")
+    data = load_json(path, {})
+    data[branch] = base
+    save_json(path, data)
+
+def new_branch_problem(name, policy):
+    if not re.match(r"^[\w.\-/]+$", name or "") or name.startswith("-"):
+        return "'%s' is not a usable branch name" % name
+    pattern = policy.get("branches")
+    if pattern and name not in (policy.get("protected") or []) and not re.match(pattern, name):
+        return "%s does not match this project's branch pattern %s" % (name, pattern)
+    return ""
+
+def run_repo_ops(ops):
+    """@GIT_BRANCH, @GIT_WORKTREE and @GIT_TAG, each through repo_guard; merging and pushing stay with the user."""
+    print("\n=== REPOSITORY ACTIONS ===")
+    policy = git_policy()
+    _, here, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    for op in ops:
+        if op["kind"] == "branch":
+            name, base = op.get("name"), op.get("base")
+            exists = bool(name) and run_git(["rev-parse", "--verify", "-q", "refs/heads/" + name])[0] == 0
+            why = "" if exists else new_branch_problem(name, policy)
+            why = why or repo_guard("switching branches")
+            if why:
+                print("  [BRANCH REFUSED] %s. Nothing changed." % why)
+                return False
+            with state_lock():
+                rc, out, err = run_git(["switch", name] if exists else ["switch", "-c", name] + ([base] if base else []))
+            if rc:
+                print("  [BRANCH FAILED] %s. Nothing changed." % (err or out))
+                return False
+            if not exists:
+                remember_base(name, base or here)
+            print("  [BRANCH] now on %s%s" % (name, "" if exists else " (new, from %s)" % (base or here)))
+        elif op["kind"] == "worktree":
+            args = op.get("args") or []
+            if args[:1] == ["list"]:
+                print("  " + run_git(["worktree", "list"])[1].replace("\n", "\n  "))
+                continue
+            if args[:1] == ["add"] and len(args) in (2, 4) and (len(args) == 2 or args[2] == "from"):
+                name, base = args[1], (args[3] if len(args) == 4 else None)
+                exists = run_git(["rev-parse", "--verify", "-q", "refs/heads/" + name])[0] == 0
+                why = ("" if exists else new_branch_problem(name, policy)) or repo_guard("adding a worktree", clean=False, alone=False)
+                if why:
+                    print("  [WORKTREE REFUSED] %s. Nothing changed." % why)
+                    return False
+                path = os.path.abspath(os.path.join("..", "%s.%s" % (os.path.basename(os.path.abspath(".")), re.sub(r"[^\w.\-]+", "-", name))))
+                rc, out, err = run_git(["worktree", "add", path, name] if exists else ["worktree", "add", "-b", name, path] + ([base] if base else []))
+                if rc:
+                    print("  [WORKTREE FAILED] %s. Nothing changed." % (err or out))
+                    return False
+                if not exists:
+                    remember_base(name, base or here)
+                print("  [WORKTREE] %s on branch %s%s\n  -> continue that work with '@WORKSPACE %s'; script numbers stay shared, claims and undo are that folder's own" % (path, name, "" if exists else " (new, from %s)" % (base or here), path))
+                continue
+            if args[:1] == ["remove"] and len(args) == 2:
+                _, listing, _ = run_git(["worktree", "list", "--porcelain"])
+                target = None
+                for block in listing.split("\n\n"):
+                    wt = dict(l.split(" ", 1) for l in block.splitlines() if " " in l)
+                    if wt.get("branch") == "refs/heads/" + args[1] or os.path.normcase(os.path.abspath(wt.get("worktree", ""))) == os.path.normcase(os.path.abspath(args[1])):
+                        target = wt.get("worktree")
+                if not target or os.path.normcase(os.path.abspath(target)) == os.path.normcase(os.path.abspath(".")):
+                    print("  [WORKTREE REFUSED] %s. Nothing changed." % ("no other worktree is on %s" % args[1] if not target else "this is the checkout the script runs in"))
+                    return False
+                if run_git(["-C", target, "status", "--porcelain"])[1].strip():
+                    print("  [WORKTREE REFUSED] %s has uncommitted or untracked changes; commit them there first. Nothing changed." % target)
+                    return False
+                rc, out, err = run_git(["worktree", "remove", target])
+                if rc:
+                    print("  [WORKTREE FAILED] %s. Nothing changed." % (err or out))
+                    return False
+                print("  [WORKTREE] removed %s (its branch stays; its undo journal went with the folder)" % target)
+                continue
+            print("  [WORKTREE REFUSED] use '@GIT_WORKTREE add <branch> [from <base>]', '@GIT_WORKTREE list' or '@GIT_WORKTREE remove <branch or path>'. Nothing changed.")
+            return False
+        elif op["kind"] == "tag":
+            name = op.get("name") or ""
+            why = ""
+            if not re.match(r"^v?\d+\.\d+\.\d+(?:[-+.][\w.\-]+)?$", name):
+                why = "'%s' is not a version tag like v1.4.0" % name
+            elif run_git(["rev-parse", "--verify", "-q", "refs/tags/" + name])[0] == 0:
+                why = "tag %s already exists" % name
+            src = policy.get("tags_from")
+            why = why or repo_guard("tagging", alone=False)
+            if not why and src and run_git(["merge-base", "--is-ancestor", "HEAD", src])[0] != 0:
+                why = "this commit is not part of %s's history; this project tags only commits on %s" % (src, src)
+            if not why and policy.get("tag_changelog"):
+                try:
+                    log = read_text("CHANGELOG.md")
+                except OSError:
+                    log = ""
+                if not re.search(r"(?m)^##\s+v?%s\b" % re.escape(name.lstrip("v")), log):
+                    why = "CHANGELOG.md has no '## %s' section, which this project requires before tagging" % name.lstrip("v")
+            if why:
+                print("  [TAG REFUSED] %s. Nothing changed." % why)
+                return False
+            rc, out, err = run_git(["tag", "-a", name, "-m", op.get("msg") or "release " + name])
+            if rc:
+                print("  [TAG FAILED] %s. Nothing changed." % (err or out))
+                return False
+            print("  [TAGGED] %s at %s\n  -> pushing a release tag can start a deployment, so that is the user's command: git push origin %s" % (name, run_git(["rev-parse", "--short", "HEAD"])[1], name))
+    return True
+
+def git_policy():
+    """The project's optional branch and commit policy, .llm_harness/git.json ({} when absent). A harness safety rule, not a security boundary: GitHub branch protection is the real enforcement."""
+    path = os.path.join(WORKSPACE_NOTES_DIR, "git.json")
+    if not os.path.isfile(path):
+        return {}
+    pol = load_json(path, None)
+    if not isinstance(pol, dict) or pol.get("version") != 1:
+        print("  [GIT POLICY] .llm_harness/git.json is not valid JSON with \"version\": 1, so it is ignored.")
+        return {}
+    return pol
+
+def commit_message_problem(msg, policy):
+    """Why a commit message breaks the conventional-commit form type(scope): subject, or '' when it is fine; commitlint, where a project installs it, stays authoritative."""
+    types = policy.get("commit_types") or COMMIT_TYPES
+    head = msg.strip()
+    m = re.match(r"^(\w+)(\([^()]+\))?(!)?: (\S.*)$", head)
+    if not m:
+        return "it needs the form type(scope): subject, e.g. fix(api): handle empty payloads"
+    if m.group(1) not in types:
+        return "type '%s' is not one of: %s" % (m.group(1), ", ".join(types))
+    limit = policy.get("header_max")
+    if isinstance(limit, int) and len(head) > limit:
+        return "it is %d characters long; this project allows at most %d" % (len(head), limit)
+    return ""
+
 def run_git_ops(ops):
     """Pre-flight guard, optional fold of unpushed commits, path-scoped commits; any failure restores the original HEAD."""
     print("\n=== GIT ACTIONS ===")
@@ -1360,6 +1523,18 @@ def run_git_ops(ops):
     if orig and branch == "HEAD":
         print("  [ABORTED] detached HEAD. Check out a branch first. Nothing was committed.")
         return False
+    policy = git_policy()
+    commits = [op for op in ops if op["kind"] == "commit"]
+    for op in commits:
+        why = commit_message_problem(op["msg"], policy)
+        if why:
+            print("  [COMMIT REFUSED] '%s': %s. Nothing was committed. -> resend the commit with a fixed message" % (op["msg"][:80], why))
+            return False
+    if commits and branch in (policy.get("protected") or []):
+        print("  [COMMIT REFUSED] %s is a protected branch in .llm_harness/git.json: commit on a feature branch; it reaches %s through a pull request. Nothing was committed." % (branch, branch))
+        return False
+    if commits and policy.get("branches") and not re.match(policy["branches"], branch or ""):
+        print("  [BRANCH NAME] %s does not match this project's branch pattern %s; the commit goes ahead, but rename the branch before pushing" % (branch, policy["branches"]))
 
     def fail(msg):
         print("  [FAILED] " + msg)
@@ -2484,7 +2659,8 @@ LOCK_STALE_S, LOCK_WAIT_S = 120, 30
 def state_lock():
     """Cross-process lock around shared state updates; held only for those updates, never while commands run."""
     os.makedirs(HARNESS_DIR, exist_ok=True)
-    path = os.path.join(HARNESS_DIR, "state.lock")
+    os.makedirs(SHARED_DIR, exist_ok=True)
+    path = os.path.join(SHARED_DIR, "state.lock")
     deadline = time.time() + LOCK_WAIT_S
     while True:
         try:
@@ -3316,6 +3492,12 @@ def print_footer(state):
         return
     if MODE != "git":
         print("=== NO GIT HERE: @GIT_* directives are off and the git rules do not apply; use @GIT_INIT only if the user asks for git ===")
+    elif os.path.isfile(os.path.join(WORKSPACE_NOTES_DIR, "git.json")):
+        pol = git_policy()
+        if pol:
+            _, br, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+            prot = pol.get("protected") or []
+            print("=== GIT POLICY: on branch %s%s | protected: %s%s ===" % (br, " (protected: no direct commits here)" if br in prot else "", ", ".join(prot) or "none", " | branch names: " + pol["branches"] if pol.get("branches") else ""))
     if rules:
         print("=== L1 CONTRACT (standing rules; apply, never echo) ===")
         before, before_mode = rules_seen(rules)
@@ -3350,21 +3532,34 @@ def enter_workspace(path):
     if not os.path.isdir(full):
         return "workspace folder does not exist: %s" % full
     os.chdir(full)
-    set_mode("git" if os.path.isdir(".git") else "nogit")
+    set_mode("git" if os.path.exists(".git") else "nogit")
     return None
 
 def set_mode(mode):
-    """git mode keeps harness state in .git/llm_harness; no-git mode keeps it in .llm_harness next to the notes."""
-    global MODE, HARNESS_DIR, HISTORY_DIR, STATE_PATH, CONFIG_PATH, GRAPH_PATH
+    """git mode keeps harness state in the checkout's git folder (llm_harness/), no-git mode in .llm_harness next to the notes. In a git worktree the numbering and its lock live in the repository's common git folder, shared by every worktree; sessions, scopes, the undo journal and saved runs stay with each worktree, because each has its own files."""
+    global MODE, HARNESS_DIR, HISTORY_DIR, STATE_PATH, CONFIG_PATH, GRAPH_PATH, SHARED_DIR, GIT_DIR
     MODE = mode
-    HARNESS_DIR = os.path.join(".git", "llm_harness") if mode == "git" else WORKSPACE_NOTES_DIR
+    GIT_DIR, common = ".git", ".git"
+    if mode == "git":
+        try:
+            out = subprocess.run(["git", "rev-parse", "--git-dir", "--git-common-dir"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=20).stdout.decode("utf-8", "replace").split()
+            if len(out) == 2:
+                GIT_DIR, common = out
+        except (OSError, subprocess.SubprocessError):
+            pass
+    HARNESS_DIR = os.path.join(GIT_DIR, "llm_harness") if mode == "git" else WORKSPACE_NOTES_DIR
+    SHARED_DIR = os.path.join(common, "llm_harness") if mode == "git" else WORKSPACE_NOTES_DIR
     HISTORY_DIR = os.path.join(HARNESS_DIR, "history")
-    STATE_PATH = os.path.join(HARNESS_DIR, "state.json")
+    STATE_PATH = os.path.join(SHARED_DIR, "state.json")
     CONFIG_PATH = os.path.join(HARNESS_DIR, "config.json")
     GRAPH_PATH = os.path.join(HARNESS_DIR, "graph.json")
 
 def mode_label():
-    return "git mode" if MODE == "git" else "no-git mode (state in .llm_harness/, git directives off)"
+    if MODE != "git":
+        return "no-git mode (state in .llm_harness/, git directives off)"
+    if os.path.normcase(os.path.abspath(HARNESS_DIR)) != os.path.normcase(os.path.abspath(SHARED_DIR)):
+        return "git mode, worktree (script numbers shared with the main checkout; sessions, scopes and undo are this folder's own)"
+    return "git mode"
 
 
 NOTE_HEADER_RE = re.compile(r"^<!-- llm_harness_notes_next_id: (\d+) -->$")
@@ -3495,8 +3690,11 @@ def harness_call(shell):
     return "python3 %s" % (("~/" + tail.replace(os.sep, "/")) if inside and " " not in tail else "'%s'" % SELF_PATH)
 
 GIT_CARD = """  @GIT_STATUS
-  @GIT_COMMIT <type(scope): subject>  /<path> per line  @END_GIT_COMMIT   commits exactly those paths (list deleted and renamed-from paths too)
+  @GIT_COMMIT <type(scope): subject>  /<path> per line  @END_GIT_COMMIT   commits exactly those paths (list deleted and renamed-from paths too); the message must be type(scope): subject with a conventional type (feat fix docs refactor perf build test ci chore style revert); an optional .llm_harness/git.json ({"version": 1, "protected": [...], "branches": "<regex>", "header_max": 100, "commit_types": [...]}) refuses commits on protected branches
   @GIT_FOLD <n>                                   first git line only: reopens the last n unpushed commits so the @GIT_COMMIT blocks after it re-slice them
+  @GIT_BRANCH <name> [from <base>]                switches to a branch, or creates it (from <base>, default the current one); refused with local changes, an unfinished git operation, or other chats active in this checkout
+  @GIT_WORKTREE add <branch> [from <base>] | list | remove <branch or path>   a separate folder per branch (../<project>.<branch>) so chats on different branches never share files; continue there with @WORKSPACE <path>
+  @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true; pushing it is the user's command
 """
 
 def print_help(name, shell):
@@ -3784,9 +3982,13 @@ def main():
     else:
         git_ok = True
         if P["git"]:
-            git_ok = run_git_ops(P["git"])
-            if git_ok:
+            repo_ops = [op for op in P["git"] if op["kind"] in REPO_KINDS]
+            git_rest = [op for op in P["git"] if op["kind"] not in REPO_KINDS]
+            git_ok = run_git_ops(git_rest) if git_rest else True
+            if git_ok and git_rest:
                 state["committed_through"] = P["num"] - 1 if P["ops"] else P["num"]
+            if git_ok and repo_ops:
+                git_ok = run_repo_ops(repo_ops)
         if P["undo"]:
             run_undo(P["undo"], state)
         elif P["ops"] and not git_ok:
