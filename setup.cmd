@@ -3,6 +3,19 @@
 setlocal EnableExtensions
 
 title llm_harness setup
+:: Comment (order): pull before anything is staged, then start this script again from the top, because the pull may replace this very file and cmd reads a batch file as it runs; the --pulled argument stops the second run from pulling again
+if /i "%~1"=="--pulled" goto :start
+if not exist "%~dp0.git" goto :start
+where git >nul 2>&1
+if errorlevel 1 goto :start
+echo Pulling the latest harness from its repository...
+git -C "%~dp0." pull --ff-only
+if errorlevel 1 (
+    echo WARNING: git pull did not complete. Installing the files that are already here.
+    goto :start
+)
+call "%~f0" --pulled & exit /b
+:start
 set "SOURCE_DIR=%~dp0"
 set "TARGET_DIR=%USERPROFILE%\.llm_harness"
 set "TEMP_DIR="

@@ -21,6 +21,14 @@ trap finish EXIT
 trap 'exit 130' HUP INT TERM
 
 SOURCE_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+# Comment (order): pull before anything is staged, then start this script again from the top, because the pull may have replaced this very file and a shell reads a script as it runs; LLM_SETUP_PULLED stops the second run from pulling again
+if [ "${LLM_SETUP_PULLED:-0}" != "1" ] && [ -e "$SOURCE_DIR/.git" ] && command -v git >/dev/null 2>&1; then
+    echo "Pulling the latest harness from its repository..."
+    if git -C "$SOURCE_DIR" pull --ff-only; then
+        LLM_SETUP_PULLED=1 exec sh "$0" "$@"
+    fi
+    echo "WARNING: git pull did not complete. Installing the files that are already here."
+fi
 TARGET_DIR="$HOME/.llm_harness"
 
 for file in harness.py workflow_commands.txt; do
