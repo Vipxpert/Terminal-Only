@@ -1851,7 +1851,7 @@ def tree_node_paths(lines):
             out[i] = base
             continue
         parts = [p.strip() for p in key.split(" / ")]
-        if parts and all(re.match(r"^[\w.\-]+\.[A-Za-z0-9]+$", p) for p in parts):
+        if parts and all(tree_file_name(p, folders[-1][1] if folders else "") for p in parts):
             out[i] = ((folders[-1][1] if folders else "") + "/" + parts[0]).strip("/")
     return out
 
@@ -1948,13 +1948,18 @@ def probe_tree(lines, target, depth):
         print("  -> expand one node with: @PROBE /<this file> | Tree | <node path> | <depth>")
 
 TREE_FILE_RE = re.compile(r"^[\w.\-]+\.[A-Za-z0-9]+$")
+TREE_BARE_FILE_RE = re.compile(r"^(?:[A-Z][A-Za-z]*file|LICENSE|README|CODEOWNERS|\.[\w.\-]+)$")
+
+def tree_file_name(p, here):
+    """True when a tree node names a file: a name with an extension, a well-known extensionless file (Dockerfile, Makefile, .gitignore...), or any existing file."""
+    return bool(TREE_FILE_RE.match(p) or TREE_BARE_FILE_RE.match(p) or os.path.isfile((here + "/" + p).lstrip("/")))
 TREE_NAME_RE = re.compile(r"([A-Za-z_$][\w$]*)\(\)")
 
 def check_tree(rel, lines):
     """Drift check: tree nodes whose file, function/class name or # Stage anchor no longer exists in the code."""
     nodes = tree_nodes(lines)
     proj = "/" + project_name()
-    texts, stale, counts = {}, [], {"file": 0, "name": 0, "anchor": 0}
+    texts, stale, counts, anchor_lines = {}, [], {"file": 0, "name": 0, "anchor": 0}, {}
     folders, files = [], []
     for i, d, label in nodes:
         while folders and folders[-1][0] >= d:
@@ -1970,8 +1975,8 @@ def check_tree(rel, lines):
             folders.append((d, base.strip("/")))
             continue
         parts = [p.strip() for p in key.split(" / ")]
-        if parts and all(TREE_FILE_RE.match(p) for p in parts):
-            here = folders[-1][1] if folders else ""
+        here = folders[-1][1] if folders else ""
+        if parts and all(tree_file_name(p, here) for p in parts):
             paths = [(here + "/" + p).lstrip("/") for p in parts]
             files.append((d, paths[0]))
             for p in paths:
@@ -1988,7 +1993,9 @@ def check_tree(rel, lines):
         if head.startswith("#"):
             anchor = norm_ws(head.lstrip("#").strip())
             counts["anchor"] += 1
-            if anchor and anchor not in norm_ws(body):
+            if fpath not in anchor_lines:
+                anchor_lines[fpath] = [norm_ws(re.sub(r"^\s*(?:#|//|<!--|--|;|::)\s*#?\s*", "", l)) for l in body.split("\n") if ANCHOR_RE.match(l)]
+            if anchor and not any(a == anchor or (a.startswith(anchor) and a[len(anchor)] in " (:") for a in anchor_lines[fpath]):
                 stale.append((i, label, "anchor not found in /%s: %s" % (fpath, anchor)))
             continue
         names = TREE_NAME_RE.findall(head)

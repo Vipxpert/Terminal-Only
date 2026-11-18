@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Fixed: the tree check treats extensionless files (Dockerfile, Makefile, Jenkinsfile, LICENSE, dotfiles) as files, so a missing one is reported, and a `# Stage` node must match a real anchor comment rather than the same words anywhere in the file.
+
 ## 3.7
 
 - Rules: chats leave knowledge, not narration: non-obvious reasons go into `Comment` lines above the code they explain, optionally categorised as constraint, workaround, invariant, order or decision; a nuance in code not being changed is reported instead of commented.
