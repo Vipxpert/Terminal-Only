@@ -37,6 +37,7 @@
     ├── commit_policy_test.py (Commit messages need type(scope): subject; git.json refuses protected-branch commits and long headers, warns about branch names, and needs a version)
     ├── worktree_test.py (A git worktree runs in git mode, shares numbering with the main checkout, and keeps its own claims and undo journal)
     ├── repo_ops_test.py (@GIT_BRANCH, @GIT_WORKTREE and @GIT_TAG pass one safety guard and the git.json policy: local changes, other active chats, branch names, tag reachability and changelog)
+    ├── rename_text_test.py (A @TEXT_REPLACE or @HUNK after a @RENAME in the same script works on the first pass; the rename rewrites the line-1 path header at once)
     ├── hints_test.py (Refusal hints point at the stated reason; a space-separated @SCOPE gets the comma hint; no tree reminder for names the trees already describe)
     ├── undo_file_test.py (@UNDO <script> | /path restores only that file, also across a range; scripts that never touched it are passed over)
     ├── changed_rules_test.py (A rule that changed since a chat last saw it is marked [CHANGED] once; new chats and runs without a session see no marks)
