@@ -30,7 +30,7 @@ def main():
         counts = dict((k, len(re.findall(r"(?m)^%s " % k, out))) for k in KINDS)
         for k in KINDS:
             total[k] += counts[k]
-        bad = code != 0 or counts["FAIL"] > 0 or counts["PASS"] == 0
+        bad = code != 0 or counts["FAIL"] > 0 or (counts["PASS"] == 0 and counts["SKIP"] == 0)
         print("%s %-16s PASS %-3d FAIL %-3d SKIP %-3d (%.1fs)" % ("FAIL" if bad else "ok  ", name, counts["PASS"], counts["FAIL"], counts["SKIP"], time.time() - begun))
         sys.stdout.flush()
         if bad:

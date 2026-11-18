@@ -4,6 +4,21 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.9
+
+- `@FIND` and the `| in` filter of `@GREP` accept `re:<regex>` on the path.
+- `@UNDO`: several lines in one script all run (the last used to win); paths may be comma-separated or globs; `/old -> /new` (or `-> /folder/`) recovers a file as it was to another path.
+- Folders emptied by a rename or delete are removed up to the workspace root (`__pycache__`-only counts as empty); one that cannot be removed is named, with its holder when `psutil` is installed.
+- Fixed: a glob in `@SCOPE` collided with every file in the workspace (`/why*.txt`) or with other folders and extensions; it now collides only with files it really matches. A file name with a space can stay in scope after the file is deleted.
+- In a git project the harness commits its project memory (goal, notes, verdicts, `git.json`) after each script that changes it (not on a protected branch).
+- After three footer-only scripts in a row the footer says `LOOP CHECK` and the rules tell the AI to drop the manifest and ask the user whether they are still there.
+- At a terminal the harness offers to copy the run's output to the clipboard (Enter copies; `LLM_HARNESS_NO_COPY=1` turns it off).
+- Fixed: state files were rewritten in place, so another chat could read one empty or half-written (an empty `sessions.json` read as "no scope"); they are now replaced whole, and if a reader holds the file for seconds the save falls back to rewriting in place instead of failing.
+- The clipboard copy on Windows uses the clipboard API directly, with PowerShell as a fallback; when both fail, the message says why.
+- `@RUN` tells Python children to write UTF-8 to the pipe the harness reads, so Vietnamese and other non-Latin text prints correctly on Windows without `sys.stdout.reconfigure` in the script.
+- Fixed (Windows): a state file that another chat is replacing, and that is refused for a moment, is retried instead of being read as missing (which read a live `sessions.json` as "no scope").
+- `setup.cmd` and `setup.sh` pull the latest changes first (`git pull --ff-only`) when their folder is a git clone, then install; a pull that fails warns and installs the files already there.
+
 ## 3.8
 
 - Fixed: the tree check treats extensionless files (Dockerfile, Makefile, Jenkinsfile, LICENSE, dotfiles) as files, so a missing one is reported, and a `# Stage` node must match a real anchor comment rather than the same words anywhere in the file.

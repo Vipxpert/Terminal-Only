@@ -6,7 +6,7 @@
 #   python harness.py --workspace "<project folder>"
 import os, sys, re, json, glob, time, zlib, base64, fnmatch, hashlib, shutil, contextlib, subprocess, warnings
 
-VERSION = "3.8"
+VERSION = "3.9"
 WORKSPACE_NOTES_DIR = ".llm_harness"
 MODE = "git"
 HARNESS_DIR = os.path.join(".git", "llm_harness")
@@ -72,16 +72,39 @@ def norm_nl(s):
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
 def load_json(path, default):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return default
+    for attempt in range(6):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return default
+        except (OSError, ValueError):
+            # Comment (constraint): on Windows a reader's open() is refused for a moment while another chat replaces the file, and returning the default then read a live sessions.json as "no scope"; try again a few times before giving up
+            if attempt == 5:
+                return default
+            time.sleep(0.01 * (attempt + 1))
+    return default
 
 def save_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Comment (invariant): other chats read these files without the state lock, so a file must never be seen half-written (an empty sessions.json read as "no scope" refused a chat its own change); write a temp file and replace the target in one step
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(obj, f, ensure_ascii=True, indent=1)
+    for _ in range(60):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            # Comment (workaround): on Windows the replace fails while a reader has the file open; wait for it to finish
+            time.sleep(0.05)
+    # Comment (workaround): after about three seconds of a reader holding the file open, an in-place write beats crashing the run; the half-written window is then back, but only under that much contention
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(obj, f, ensure_ascii=True, indent=1)
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
 
 def decode_bytes(raw):
     """Bytes -> (LF text, meta). Meta keeps EOL style and BOM so untouched lines round-trip byte-exact."""
@@ -626,7 +649,7 @@ def parse_payload(txt):
     """One state machine: directives are recognized only outside hunk and file bodies."""
     P = {"id": None, "num": None, "title": "", "workspace": None, "goal": None, "ops": [], "notes": [], "probes": [], "xrefs": [], "helps": [],
          "runs": [], "finds": [], "greps": [],
-         "list_dir": [], "list_rec": [], "undo": None, "git": [], "git_status": False, "git_init": False, "side": False, "session": None,
+         "list_dir": [], "list_rec": [], "undo": [], "git": [], "git_status": False, "git_init": False, "side": False, "session": None,
          "scope": None, "scope_end": False, "session_end": False, "session_aim": None, "msgs": [], "brake_ack": False, "repeatable": False,
          "verdicts": [], "verdict_lists": [], "campaigns": [], "part": None, "warnings": []}
     lines = txt.split("\n")
@@ -821,7 +844,7 @@ def parse_payload(txt):
         elif d == "LIST_RECURSIVE":
             P["list_rec"].append(arg)
         elif d == "UNDO":
-            P["undo"] = arg
+            P["undo"].append(arg)
         elif d == "GIT_STATUS":
             P["git_status"] = True
         elif d == "GIT_INIT":
@@ -1075,6 +1098,7 @@ def execute_ops(ops):
                     os.rmdir(root)
             except OSError:
                 pass
+    pruned = prune_emptied_parents([op["file"] for op in ops if op.get("type") in ("delete", "rename") and op.get("status") == "OK"])
     checks, rolled = check_files(changed, pre) if changed else ({}, set())
     print("\n=== EXECUTION SCORECARD ===")
     for op in ops:
@@ -1086,6 +1110,7 @@ def execute_ops(ops):
         chk = (checks.get(files[-1]) or "UNCHANGED") if op["status"] in ("OK", "ROLLED BACK") else "-"
         print("  [%s] /%s | Scope: %s | %s | Check: %s" % (st, op["file"].lstrip("/"), op["scope"], op["label"], chk))
     report_removed_comments(changed, pre, rolled)
+    report_pruned(pruned)
     suggest_line_edits(ops)
     seen = set(op["status"] for op in ops)
     if seen & {"MISMATCH", "AMBIGUOUS", "MALFORMED", "ROLLED BACK", "REFUSED"}:
@@ -1209,10 +1234,35 @@ def undo_from(start, session, state):
         run_undo(str(e["num"]), state)
     print("  -> the files are back to how they were before script %d; in the chat, continue from the message before it." % start)
 
+def recover_to(rel, fl, entry, dest, matches):
+    """@UNDO <n> | /old -> /new: copy a file as it was before that script to another path; the original path is left as it is. A destination ending in / (or several matches) takes each file's own name."""
+    target = dest.rstrip("/") + "/" + os.path.basename(rel) if dest.endswith("/") or matches > 1 else dest
+    holder = scope_owner(target, CURRENT_SESSION)[0] if CURRENT_SESSION else None
+    if safe_rel(target) is None:
+        print("  [RECOVER SKIPPED] /%s is outside the workspace or inside git or harness internals" % target)
+    elif fl["pre"] is None:
+        print("  [RECOVER SKIPPED] /%s did not exist before [%s], so there is nothing to copy" % (rel, entry["id"]))
+    elif os.path.exists(target):
+        print("  [RECOVER SKIPPED] /%s already exists; pick a free path" % target)
+    elif holder:
+        print("  [RECOVER SKIPPED] /%s is inside session %s's scope%s; ask them, or the user" % (target, holder, chat_link(holder)))
+    else:
+        raw = unpack(fl["pre"])
+        text, meta = decode_bytes(raw)
+        fixed = ensure_line1_header(target, text)[0]
+        restore_pre(target, encode_text(fixed, meta) if fixed != text else raw, fl["mode"])
+        print("  [RECOVERED] /%s -> /%s (as it was before [%s])" % (rel, target, entry["id"]))
+
 def run_undo(spec, state):
     """Reverse journaled scripts newest-first: exact snapshot restore when the file is unchanged since, else reverse-diff."""
     spec, _, only = spec.partition("|")
-    only = only.strip().replace("\\", "/").lstrip("/")
+    items = []
+    for part in only.split(","):
+        src, arrow, dst = part.partition("->")
+        src, dst = src.strip().replace("\\", "/").lstrip("/"), dst.strip().replace("\\", "/").lstrip("/")
+        if src:
+            items.append((src, dst if arrow else None))
+    only = items
     nums = [int(x) for x in re.findall(r"\d+", spec)]
     if not nums:
         print("  [UNDO ERROR] expected '@UNDO <hi>..<lo>' or '@UNDO <num>', optionally followed by '| /path', got: " + spec)
@@ -1225,18 +1275,22 @@ def run_undo(spec, state):
         if CURRENT_SESSION and e.get("session") and e.get("session") != CURRENT_SESSION:
             print("\n  [UNDO SKIPPED] [%s] belongs to session %s; undo it from that session." % (e["id"], e["session"]))
             continue
-        if only and only not in e.get("files", {}):
+        if only and not any(path_in(r, s) for s, _ in only for r in e.get("files", {})):
             continue
         seen += 1
         print("\n=== REVERSING [%s: %s] ===" % (e["id"], e["title"]))
         if e["num"] <= state.get("committed_through", 0):
             print("  NOTE: this script was already committed; undo only edits the working tree.")
         for rel, fl in e["files"].items():
-            if only and rel != only:
+            if only and not any(path_in(rel, s) for s, _ in only):
                 continue
             holder = scope_owner(rel, CURRENT_SESSION)[0] if CURRENT_SESSION else None
             if holder:
                 print("  [UNDO SKIPPED] /%s is inside session %s's scope%s; ask them, or the user, before undoing it" % (rel, holder, chat_link(holder)))
+                continue
+            dest = next((d for s, d in only if d is not None and path_in(rel, s)), None) if only else None
+            if dest is not None:
+                recover_to(rel, fl, e, dest, sum(1 for r in e["files"] if any(path_in(r, s) for s, _ in only)))
                 continue
             if fl.get("undone"):
                 print("  [ALREADY UNDONE] /" + rel)
@@ -1264,7 +1318,7 @@ def run_undo(spec, state):
                 fl["undone"] = done
         save_json(path, e)
     if not seen:
-        print("  [UNDO] no journaled scripts in range %d..%d%s" % (hi, lo, " that changed /" + only if only else ""))
+        print("  [UNDO] no journaled scripts in range %d..%d%s" % (hi, lo, " that changed " + ", ".join("/" + s for s, _ in only) if only else ""))
 
 # ---------------------------------------------------------------- Stage: Git
 
@@ -1878,6 +1932,13 @@ def glob_files(pattern):
 
 def path_filter(pattern):
     """Predicate for a path pattern: a glob (with a '/' it starts at the root and * stays in one folder; without one it matches file names at any depth), else a case-insensitive substring."""
+    if pattern.strip().lower().startswith("re:"):
+        try:
+            rx = re.compile(pattern.strip()[3:])
+        except re.error as e:
+            print("  [WARNING] invalid path regex: %s" % e)
+            return lambda rel: False
+        return lambda rel: rx.search(rel) is not None
     p = pattern.strip().replace("\\", "/").lstrip("/").lower()
     if any(c in p for c in "*?["):
         if "/" in p:
@@ -1893,7 +1954,7 @@ def run_find(pattern):
         print("  [WARNING] @FIND needs a name, path fragment or glob, e.g. '@FIND lease' or '@FIND *.vue'")
         return
     keep = path_filter(pattern)
-    base = literal_base(pattern) if any(c in pattern for c in "*?[") else ""
+    base = "" if pattern.strip().lower().startswith("re:") else (literal_base(pattern) if any(c in pattern for c in "*?[") else "")
     rows = [rel for rel in repo_files(".") if keep(rel) and within_depth(rel, base, depth)]
     for rel in rows[:LIST_CAP]:
         print("  /" + rel)
@@ -1919,7 +1980,7 @@ def run_grep(arg):
         print("  [WARNING] invalid regex: %s" % e)
         return
     in_flt = path_filter(flt) if flt.strip() else (lambda rel: True)
-    base = literal_base(flt) if any(c in flt for c in "*?[") else ""
+    base = "" if flt.strip().lower().startswith("re:") else (literal_base(flt) if any(c in flt for c in "*?[") else "")
     keep = lambda rel: in_flt(rel) and within_depth(rel, base, depth)
     hits, files = [], set()
     for rel in repo_files("."):
@@ -1978,7 +2039,8 @@ def run_command(cmd, timeout, shell):
         args = [shutil.which("bash") or "/bin/sh", "-c", cmd]
     start = time.time()
     try:
-        proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        # Comment (constraint): a Python child writing to a pipe uses the Windows code page (cp1252), which cannot print Vietnamese or other non-Latin text, while this output is read as UTF-8; say so to Python children (only the standard streams; open() defaults are left alone)
+        proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONIOENCODING="utf-8"),
                                 start_new_session=(os.name != "nt"))
     except OSError as e:
         print("  [FAILED] could not start the shell: %s" % e)
@@ -2741,6 +2803,7 @@ def touch_session(P):
         reg = load_json(sessions_path(), {})
         rec = reg.get(P["session"], {})
         rec["last_active"], rec["last_script"] = time.time(), P["id"]
+        rec["idle_runs"] = rec.get("idle_runs", 0) + 1 if idle_script(P) else 0
         if P.get("session_aim"):
             rec["aim"] = P["session_aim"]
         rec["used"] = sorted(set(rec.get("used", [])) | set(P.get("used", [])))
@@ -2885,9 +2948,53 @@ def sym_range(path, sym):
     lo, hi, note = resolve_scope(path, lines, sym)
     return None if note else (lo, hi)
 
+def auto_commit_memory(P):
+    """In a git project, commit the harness's project memory (goal, notes, verdicts, git policy) after a script changed it: no chat lists these files in its own commits, so they would never travel with the project. Left alone, with a note, on a protected branch, during an unfinished git operation, on a detached HEAD, and when .gitignore hides them."""
+    if MODE != "git":
+        return
+    present = [n for n in (os.path.join(WORKSPACE_NOTES_DIR, f).replace("\\", "/") for f in ("goal.md", "notes.md", "verdicts.json", "git.json")) if os.path.isfile(n)]
+    if not present:
+        return
+    _, out, _ = run_git(["status", "--porcelain", "--"] + present)
+    changed = [l[3:].strip().strip('"') for l in out.splitlines() if l.strip()]
+    touched = bool(P["notes"] or P["goal"] or P["verdicts"] or P["campaigns"])
+    if not changed:
+        hidden = [n for n in present if touched and run_git(["check-ignore", "-q", "--", n])[0] == 0]
+        if hidden:
+            print("\n  [MEMORY] %s is ignored by .gitignore, so it cannot travel with the project; add a '!%s' line after '.llm_harness/*'" % (", ".join("/" + n for n in hidden), hidden[0]))
+        return
+    blockers = git_blockers()
+    _, branch, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    if blockers:
+        why = "an unfinished git operation (%s)" % ", ".join(blockers)
+    elif branch == "HEAD":
+        why = "HEAD is detached"
+    elif branch in (git_policy().get("protected") or []):
+        why = "%s is a protected branch; they go with your next commit on a feature branch" % branch
+    else:
+        why = ""
+    if why:
+        print("\n  [MEMORY] %s changed but was not committed: %s" % (", ".join("/" + c for c in changed), why))
+        return
+    msg = "chore(harness): update project memory (%s)" % ", ".join(os.path.basename(c) for c in changed)
+    run_git(["add", "--"] + changed)
+    rc, out, err = run_git(["commit", "-m", msg, "--"] + changed)
+    if rc:
+        print("\n  [MEMORY] commit failed: %s. The files stay uncommitted." % (err or out))
+    else:
+        print("\n  [MEMORY COMMITTED] %s %s" % (run_git(["rev-parse", "--short", "HEAD"])[1], msg))
+
+def spaced_entry_problem(entry):
+    """True for a scope entry that holds a space, names nothing known, and reads as several paths run together (a.py b.py); a deleted or tracked file whose name has a space is fine."""
+    if not re.search(r"\s", entry) or glob.glob(entry):
+        return False
+    if not all("/" in t or re.search(r"\.\w+$", t) for t in entry.split()):
+        return False
+    return not (MODE == "git" and run_git(["ls-files", "--cached", "--", entry])[1].strip())
+
 def scope_overlap(paths_a, paths_b):
     """Entry pairs that can claim the same code: nesting fixed parts, except two definitions of one file, which overlap only when one contains the other."""
-    out = []
+    out, files = [], None
     for x in paths_a:
         for y in paths_b:
             (px, sx, _), (py, sy, _) = scope_item(x), scope_item(y)
@@ -2897,6 +3004,15 @@ def scope_overlap(paths_a, paths_b):
                     if rx[0] < ry[1] and ry[0] < rx[1]:
                         out.append((x, y))
                 elif sx == sy or sx.startswith(sy + ".") or sy.startswith(sx + "."):
+                    out.append((x, y))
+                continue
+            wx, wy = any(c in px for c in "*?["), any(c in py for c in "*?[")
+            if wx or wy:
+                # Comment (decision): a glob can only collide with files it really matches; comparing fixed prefixes alone made '/why*.txt' "overlap" every file in the workspace, and 'docs/*.md' a .txt below docs/
+                if files is None:
+                    files = repo_files(".")
+                g, c = (px, py) if wx else (py, px)
+                if (wx and wy and any(path_in(f, px) and path_in(f, py) for f in files)) or (not (wx and wy) and (path_in(c, g) or any(path_in(f, g) and path_in(f, c) for f in files))):
                     out.append((x, y))
                 continue
             a, b = literal_base(px), literal_base(py)
@@ -2965,7 +3081,7 @@ def apply_scope_change(P):
             if not paths:
                 print("  [REFUSED] @SCOPE needs '<aim> | <path or glob>, ...'. Scopes are unchanged.")
                 return
-            spaced = [x for x in paths if re.search(r"\s", scope_item(x)[0]) and not glob.glob(scope_item(x)[0])]
+            spaced = [x for x in paths if spaced_entry_problem(scope_item(x)[0])]
             if spaced:
                 print("  [REFUSED] scope entry '%s' holds a space and names no existing path: separate scope paths with commas (a.py, b.py). Scopes are unchanged." % spaced[0])
                 return
@@ -3222,7 +3338,7 @@ def enforce_brake(P):
     print("  -> take it into account, tell the user, and add @BRAKE_ACK to the next script; until then file changes, git and @RUN are refused here (reads still run).")
     for op in P["ops"]:
         op["blocked"] = "this session is braked by session %s; add @BRAKE_ACK first" % brake["from"]
-    P["git"], P["runs"], P["undo"] = [], [], None
+    P["git"], P["runs"], P["undo"] = [], [], []
 
 def session_cli(flag):
     """User-only commands: --release <session> ends a session and frees its scope; --unbrake <session> lifts a brake on it."""
@@ -3269,6 +3385,139 @@ def grant_cli():
         g[sess] = cur
         save_json(grants_path(), g)
     print("%s: session %s %s write access to %s despite other sessions' scopes" % (flag[2:].upper() + "ED" if flag == "--grant" else "REVOKED", sess, "gets" if flag == "--grant" else "loses", pattern))
+
+def windows_clipboard_set(text):
+    """Put text on the Windows clipboard as Unicode through the Win32 API (ctypes, no external tool). False when the clipboard stays held by another program."""
+    import ctypes
+    from ctypes import wintypes
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    user32.OpenClipboard.argtypes, user32.OpenClipboard.restype = [wintypes.HWND], wintypes.BOOL
+    user32.EmptyClipboard.restype = wintypes.BOOL
+    user32.CloseClipboard.restype = wintypes.BOOL
+    user32.SetClipboardData.argtypes, user32.SetClipboardData.restype = [wintypes.UINT, wintypes.HANDLE], wintypes.HANDLE
+    kernel32.GlobalAlloc.argtypes, kernel32.GlobalAlloc.restype = [wintypes.UINT, ctypes.c_size_t], wintypes.HGLOBAL
+    kernel32.GlobalLock.argtypes, kernel32.GlobalLock.restype = [wintypes.HGLOBAL], wintypes.LPVOID
+    kernel32.GlobalUnlock.argtypes, kernel32.GlobalUnlock.restype = [wintypes.HGLOBAL], wintypes.BOOL
+    kernel32.GlobalFree.argtypes, kernel32.GlobalFree.restype = [wintypes.HGLOBAL], wintypes.HGLOBAL
+    raw = (text.replace("\r\n", "\n").replace("\n", "\r\n") + "\0").encode("utf-16-le")
+    for _ in range(40):
+        if user32.OpenClipboard(None):
+            break
+        time.sleep(0.05)
+    else:
+        return False
+    try:
+        user32.EmptyClipboard()
+        handle = kernel32.GlobalAlloc(0x0002, len(raw))
+        if not handle:
+            return False
+        ptr = kernel32.GlobalLock(handle)
+        if not ptr:
+            kernel32.GlobalFree(handle)
+            return False
+        ctypes.memmove(ptr, raw, len(raw))
+        kernel32.GlobalUnlock(handle)
+        if not user32.SetClipboardData(13, handle):
+            kernel32.GlobalFree(handle)
+            return False
+        return True
+    finally:
+        user32.CloseClipboard()
+
+def copy_to_clipboard(text):
+    """(ok, how): put text on the system clipboard through a tool the system already has (PowerShell on Windows, pbcopy, wl-copy, xclip or xsel elsewhere); a temp file keeps the encoding exact on Windows."""
+    data = text.encode("utf-8")
+    try:
+        if os.name == "nt":
+            tries = []
+            try:
+                if windows_clipboard_set(text):
+                    return True, "the Windows clipboard"
+                tries.append("the Windows clipboard could not be opened (another program may be holding it)")
+            except Exception as e:
+                tries.append("Windows clipboard API: %s" % e)
+            import tempfile
+            fd, tmp = tempfile.mkstemp(suffix=".txt")
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    f.write(data)
+                cmd = "Get-Content -Raw -Encoding UTF8 -LiteralPath '%s' | Set-Clipboard" % tmp.replace("'", "''")
+                r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True, timeout=30)
+            finally:
+                os.remove(tmp)
+            if r.returncode == 0:
+                return True, "PowerShell Set-Clipboard"
+            tries.append("PowerShell Set-Clipboard: " + ((r.stderr or r.stdout or b"").decode("utf-8", "replace").strip().splitlines() or ["exit %d" % r.returncode])[0][:200])
+            return False, "; ".join(tries)
+        for cmd in (["pbcopy"], ["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
+            if shutil.which(cmd[0]):
+                return subprocess.run(cmd, input=data, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30).returncode == 0, cmd[0]
+        return False, "no clipboard tool found (install xclip, xsel or wl-copy)"
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, str(e)
+
+def offer_copy():
+    """At a real terminal, wait for Enter and copy the whole output of this run to the clipboard, so it can be pasted straight into the chat; any other input skips it. Nothing happens when the output is captured, no console is attached, or LLM_HARNESS_NO_COPY is set."""
+    if os.environ.get("LLM_HARNESS_NO_COPY") or os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
+        return
+    text = getattr(sys.stdout, "text", None)
+    text = text() if callable(text) else ""
+    if not text.strip():
+        return
+    ans = ask_console("\nPress Enter to copy this output to the clipboard (type anything, then Enter, to skip) ")
+    if ans != "":
+        return
+    ok, how = copy_to_clipboard(text)
+    print("  [COPIED] %d characters via %s. Paste them into the chat." % (len(text), how) if ok else "  [NOT COPIED] %s. Select the output by hand." % how)
+
+def lock_holders(folder):
+    """Names of processes whose working folder is inside this folder (needs the optional psutil package); [] when psutil is missing or nothing is found. Only reported, never stopped."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    root = os.path.normcase(os.path.abspath(folder))
+    out = []
+    for pr in psutil.process_iter(["pid", "name"]):
+        try:
+            cwd = os.path.normcase(pr.cwd())
+        except Exception:
+            continue
+        if cwd == root or cwd.startswith(root + os.sep):
+            out.append("%s (PID %s)" % (pr.info.get("name"), pr.info.get("pid")))
+    return out[:6]
+
+def prune_emptied_parents(paths):
+    """After files left their folders (moved or deleted), remove each emptied folder above them, up to the workspace root; a folder holding only __pycache__ counts as empty, since the cache regrows. Returns (removed folders, [(folder, error)]) for folders that could not go."""
+    gone, kept = [], []
+    for p in paths:
+        d = os.path.dirname(p)
+        while d:
+            if not os.path.isdir(d):
+                d = os.path.dirname(d)
+                continue
+            names = os.listdir(d)
+            if names and not all(n == "__pycache__" and os.path.isdir(os.path.join(d, n)) for n in names):
+                break
+            try:
+                for n in names:
+                    shutil.rmtree(os.path.join(d, n))
+                os.rmdir(d)
+                gone.append(d)
+            except OSError as e:
+                kept.append((d, e))
+                break
+            d = os.path.dirname(d)
+    return gone, kept
+
+def report_pruned(result):
+    gone, kept = result
+    if gone:
+        print("\n  [FOLDERS REMOVED] " + ", ".join("/" + d for d in sorted(set(gone))) + " (emptied)")
+    for d, e in kept:
+        who = lock_holders(d)
+        hint = "held open by " + ", ".join(who) if who else ("something has it open (a terminal, editor or watcher whose working folder is inside it): close it and remove the folder by hand, or install psutil to name the holder" if isinstance(e, PermissionError) else str(e))
+        print("  [FOLDER KEPT] /%s could not be removed: %s" % (d, hint))
 
 def expand_rename_ops(P):
     """@RENAME on a folder becomes one rename per file, so every file goes through the journal (@UNDO brings the folder back) and claims apply file by file. Refused whole when the destination exists, the folder holds a symbolic link, or the move would be into itself."""
@@ -3436,6 +3685,12 @@ def find_run(num):
     found = glob.glob(os.path.join(runs_dir(), "%06d_*.json" % num))
     return load_json(found[0], None) if found else None
 
+LOOP_AT = 3
+
+def idle_script(P):
+    """True for a script that did and read nothing: no changes, no searches, no probes, no help (it only reprints the footer)."""
+    return read_only(P) and not (P["probes"] or P["xrefs"] or P["greps"] or P["finds"] or P["list_dir"] or P["list_rec"] or P["helps"] or P["git_status"] or P["verdict_lists"])
+
 def read_only(P):
     """True when a script only reads: no file, note, goal, git, undo or @RUN actions."""
     return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"])
@@ -3547,6 +3802,8 @@ def print_footer(state):
             _, br, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
             prot = pol.get("protected") or []
             print("=== GIT POLICY: on branch %s%s | protected: %s%s ===" % (br, " (protected: no direct commits here)" if br in prot else "", ", ".join(prot) or "none", " | branch names: " + pol["branches"] if pol.get("branches") else ""))
+    if CURRENT_SESSION and (load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("idle_runs", 0) >= LOOP_AT:
+        print("=== LOOP CHECK: this chat's last %d scripts did nothing (footer only). The user may be pasting in a loop: send no manifest and no script, and ask in a friendly line whether they are still there and what they want next ===" % LOOP_AT)
     if rules:
         print("=== L1 CONTRACT (standing rules; apply, never echo) ===")
         before, before_mode = rules_seen(rules)
@@ -3844,14 +4101,14 @@ def print_card(shell, workspace):
   @PROBE /<file> | Refs | <scope>                 what a scope uses: each project name with its use lines and definition site, plus external calls
   @XREF <symbol>                                  whole-word references across the repo, definitions first
   @XREF <symbol> | callers|callees|impact         call graph via codebase-memory-mcp when installed (impact = callers up to 5 levels; callers also list each call line); qualify shared names as <package or Type>.<name>
-  @FIND <name, path fragment or glob>             files by name or path, e.g. @FIND lease or @FIND *.vue
-  @GREP <text>  or  @GREP /<regex>/[i]            matching lines; add ' | in <path fragment or glob>' to limit where it looks
+  @FIND <name, path fragment or glob>             files by name or path, e.g. @FIND lease or @FIND *.vue; re:<regex> filters by a regex on the path, e.g. @FIND re:^api/.*_test[.]py$
+  @GREP <text>  or  @GREP /<regex>/[i]            matching lines; add ' | in <path fragment, glob or re:<regex>>' to limit where it looks
   @LIST_DIR /<path>    @LIST_RECURSIVE /<path>
   (@FIND, @GREP, @LIST_RECURSIVE and @TEXT_REPLACE take a last '| depth N': at most N folder levels below the fixed part of the path, 1 = directly inside.
    Globs: with a '/' they start at the workspace root and * stays in one folder, ** crosses folders; without a '/' they match file names at any depth.)
   @RUN [--timeout <s>] <command>                  any other command (tests, builds, installs, CLI tools) in the workspace; default limit 300s; not undoable
   @INIT_DEBUG <slug>                              creates docs/debug/bug_<slug>.txt with its four sections and prints it
-  @UNDO <hi>..<lo>  or  @UNDO <number>            reverses journaled scripts, newest first; add '| /path' to restore only that file (e.g. @UNDO 117 | /bot.py), the rest of those scripts stays
+  @UNDO <hi>..<lo>  or  @UNDO <number>            reverses journaled scripts, newest first; add '| /path, /other, /ye*' to restore only those files (e.g. @UNDO 117 | /bot.py), the rest of those scripts stays; '/old -> /new' (or '-> /folder/') copies the file as it was to another path; several @UNDO lines may share a script
   @REDO <number>                                  runs that script's saved text again under this script's number; follow it with --- [OLD TEXT] --- / +++ [NEW TEXT] +++ / === [END TEXT] === corrections (each old text found once, may span lines) and any extra directives, instead of resending the whole script
   (the user may also paste a script that already ran: at a terminal the harness asks [R]eplay / [U]ndo it and that chat's later scripts / [E]xecute again)
 """ + (GIT_CARD if MODE == "git" else "  @GIT_INIT [Name <email>]                        makes this folder a git repository (main, default .gitignore, numbering and undo carried over, optional identity for this repository only); other git directives work from then on, even in the same script\n") + """Scopes: TOP | EOF (append; OLD CODE empty) | Name | Class.method | Parent > # Stage anchor | tree node path (a > b)
@@ -4040,7 +4297,8 @@ def main():
             if git_ok and repo_ops:
                 git_ok = run_repo_ops(repo_ops)
         if P["undo"]:
-            run_undo(P["undo"], state)
+            for spec in P["undo"]:
+                run_undo(spec, state)
         elif P["ops"] and not git_ok:
             print("\n  [SKIPPED] file changes in this script, because the commit before them failed. -> fix the commit, then resend.")
         elif P["ops"]:
@@ -4078,6 +4336,7 @@ def main():
         print_help(h, state.get("shell") or shell)
     for arg in P["verdict_lists"]:
         list_verdicts(arg)
+    auto_commit_memory(P)
     save_state(state)
     save_run(P, raw_txt, tee.text()[start:])
     if P["git"] and not (P["ops"] or P["runs"] or P["probes"] or P["xrefs"] or P["greps"] or P["finds"] or P["list_dir"] or P["list_rec"] or P["notes"] or P["helps"]
@@ -4090,3 +4349,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    offer_copy()
