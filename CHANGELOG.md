@@ -4,11 +4,16 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.8
+
 - Fixed: the tree check treats extensionless files (Dockerfile, Makefile, Jenkinsfile, LICENSE, dotfiles) as files, so a missing one is reported, and a `# Stage` node must match a real anchor comment rather than the same words anywhere in the file.
 - `@GIT_COMMIT` checks the message (`type(scope): subject`, conventional types) before committing; an optional `.llm_harness/git.json` refuses commits on protected branches and over-long headers, warns about branch names, and is shown in the footer.
 - Git worktrees run in git mode: script numbering and its lock are shared through the repository's common git folder, while sessions, scopes, the undo journal and saved runs stay with each worktree.
 - `@GIT_BRANCH <name> [from <base>]`, `@GIT_WORKTREE add <branch> [from <base>] / list / remove <branch or path>` and `@GIT_TAG <vX.Y.Z> [| message]`, all through one repository safety guard (no local changes, no unfinished git operation, no other active chat for branch switches) and the optional `git.json` policy (`branches`, `tags_from`, `tag_changelog`); new repositories keep `.llm_harness/git.json` tracked (existing ones add `!.llm_harness/git.json` to `.gitignore`).
 - Fixed: a `@TEXT_REPLACE` on a file renamed earlier in the same script counts in the file's old location and edits it after the rename (it used to be refused with 0 occurrences); a rename rewrites the line-1 path header at once, so later hunks in the same script see the new header.
+- `@RENAME` on a folder moves it file by file through the journal (`@UNDO` brings it back; claims apply per file; refused whole when the destination exists, the folder holds a symbolic link, or the move is into itself or case-only).
+- Fixed: renaming a file keeps its exact bytes; a renamed binary file used to gain a trailing newline.
+- `tests/run_all.py [path to harness.py]` runs every suite with one summary; a GitHub Actions workflow (`.github/workflows/tests.yml`) runs it on Windows and Linux for every push and pull request.
 
 ## 3.7
 

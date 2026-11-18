@@ -6,7 +6,7 @@
 #   python harness.py --workspace "<project folder>"
 import os, sys, re, json, glob, time, zlib, base64, fnmatch, hashlib, shutil, contextlib, subprocess, warnings
 
-VERSION = "3.7"
+VERSION = "3.8"
 WORKSPACE_NOTES_DIR = ".llm_harness"
 MODE = "git"
 HARNESS_DIR = os.path.join(".git", "llm_harness")
@@ -956,6 +956,7 @@ def report_removed_comments(changed, pre, rolled):
 def execute_ops(ops):
     """Apply ops on an in-memory view, flush once, syntax-check, print the scorecard. -> (hunk_log, files_log)"""
     cur, meta, pre, dirty, new_mode, fails = {}, {}, {}, [], {}, []
+    moved = {}
 
     def load(rel):
         if rel not in cur:
@@ -1043,6 +1044,8 @@ def execute_ops(ops):
             else:
                 # Comment (order): the header is normally fixed when files are written; doing it here lets later hunks in the same script match the file as it will end up
                 cur[dst], meta[dst], cur[rel] = ensure_line1_header(dst, text)[0], meta[rel], None
+                # Comment (invariant): a rename moves a file's exact bytes (binary files, line endings, missing final newline); only a header rewrite or a later edit in the same script re-encodes it, as any edit does
+                moved[dst] = (text, pre[rel]["raw"])
                 new_mode[dst] = pre[rel]["mode"]
                 op["status"] = "OK"
                 touch(rel)
@@ -1056,7 +1059,7 @@ def execute_ops(ops):
                 changed.append(rel)
             continue
         text, _ = ensure_line1_header(rel, sanitize_tree(rel, cur[rel]))
-        data = encode_text(text, meta[rel] or default_meta(rel))
+        data = moved[rel][1] if rel in moved and text == moved[rel][0] else encode_text(text, meta[rel] or default_meta(rel))
         if data != pre[rel]["raw"]:
             write_bytes(rel, data)
             changed.append(rel)
@@ -1065,7 +1068,7 @@ def execute_ops(ops):
                 if mode:
                     os.chmod(rel, mode)
 
-    for d in sorted({op["folder"] for op in ops if op.get("type") == "delete" and op.get("folder") and op.get("status") == "OK"}, key=len, reverse=True):
+    for d in sorted({op["folder"] for op in ops if op.get("type") in ("delete", "rename") and op.get("folder") and op.get("status") == "OK"}, key=len, reverse=True):
         for root, _, _ in sorted(os.walk(d, topdown=False), key=lambda t: -len(t[0])):
             try:
                 if not os.listdir(root):
@@ -3267,6 +3270,44 @@ def grant_cli():
         save_json(grants_path(), g)
     print("%s: session %s %s write access to %s despite other sessions' scopes" % (flag[2:].upper() + "ED" if flag == "--grant" else "REVOKED", sess, "gets" if flag == "--grant" else "loses", pattern))
 
+def expand_rename_ops(P):
+    """@RENAME on a folder becomes one rename per file, so every file goes through the journal (@UNDO brings the folder back) and claims apply file by file. Refused whole when the destination exists, the folder holds a symbolic link, or the move would be into itself."""
+    out = []
+    for op in P["ops"]:
+        src = (op.get("file") or "").strip().replace("\\", "/").strip("/")
+        dst = (op.get("to") or "").strip().replace("\\", "/").strip("/")
+        if op.get("type") != "rename" or op.get("malformed") or op.get("blocked") or not src or not os.path.isdir(src) or os.path.isfile(src):
+            out.append(op)
+            continue
+        why = ""
+        if safe_rel(src) is None or safe_rel(dst or ".") is None:
+            why = "a folder inside the repository, away from git and harness internals, is needed on both sides"
+        # Comment (constraint): os.path.normcase turns "/" into "\" on Windows, which made the "into itself" test miss and let a folder move into itself; compare lowercased forward-slash paths instead
+        elif src == dst:
+            why = "the source and the destination are the same folder"
+        elif src.lower() == dst.lower():
+            why = "this would only change the case, which is the same folder on Windows and macOS; rename it through an intermediate name"
+        elif dst.lower().startswith(src.lower() + "/"):
+            why = "a folder cannot be moved into itself"
+        elif os.path.exists(dst) and (os.path.isfile(dst) or os.listdir(dst)):
+            why = "/%s already exists and is not empty; move into a free path, or move its files one by one" % dst
+        files = []
+        for root, dirs, fs in os.walk(src):
+            for name in dirs + fs:
+                if os.path.islink(os.path.join(root, name)):
+                    why = why or "it holds a symbolic link (%s); move those by hand" % os.path.join(root, name).replace("\\", "/")
+            files += [os.path.join(root, f).replace("\\", "/") for f in fs]
+        if not why and not files:
+            why = "/%s holds no files" % src
+        if not why and sum(os.path.getsize(f) for f in files) > 50 * 1024 * 1024:
+            why = "/%s holds more than 50 MB, too much for the undo journal" % src
+        if why:
+            out.append(dict(op, blocked="folder rename refused: " + why + ". Nothing was moved"))
+            continue
+        for f in sorted(files):
+            out.append({"type": "rename", "file": f, "to": dst + f[len(src):], "scope": "TOP", "label": "Rename (in /%s) to /%s" % (src, dst + f[len(src):]), "folder": src})
+    P["ops"] = out
+
 def expand_delete_ops(P):
     """@DELETE_FILE on a folder or glob becomes one delete per file, so every file goes into the journal (recoverable with @UNDO) and claims apply file by file."""
     out = []
@@ -3786,7 +3827,7 @@ def print_card(shell, workspace):
    'N-' deletes it, 'N+ text' inserts after it (0 = before line 1); N counts the recited OLD CODE lines from 1, not counting blank lines before the first or after the last, so it is always verified)
   @NEW_FILE /<path>  <content>  @END_NEW_FILE     each on its own line; rejected if the file exists
   @DELETE_FILE /<path, folder or glob>             each file goes into the script's journal first: recoverable with @UNDO <n> (or @UNDO <n> | /path); emptied folders are removed
-  @RENAME /<old> -> /<new>                        later hunks and @TEXT_REPLACE in the same script use the new path; the line-1 path header is rewritten to the new path, so later OLD CODE shows the new header
+  @RENAME /<old> -> /<new>                        later hunks and @TEXT_REPLACE in the same script use the new path; a folder moves file by file through the journal (each file recoverable with @UNDO, refused whole if the destination exists); the line-1 path header is rewritten to the new path, so later OLD CODE shows the new header
   @TEXT_REPLACE <file, file#Class.method, folder or glob> | expect <N> | <label>   then these marker lines (one line of text each):
   --- [OLD TEXT] ---
   <exact text, at least 12 characters, found exactly N times in that scope (default N = 1)>
@@ -3972,6 +4013,7 @@ def main():
     send_messages(P)
     if P["scope"] is not None:
         apply_scope_change(dict(P, scope_end=False, session_end=False))
+    expand_rename_ops(P)
     expand_text_ops(P)
     expand_delete_ops(P)
     guard_ops(P)
