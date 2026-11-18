@@ -10,7 +10,7 @@ Agent apps run commands on your machine by themselves. In a chat window the AI c
 - `harness.py` executes the script safely: exact-match patches, syntax rollback, an undo journal, a git gate.
 - Every run ends with a footer: the next script number, the project's pinned goal and the standing rules (L1). The rules arrive at the end of every paste, so long chats do not drift away from them.
 
-No API key, no MCP server, no agent permissions. Python 3 standard library only.
+No API key, no MCP server, no agent permissions. Python 3 standard library only; the code graph (CBM) and `psutil` (to name a program that holds a folder open) are optional extras.
 
 ## Cost model
 
@@ -21,7 +21,7 @@ The harness runs locally and makes no model API calls of its own, so it needs no
 1. You describe the task.
 2. The AI replies with a short manifest (Talk, Current aim, what it will change, inspect and run, After), one script fence, and a test checklist.
 3. You paste the fence into PowerShell (or bash).
-4. You paste the full output back.
+4. You paste the full output back (at a terminal the harness offers to copy it for you: press Enter).
 
 Lost an output, or pasted twice? Paste the same script again. An identical re-paste replays the saved output and runs nothing; an old read-only script with no saved output simply runs again.
 
@@ -38,14 +38,15 @@ Several chats can work in the same project at once, each with its own aim:
 - Uncommitted work has an owner: a session cannot release its scope until its changes are committed (or explicitly handed over), cannot commit a file holding another active session's uncommitted changes, and is warned when it edits such a file.
 - Chats can leave each other notes with `@MESSAGE` and `@SCOPE_REQUEST`, shown once and labelled as coming from an AI, not from you. `@BRAKE` pauses another chat's changes until it acknowledges with `@BRAKE_ACK`; you can lift a brake with `--unbrake <session>`, and end a closed chat's session with `--release <session>`.
 - Only you can override a scope: `python harness.py --workspace <folder> --grant <session> <path or glob>` (or `--revoke`), typed in your own terminal. A script that tries to run it is refused.
+- Chats that work on different branches at the same time should each use their own folder: `@GIT_WORKTREE add <branch>` creates `../<project>.<branch>` and prints the `@WORKSPACE` line to continue there. Script numbering stays shared; claims and undo are each folder's own. Switching branches inside a shared folder is refused while other chats are active.
 
 ## Install (once per machine)
 
-The harness is two files, `harness.py` and `workflow_commands.txt`, installed into `.llm_harness` in your home folder. The setup scripts copy them there from the folder they sit in, keep a backup of the previous version, offer to install or update the optional code graph (CBM, which needs internet), and pause at the end so you can read the result.
+The harness is two files, `harness.py` and `workflow_commands.txt`, installed into `.llm_harness` in your home folder. The setup scripts first pull the latest changes when their folder is a git clone, then copy them there from the folder they sit in, keep a backup of the previous version, offer to install or update the optional code graph (CBM, which needs internet), and pause at the end so you can read the result.
 
 **Windows (PowerShell)**
 
-1. Check that Python 3.8 or newer and git are installed:
+1. Check that Python 3 and git are installed (the test suites run on Python 3.12 and 3.14):
 
         python --version; git --version
 
@@ -57,13 +58,13 @@ The harness is two files, `harness.py` and `workflow_commands.txt`, installed in
 
         Set-Location E:\Work\Me\llm_harness; .\setup.cmd
 
-4. To update later, pull and run the setup again:
+4. To update later, run the setup again; it pulls the latest changes first:
 
-        Set-Location E:\Work\Me\llm_harness; git pull; .\setup.cmd
+        Set-Location E:\Work\Me\llm_harness; .\setup.cmd
 
 **Linux / macOS (terminal)**
 
-1. Check that Python 3.8 or newer and git are installed:
+1. Check that Python 3 and git are installed (the test suites run on Python 3.12 and 3.14):
 
         python3 --version; git --version
 
@@ -75,9 +76,9 @@ The harness is two files, `harness.py` and `workflow_commands.txt`, installed in
 
         sh ~/llm_harness/setup.sh
 
-4. To update later, pull and run the setup again:
+4. To update later, run the setup again; it pulls the latest changes first:
 
-        cd ~/llm_harness && git pull && sh setup.sh
+        cd ~/llm_harness && sh setup.sh
 
 ## Start a session
 
@@ -93,7 +94,7 @@ Linux / macOS:
 
 On Windows with Git Bash or WSL, add `--shell bash` so the syntax card shows the bash wrapper.
 
-Then open a new chat and paste three things: `workflow_commands.txt`, the handshake output, and your task. The handshake prints the syntax card (every directive and the exact fence wrapper for your shell), the project's goal and its notes. Projects with a `.git` folder run in git mode; any other folder runs in no-git mode, which keeps undo but has no git directives until `@GIT_INIT [Name <email>]` turns it into a repository, carrying its numbering and undo history over.
+Then open a new chat and paste three things: `workflow_commands.txt`, the handshake output, and your task. The handshake prints the syntax card (every directive and the exact fence wrapper for your shell), the project's goal and its notes. Projects with a `.git` folder or file (a worktree has a file) run in git mode; any other folder runs in no-git mode, which keeps undo but has no git directives until `@GIT_INIT [Name <email>]` turns it into a repository, carrying its numbering and undo history over.
 
 ## Moving to another computer
 
@@ -111,12 +112,12 @@ Script numbering, undo history, saved run outputs, the session list and the rere
 |---|---|
 | Change files | `@FILE` + `@HUNK` (with `+++ [LINE EDITS] +++` for a few lines inside a long block), `@NEW_FILE`, `@DELETE_FILE` (files, folders or globs; every file stays recoverable with `@UNDO`), `@RENAME` (a file or a whole folder, undoable), `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder), `@REDO <n>` (rerun a failed script with small corrections) |
 | Read code | `@PROBE <file> \| Scope / Lines / TOC`, `@PROBE <file> \| Refs \| <scope>` (what a scope uses and where each piece is defined) |
-| Search | `@FIND` (files by name), `@GREP` (text or regex), both with an optional `| depth N`, `@XREF <name>` (references), `@XREF <name> \| callers / callees / impact` (code graph) |
+| Search | `@FIND` (files by name), `@GREP` (text or regex), both with an optional `| depth N` and a path filter (a fragment, a glob, or `re:<regex>`), `@XREF <name>` (references), `@XREF <name> \| callers / callees / impact` (code graph) |
 | Architecture tree | `@PROBE <tree> \| Tree \| <node> \| <depth>`, `@PROBE <tree> \| Check` (drift check) |
 | Dead code | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence) |
 | Run anything else | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once |
 | Project memory | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG` |
-| History | `@UNDO` (whole scripts, or one file with `| /path`), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG` |
+| History | `@UNDO` (whole scripts, or only some files with `| /path, /other, /ye*`; `/old -> /new` recovers a file to another path), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG` |
 
 The syntax card printed by the handshake is the authoritative reference.
 
@@ -129,13 +130,17 @@ The syntax card printed by the handshake is the authoritative reference.
 - When the harness patches itself, the previous version is kept as `harness.prev.py`.
 - Inspection memory: reads are fingerprinted, so reading an unchanged definition again prints `[REVISIT]` with who read it and when.
 - Failures and refusals end with a `->` line saying what to rebuild or check next; `[TIP]` lines point out cheaper edit forms. Neither blocks anything.
-- Script numbers are assigned by the harness under a cross-process lock, so several chats can paste at the same time.
+- Script numbers are assigned by the harness under a cross-process lock, so several chats can paste at the same time, and its state files are replaced whole, so no chat ever reads one half-written.
+- Folders emptied by a rename or delete are removed up to the workspace root (a folder holding only `__pycache__` counts as empty); one that cannot be removed is named, with the process holding it when the optional `psutil` package is installed. Nothing is ever stopped for you.
+- In a git project the harness commits its own project memory (`.llm_harness` goal, notes, verdicts and `git.json`) after each script that changes it, except on a protected branch; if `.gitignore` hides those files, it says so.
+- After three scripts in a row that did nothing, the footer says `LOOP CHECK`: the AI then drops its manifest and script and asks whether you are still there.
+- At a terminal the harness waits for Enter after a run and copies the whole output to the clipboard (the Windows clipboard, with PowerShell as a fallback; `pbcopy`, `wl-copy`, `xclip` or `xsel` elsewhere); anything else you type skips it, and `LLM_HARNESS_NO_COPY=1` turns it off.
 - Commits happen only through git directives, after you confirm the change works. The harness aborts during a merge or rebase, never pushes, and refuses `@RUN git commit` and similar commands. Commit messages must have the form `type(scope): subject` with a conventional type. An optional `.llm_harness/git.json` (`{"version": 1, "protected": ["main", "dev"], "branches": "<regex>", "header_max": 100}`) refuses commits on protected branches and over-long headers and warns about branch names; it is a harness safety rule, while GitHub branch protection and commitlint, where installed, remain the real enforcement. A git worktree (a second checkout of the same repository, usually on another branch) runs in git mode, shares script numbering with the main checkout, and keeps its own sessions, scopes and undo journal, so chats working on different branches in different worktrees never touch each other's files. `@GIT_BRANCH`, `@GIT_WORKTREE add / list / remove` and `@GIT_TAG` all pass one safety check (no local changes, no unfinished git operation, and for branch switches no other active chat in the checkout) plus the project's `git.json` policy (branch-name pattern; `tags_from` and `tag_changelog` for release tags). Merging, and pushing branches or tags, stay yours: pushing a release tag may start a deployment.
 - Script numbers only go up: an old or reused number is refused, apart from the replay and re-run cases above. A second chat can work alongside with `@SIDE` scripts, which skip the numbering and may only read, search and run commands. A script marked `@REPEATABLE` runs on every paste, even an identical one, so you can rerun a test or tweak its values by hand; it may only read, search and run commands. To undo a stretch of a chat's work, paste the first script you regret into the terminal again: the harness asks whether to replay it, undo it together with everything that chat did after it (committed work is kept), or execute it again. The first time a chat's session runs at a terminal, the harness asks once for that chat's address (paste it from the browser, or press Enter to skip); the session list and every refusal involving that session then show it, so you can open the other chat. `--link <session> <address>` sets or changes it later. Work a chat could not do because another chat held the files stays listed under WAITING ON in its footer until it is free (then `[UNBLOCKED]` says so once), and that chat cannot end its session without finishing it or giving it up with `@SESSION_END drop`. A chat changes only files inside its own write scope (a claim in the same script counts, and so does a user grant); anything else is refused.
 
 ## Project memory and machine state
 
-- `.llm_harness/goal.md` and `.llm_harness/notes.md` are project memory: they travel with the project, so commit them. Notes are yours: the AI writes, edits or removes one only when you ask, and may suggest one in its reply otherwise. A note can be pinned to particular chats with `@NOTE_ADD pin <session or pattern> | <text>` (for example `pin migration-* | ...`): only those chats get it printed in their footers, while any chat can still read it with `@NOTE_LIST`. `@NOTE_LIST <words>` finds notes by category (a leading `Bug:`, `Decision:`, `Env:` ...) or by content. `.llm_harness/verdicts.json` keeps the AIs' recorded conclusions about folders, files and definitions (`@VERDICT`), so they travel too; a later change in a verdict's area marks it stale. For a sweep that needs a verdict on every area, you can start a `@CAMPAIGN` with its own verdict words: its rule and progress show in every footer while it runs, Tree probes mark finished nodes, and `@CAMPAIGN_END` removes its verdicts.
+- `.llm_harness/goal.md` and `.llm_harness/notes.md` are project memory: they travel with the project, and in a git project the harness commits them for you (see the Safety model). Notes are yours: the AI writes, edits or removes one only when you ask, and may suggest one in its reply otherwise. A note can be pinned to particular chats with `@NOTE_ADD pin <session or pattern> | <text>` (for example `pin migration-* | ...`): only those chats get it printed in their footers, while any chat can still read it with `@NOTE_LIST`. `@NOTE_LIST <words>` finds notes by category (a leading `Bug:`, `Decision:`, `Env:` ...) or by content. `.llm_harness/verdicts.json` keeps the AIs' recorded conclusions about folders, files and definitions (`@VERDICT`), so they travel too; a later change in a verdict's area marks it stale. For a sweep that needs a verdict on every area, you can start a `@CAMPAIGN` with its own verdict words: its rule and progress show in every footer while it runs, Tree probes mark finished nodes, and `@CAMPAIGN_END` removes its verdicts.
 - Script numbering, the undo journal, saved run outputs and the graph stamp are machine-local: in `.git/llm_harness/` for git projects, in `.llm_harness/` otherwise, and ignored by git.
 - `docs/trees/tree_master.txt` is the curated architecture tree. It is read level by level, updated in the same script as the code it describes, and `| Check` reports nodes that no longer match the code.
 
@@ -165,7 +170,7 @@ Work on this repository through the harness itself, with this folder as the work
 ## Limitations
 
 - You are in the loop for every step: one script per turn, pasted by hand.
-- Day-to-day use is on Windows PowerShell; the bash path is exercised less.
+- Day-to-day use is on Windows PowerShell; Linux is covered by the test suites (GitHub Actions runs them on Linux and Windows) but exercised less by hand, and macOS is untested.
 - Graph searches pay CBM's start-up cost, a few seconds per run.
 
 ## Tools evaluated and not used
