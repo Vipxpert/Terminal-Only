@@ -630,7 +630,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -863,6 +863,8 @@ def parse_payload(txt):
             P["git"].append({"kind": "tag", "name": name.strip(), "msg": msg.strip()})
         elif d == "GIT_PUSH":
             P["git"].append({"kind": "push", "what": arg.strip()})
+        elif d == "GIT_PULL":
+            P["git"].append({"kind": "pull"})
         elif d == "GIT_COMMIT":
             j = i + 1
             while j < n and lines[j].rstrip() != "@END_GIT_COMMIT" and not lines[j].lstrip().startswith("@"):
@@ -1418,7 +1420,7 @@ def git_status_report():
 MEMORY_FILES = {p: p for p in (WORKSPACE_NOTES_DIR + "/goal.md", WORKSPACE_NOTES_DIR + "/notes.md", WORKSPACE_NOTES_DIR + "/verdicts.json", ".gitignore")}
 
 COMMIT_TYPES = ("build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test")
-REPO_KINDS = ("branch", "worktree", "tag", "push")
+REPO_KINDS = ("branch", "worktree", "tag", "push", "pull")
 ACTIVE_S = 15 * 60
 
 def repo_guard(what, clean=True, alone=True):
@@ -1452,6 +1454,50 @@ def new_branch_problem(name, policy):
     if pattern and name not in (policy.get("protected") or []) and not re.match(pattern, name):
         return "%s does not match this project's branch pattern %s" % (name, pattern)
     return ""
+
+def count_pair(spec):
+    """(commits only on the left, commits only on the right) for a 'A...B' range; (0, 0) when git cannot say."""
+    out = run_git(["rev-list", "--left-right", "--count", spec])[1]
+    try:
+        left, right = out.split()
+        return int(left), int(right)
+    except ValueError:
+        return 0, 0
+
+def upstream_status():
+    """Fetch the upstream at most every LLM_HARNESS_FETCH seconds (default 60; 'off' never; a failure or being offline is silent) and say what it has that this checkout lacks: {"up", "ahead", "behind", "files"}, or None when there is no upstream or nothing is missing. Fetching only moves the remote-tracking refs; no file in the checkout changes."""
+    if MODE != "git":
+        return None
+    rc_up, up, _ = run_git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    if rc_up != 0:
+        return None
+    setting = os.environ.get("LLM_HARNESS_FETCH", "60").strip().lower()
+    if setting != "off":
+        every = int(setting) if setting.isdigit() else 60
+        stamp = os.path.join(SHARED_DIR, "fetch.json")
+        seen = load_json(stamp, {}) or {}
+        if time.time() - seen.get(up, 0) >= every:
+            # Comment (decision): the time is stored even when the fetch fails, so being offline costs one short wait per interval, not one per script
+            run_git_network(["fetch", "--quiet", up.split("/", 1)[0]], timeout=8)
+            seen[up] = time.time()
+            save_json(stamp, seen)
+    ahead, behind = count_pair("HEAD...@{u}")
+    if not behind:
+        return None
+    return {"up": up, "ahead": ahead, "behind": behind, "files": run_git(["diff", "--name-only", "HEAD...@{u}"])[1].splitlines()}
+
+def upstream_line(me):
+    """The footer's UPSTREAM line: the incoming files sorted into 'inside your scope', project memory and other files. Nothing is pulled."""
+    st = upstream_status()
+    if not st:
+        return
+    mine = ((((load_json(sessions_path(), {}) or {}).get(me) or {}).get("scope") or {}).get("paths", [])) if me else []
+    inside = [f for f in st["files"] if any(scope_path_covers(f, e) for e in mine)]
+    memory = [f for f in st["files"] if f.startswith(WORKSPACE_NOTES_DIR + "/") and f not in inside]
+    other = [f for f in st["files"] if f not in inside and f not in memory]
+    few = lambda items: ", ".join(items[:6]) + (" +%d more" % (len(items) - 6) if len(items) > 6 else "")
+    parts = (["INSIDE YOUR SCOPE: " + few(inside)] if inside else []) + (["project memory: " + few(memory)] if memory else []) + (["other files: " + few(other)] if other else [])
+    print("=== UPSTREAM: %s has %d commit(s) this checkout lacks%s | incoming changes: %s | nothing was pulled; %s ===" % (st["up"], st["behind"], " and this checkout has %d the upstream lacks (diverged)" % st["ahead"] if st["ahead"] else "", "; ".join(parts) or "none in files", "if INSIDE YOUR SCOPE is listed stop changing those files and tell the user, otherwise bring them in with @GIT_PULL once your work is committed (fast-forward only)" if not st["ahead"] else "a fast-forward is impossible: tell the user, and @GIT_PULL will name any conflict"))
 
 def run_git_network(args, timeout=120):
     """git commands that reach the network: no terminal prompt (a missing credential fails at once instead of hanging the run), a time limit, and never a forced update. -> (returncode, stdout, stderr)"""
@@ -1597,6 +1643,47 @@ def run_repo_ops(ops):
             else:
                 print("  [PUSH FAILED] %s" % (text.splitlines()[-1] if text else "exit code %d" % rc))
                 return False
+        elif op["kind"] == "pull":
+            rc_up, up, _ = run_git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+            why = "this branch has no upstream to pull from (the first @GIT_PUSH sets one)" if rc_up != 0 else repo_guard("pulling")
+            if why:
+                print("  [PULL REFUSED] %s. Nothing changed." % why)
+                return False
+            rc, out, err = run_git_network(["fetch", "--quiet", up.split("/", 1)[0]], timeout=60)
+            if rc:
+                print("  [PULL FAILED] could not fetch %s: %s. Nothing changed." % (up, (err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                return False
+            ahead, behind = count_pair("HEAD...@{u}")
+            if not behind:
+                print("  [PULL] already up to date with %s" % up)
+                continue
+            files = run_git(["diff", "--name-only", "HEAD...@{u}"])[1].splitlines()
+            if ahead:
+                rc, out, _ = run_git(["merge-tree", "--write-tree", "--name-only", "HEAD", up])
+                if rc == 1:
+                    names = []
+                    for line in out.splitlines()[1:]:
+                        if not line.strip():
+                            break
+                        names.append(line.strip())
+                    verdict = "merging them would conflict in: %s" % ", ".join(names[:8])
+                elif rc == 0:
+                    verdict = "merging them would be clean"
+                else:
+                    verdict = "this git cannot preview the merge"
+                print("  [PULL REFUSED] this branch is %d ahead and %d behind %s, so a fast-forward is impossible (%s). Nothing changed: tell the user, who decides between a merge and a rebase." % (ahead, behind, up, verdict))
+                return False
+            # Comment (invariant): a pull is a fast-forward of a clean checkout or nothing, so it never merges and never touches local work; the old position is bookmarked first
+            bookmark = "refs/llm_harness/backup/" + time.strftime("%Y%m%d-%H%M%S")
+            run_git(["update-ref", bookmark, "HEAD"])
+            rc, out, err = run_git(["merge", "--ff-only", up])
+            if rc:
+                print("  [PULL FAILED] %s. Nothing changed." % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                return False
+            mine = ((((load_json(sessions_path(), {}) or {}).get(CURRENT_SESSION) or {}).get("scope") or {}).get("paths", [])) if CURRENT_SESSION else []
+            hit = [f for f in files if any(scope_path_covers(f, e) for e in mine)]
+            print("  [PULLED] fast-forwarded %d commit(s) from %s; %d file(s) changed: %s%s" % (behind, up, len(files), ", ".join(files[:8]) + (" +%d more" % (len(files) - 8) if len(files) > 8 else ""), "; INSIDE YOUR SCOPE: " + ", ".join(hit[:6]) if hit else ""))
+            print("  -> where this branch was is bookmarked as %s; going back is the user's command (a hard reset), and @UNDO does not cover a pull" % bookmark)
     return True
 
 def git_policy():
@@ -4097,6 +4184,8 @@ def print_footer(state):
             _, br, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
             prot = pol.get("protected") or []
             print("=== GIT POLICY: on branch %s%s | protected: %s%s ===" % (br, " (protected: no direct commits here)" if br in prot else "", ", ".join(prot) or "none", " | branch names: " + pol["branches"] if pol.get("branches") else ""))
+    if rules:
+        upstream_line(CURRENT_SESSION)
     if CURRENT_SESSION and (load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("idle_runs", 0) >= LOOP_AT:
         print("=== LOOP CHECK: this chat's last %d scripts did nothing (footer only). The user may be pasting in a loop: send no manifest and no script, and ask in a friendly line whether they are still there and what they want next ===" % LOOP_AT)
     if rules:
@@ -4297,6 +4386,7 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_WORKTREE add <branch> [from <base>] | list | remove <branch or path>   a separate folder per branch (../<project>.<branch>) so chats on different branches never share files; continue there with @WORKSPACE <path>
   @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true
   @GIT_PUSH [tag <name>]                          publishes the current branch's commits to its upstream (origin the first time), or one tag; never forced, never a protected branch (git.json); a rejected push is reported, not overridden
+  @GIT_PULL                                       fast-forwards a clean checkout to its upstream (bookmarking where it was); when the branches have diverged it only reports whether a merge would conflict, and changes nothing. The footer's UPSTREAM line says what is incoming
 """
 
 def print_help(name, shell):

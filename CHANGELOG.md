@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- The footer says `UPSTREAM` when the branch's remote has commits this checkout lacks (fetched at most once a minute, quietly; `LLM_HARNESS_FETCH=off` or a number of seconds), sorting the incoming files into inside your scope, project memory and other files. `@GIT_PULL` fast-forwards a clean checkout and bookmarks where it was; a diverged branch is only reported (a dry-run merge says whether it would conflict) and nothing changes.
+
 - `@RUN` allows the reading forms of `git tag` (listing) and `git stash` (`list`, `show`); creating or deleting a tag and stashing are still refused.
 
 - On Windows, when the terminal is still the window in front at the end of a run, the output is copied at once without the question (also after a replay, or with `LLM_HARNESS_COPY=auto`); a terminal in the background still waits for a key, and `LLM_HARNESS_COPY=ask` always asks.
