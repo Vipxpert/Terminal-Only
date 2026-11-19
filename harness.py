@@ -1488,7 +1488,8 @@ def upstream_status():
         seen = load_json(stamp, {}) or {}
         if time.time() - seen.get(up, 0) >= every:
             # Comment (decision): the time is stored even when the fetch fails, so being offline costs one short wait per interval, not one per script
-            run_git_network(["fetch", "--quiet", up.split("/", 1)[0]], timeout=8)
+            # Comment (constraint): with several accounts signed in, Git Credential Manager opens an account chooser on every fetch; a fetch nobody asked for must never do that, so it runs quiet and is simply skipped when it cannot authenticate by itself
+            run_git_network(["fetch", "--quiet", up.split("/", 1)[0]], timeout=8, quiet=True)
             seen[up] = time.time()
             save_json(stamp, seen)
     ahead, behind = count_pair("HEAD...@{u}")
@@ -1511,10 +1512,10 @@ def upstream_line(me):
         parts.append("the harness's merge rules for notes and verdicts are not in .gitattributes yet (README: Several chats), so merging that memory may leave conflict markers")
     print("=== UPSTREAM: %s has %d commit(s) this checkout lacks%s | incoming changes: %s | nothing was pulled; %s ===" % (st["up"], st["behind"], " and this checkout has %d the upstream lacks (diverged)" % st["ahead"] if st["ahead"] else "", "; ".join(parts) or "none in files", "if INSIDE YOUR SCOPE is listed stop changing those files and tell the user, otherwise bring them in with @GIT_PULL once your work is committed (fast-forward only)" if not st["ahead"] else "a fast-forward is impossible: tell the user, and @GIT_PULL will name any conflict"))
 
-def run_git_network(args, timeout=120):
-    """git commands that reach the network: no terminal prompt (a missing credential fails at once instead of hanging the run), a time limit, and never a forced update. -> (returncode, stdout, stderr)"""
+def run_git_network(args, timeout=120, quiet=False):
+    """git commands that reach the network: no terminal prompt (a missing credential fails at once instead of hanging the run), a time limit, and never a forced update. quiet=True is for work nobody asked for (the automatic fetch): it also asks Git Credential Manager not to open its sign-in or account window (GCM_INTERACTIVE=never), so a background fetch is skipped instead of interrupting the user. -> (returncode, stdout, stderr)"""
     try:
-        r = subprocess.run(["git"] + list(args), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+        r = subprocess.run(["git"] + list(args), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=dict(os.environ, GIT_TERMINAL_PROMPT="0", **({"GCM_INTERACTIVE": "never"} if quiet else {})))
         return r.returncode, r.stdout.strip("\n"), r.stderr.strip()
     except subprocess.TimeoutExpired:
         return 124, "", "timed out after %d s (a credential prompt, or a slow connection)" % timeout

@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- The automatic fetch behind the `UPSTREAM` line asks Git Credential Manager not to open a sign-in or account window (`GCM_INTERACTIVE=never`) and is skipped when it cannot authenticate by itself; a fetch you ask for with `@GIT_PULL` may still ask.
+
 ## 3.10
 
 - The harness's committed notes and verdicts merge by themselves: with the two `.gitattributes` lines (`@GIT_INIT` writes them), git merges `notes.md` by note id (both sides' new notes kept, a clashing id renumbered) and `verdicts.json` by key (the newer wins), through a merge driver the harness registers in each clone; the UPSTREAM line hints when incoming memory arrives without the lines.
