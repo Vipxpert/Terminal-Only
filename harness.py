@@ -630,7 +630,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -861,6 +861,8 @@ def parse_payload(txt):
         elif d == "GIT_TAG":
             name, _, msg = arg.partition("|")
             P["git"].append({"kind": "tag", "name": name.strip(), "msg": msg.strip()})
+        elif d == "GIT_PUSH":
+            P["git"].append({"kind": "push", "what": arg.strip()})
         elif d == "GIT_COMMIT":
             j = i + 1
             while j < n and lines[j].rstrip() != "@END_GIT_COMMIT" and not lines[j].lstrip().startswith("@"):
@@ -1416,7 +1418,7 @@ def git_status_report():
 MEMORY_FILES = {p: p for p in (WORKSPACE_NOTES_DIR + "/goal.md", WORKSPACE_NOTES_DIR + "/notes.md", WORKSPACE_NOTES_DIR + "/verdicts.json", ".gitignore")}
 
 COMMIT_TYPES = ("build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test")
-REPO_KINDS = ("branch", "worktree", "tag")
+REPO_KINDS = ("branch", "worktree", "tag", "push")
 ACTIVE_S = 15 * 60
 
 def repo_guard(what, clean=True, alone=True):
@@ -1450,6 +1452,16 @@ def new_branch_problem(name, policy):
     if pattern and name not in (policy.get("protected") or []) and not re.match(pattern, name):
         return "%s does not match this project's branch pattern %s" % (name, pattern)
     return ""
+
+def run_git_network(args, timeout=120):
+    """git commands that reach the network: no terminal prompt (a missing credential fails at once instead of hanging the run), a time limit, and never a forced update. -> (returncode, stdout, stderr)"""
+    try:
+        r = subprocess.run(["git"] + list(args), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+        return r.returncode, r.stdout.strip("\n"), r.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return 124, "", "timed out after %d s (a credential prompt, or a slow connection)" % timeout
+    except OSError:
+        return 127, "", "git not found"
 
 def run_repo_ops(ops):
     """@GIT_BRANCH, @GIT_WORKTREE and @GIT_TAG, each through repo_guard; merging and pushing stay with the user."""
@@ -1540,7 +1552,51 @@ def run_repo_ops(ops):
             if rc:
                 print("  [TAG FAILED] %s. Nothing changed." % (err or out))
                 return False
-            print("  [TAGGED] %s at %s\n  -> pushing a release tag can start a deployment, so that is the user's command: git push origin %s" % (name, run_git(["rev-parse", "--short", "HEAD"])[1], name))
+            print("  [TAGGED] %s at %s\n  -> publish it with @GIT_PUSH tag %s once the user says so (a pushed release tag can start a deployment)" % (name, run_git(["rev-parse", "--short", "HEAD"])[1], name))
+        elif op["kind"] == "push":
+            what = (op.get("what") or "").strip()
+            _, branch, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+            rc_up, up, _ = run_git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+            remotes = run_git(["remote"])[1].split()
+            remote = up.split("/", 1)[0] if rc_up == 0 else ("origin" if "origin" in remotes else (remotes[0] if len(remotes) == 1 else ""))
+            tag = what[4:].strip() if what.lower().startswith("tag ") else ""
+            why = ""
+            if what and not tag:
+                why = "use '@GIT_PUSH' for the current branch, or '@GIT_PUSH tag <name>' for one tag"
+            elif not remote:
+                why = "there is no remote to push to (git remote add origin <url>)"
+            elif tag:
+                if run_git(["rev-parse", "--verify", "-q", "refs/tags/" + tag])[0] != 0:
+                    why = "there is no tag %s here; create it with @GIT_TAG first" % tag
+            elif branch == "HEAD":
+                why = "HEAD is detached; switch to a branch first"
+            elif branch in (policy.get("protected") or []):
+                why = "%s is a protected branch (git.json): push a feature branch and merge it by pull request" % branch
+            why = why or repo_guard("pushing", clean=False, alone=False)
+            if why:
+                print("  [PUSH REFUSED] %s. Nothing was pushed." % why)
+                return False
+            ahead = []
+            if tag:
+                args, shown = ["push", remote, "refs/tags/" + tag], "tag %s -> %s" % (tag, remote)
+            else:
+                ahead = run_git(["log", "--oneline", "@{u}..HEAD"])[1].splitlines() if rc_up == 0 else []
+                if rc_up == 0 and not ahead:
+                    print("  [PUSH] nothing to push: %s is level with %s" % (branch, up))
+                    continue
+                args, shown = ["push"] + ([] if rc_up == 0 else ["-u"]) + [remote, branch], "%s -> %s/%s" % (branch, remote, branch)
+            # Comment (invariant): a push is never forced and never takes a refspec from the script; a rejected push is reported, not overridden
+            rc, out, err = run_git_network(args)
+            text = "\n".join(x for x in (out, err) if x)
+            if rc == 0:
+                print("  [PUSHED] %s%s" % (shown, " (%d commit(s): %s)" % (len(ahead), ", ".join(c.split()[0] for c in ahead[:6])) if ahead else ""))
+                print("  -> published; take it back with a revert commit, never a forced push")
+            elif re.search(r"rejected|non-fast-forward|fetch first", text):
+                print("  [PUSH REJECTED] the remote has commits this branch lacks (someone pushed first). Nothing was forced: bring them in first, then push again.")
+                return False
+            else:
+                print("  [PUSH FAILED] %s" % (text.splitlines()[-1] if text else "exit code %d" % rc))
+                return False
     return True
 
 def git_policy():
@@ -2027,7 +2083,7 @@ def run_command(cmd, timeout, shell):
     """Run one shell command in the workspace with no stdin; print head and tail of its combined output, exit code and time."""
     print("\n=== RUN: %s ===" % cmd)
     if GIT_WRITE_RE.search(cmd):
-        print("  [REFUSED] git commands that change history or the working tree go through @GIT_COMMIT / @GIT_FOLD; pushing is left to the user.")
+        print("  [REFUSED] git commands that change history or the working tree go through @GIT_COMMIT / @GIT_FOLD; publishing goes through @GIT_PUSH.")
         return
     if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake)\b", cmd, re.I):
         print("  [REFUSED] --grant, --revoke, --release and --unbrake are the user's own commands, typed in their terminal; a script never runs them.")
@@ -3570,6 +3626,8 @@ def copy_to_clipboard(text):
     except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)
 
+AUTO_COPY = []
+
 def ask_key(prompt, keys, aliases=None):
     """Wait at the terminal for one of the keys in `keys` (lowercase letters), without needing Enter, and return it; `aliases` maps other characters to a key (Enter to "c", say); Esc and Ctrl-C return the last key of `keys` (the way out) and every other key is ignored. None when no one is there (output captured, no console, or prompts turned off)."""
     if os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
@@ -3634,7 +3692,8 @@ def offer_copy():
     text = text() if callable(text) else ""
     if not text.strip():
         return
-    if ask_key("\nPress C or Enter to copy this output to the clipboard, X to skip: ", "cx", {"\r": "c", "\n": "c"}) != "c":
+    # Comment (decision): a replay is instant, so there is nothing to wait for: it copies at once, without the question
+    if not AUTO_COPY and ask_key("\nPress C or Enter to copy this output to the clipboard, X to skip: ", "cx", {"\r": "c", "\n": "c"}) != "c":
         return
     ok, how = copy_to_clipboard(text)
     print("  [COPIED] %d characters via %s. Paste them into the chat." % (len(text), how) if ok else "  [NOT COPIED] %s. Select the output by hand." % how)
@@ -4169,7 +4228,8 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_FOLD <n>                                   first git line only: reopens the last n unpushed commits so the @GIT_COMMIT blocks after it re-slice them
   @GIT_BRANCH <name> [from <base>]                switches to a branch, or creates it (from <base>, default the current one); refused with local changes, an unfinished git operation, or other chats active in this checkout
   @GIT_WORKTREE add <branch> [from <base>] | list | remove <branch or path>   a separate folder per branch (../<project>.<branch>) so chats on different branches never share files; continue there with @WORKSPACE <path>
-  @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true; pushing it is the user's command
+  @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true
+  @GIT_PUSH [tag <name>]                          publishes the current branch's commits to its upstream (origin the first time), or one tag; never forced, never a protected branch (git.json); a rejected push is reported, not overridden
 """
 
 def print_help(name, shell):
@@ -4375,6 +4435,7 @@ def main():
         prior = None if P["repeatable"] else load_json(side_run_path(raw_txt), None)
         if prior:
             print("  [REPLAY] this @SIDE script already ran and this paste is identical, so nothing was run again. Its saved output:")
+            AUTO_COPY.append(True)
             print(prior.get("output", "").rstrip("\n"))
             return print_footer(state)
         print("  [SIDE] runs outside the numbering: no script number used, nothing journaled")
@@ -4391,6 +4452,7 @@ def main():
             prior, P["again"] = None, True
         if prior:
             print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again. Its saved output:" % prior.get("id"))
+            AUTO_COPY.append(True)
             print(prior.get("output", "").rstrip("\n"))
             print("\n  -> to run it again on purpose, change its title; at a terminal the user is asked instead: replay, undo, or execute again.")
             return print_footer(state)
@@ -4412,6 +4474,7 @@ def main():
             print("  [ASSIGNED] " + P["id"])
         elif same:
             print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again. Its saved output:" % P["id"])
+            AUTO_COPY.append(True)
             print(prior.get("output", "").rstrip("\n"))
             return print_footer(state)
         elif prior or not read_only(P):

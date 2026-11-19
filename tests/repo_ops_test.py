@@ -67,7 +67,7 @@ def main():
     write("CHANGELOG.md", "# Changes\n\n## 1.0.0\n- first\n")
     run(None, "@GIT_COMMIT docs: changelog for 1.0.0", "/CHANGELOG.md", "@END_GIT_COMMIT")
     out = run(None, "@GIT_TAG v1.0.0 | first release")
-    check("a release tag is created, and pushing it is left to the user", "[TAGGED] v1.0.0" in out and "git push origin v1.0.0" in out and git("tag") == "v1.0.0", out)
+    check("a release tag is created, and pushing it waits for the user's say-so", "[TAGGED] v1.0.0" in out and "@GIT_PUSH tag v1.0.0" in out and git("tag") == "v1.0.0", out)
     out = run(None, "@GIT_TAG v1.0.0")
     check("an existing tag is refused", "already exists" in out, out)
     run(None, "@GIT_BRANCH feature/x")

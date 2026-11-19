@@ -22,11 +22,11 @@ def script():
     return "@SCRIPT [P: step %d]\n@WORKSPACE %s\n@GREP nothing\n" % (STEP[0], WS)
 
 
-def pty_run(answer):
+def pty_run(answer, marker=b"to copy this output", text=None):
     import pty, select
     path = os.path.join(FAKE, "script%d.txt" % STEP[0])
     with open(path, "w") as f:
-        f.write(script())
+        f.write(text or script())
     env = dict(os.environ, PATH=FAKE, LLM_TEST_CLIP=CLIP)
     env.pop("LLM_HARNESS_NO_COPY", None)
     env.pop("LLM_HARNESS_NO_PROMPT", None)
@@ -46,7 +46,7 @@ def pty_run(answer):
         if not chunk:
             break
         buf += chunk
-        if not sent and b"to copy this output" in buf:
+        if not sent and marker in buf:
             os.write(master, answer)
             sent = True
     os.waitpid(pid, 0)
@@ -91,6 +91,14 @@ def main():
     os.remove(CLIP)
     out = pty_run(b"\x1b")
     check("Esc skips the copy too", "[COPIED]" not in out and not os.path.exists(CLIP), out)
+    STEP[0] += 1
+    again = "@SCRIPT [C: replay %d]\n@WORKSPACE %s\n@NEW_FILE /marker.txt\nhello\n@END_NEW_FILE\n" % (STEP[0], WS)
+    subprocess.run([sys.executable, HARNESS], input=again.encode(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60, env=dict(os.environ))
+    if os.path.exists(CLIP):
+        os.remove(CLIP)
+    out = pty_run(b"\n", marker=b"replay its saved output", text=again)
+    copied = open(CLIP, "rb").read().decode("utf-8", "replace") if os.path.exists(CLIP) else ""
+    check("a replay copies at once, without the question", "[COPIED]" in out and "[REPLAY]" in copied and "Press C" not in out, out + copied)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 
