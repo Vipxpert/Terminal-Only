@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- A push or pull you ask for names the pinned account first (`[ACCOUNT] signing in to github.com as <account> ...`), so a sign-in window that opens can be answered with the right account.
+
 - The account listing and the first-push question show one account per line with the pinned one marked, and `[PINNED]` is one short line.
 - A chat's address is required at a terminal (an empty or wrong answer asks again; sessions that skipped it before are asked on their next script), and the new `@CHAT_LINK <address>` replaces a wrong one: the user gives the address, the chat sends it.
 

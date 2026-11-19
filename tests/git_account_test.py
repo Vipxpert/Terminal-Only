@@ -139,6 +139,12 @@ exec "REAL_GIT" "$@"
     git(proj, "config", "--local", "--unset", key_pin)
     out = pressed(b"x", ("@GIT_PUSH",), b"Several accounts are signed in")
     check("X decides later and pins nothing", "[PINNED]" not in out and git(proj, "config", "--local", "--get", key_pin) == "", out)
+    git(proj, "config", "--local", key_pin, "bob")
+    out = run(proj, "@GIT_PUSH")
+    check("a push says which account it signs in with, so a sign-in window can be answered correctly", "[ACCOUNT] signing in to github.com as bob (pinned for this project)" in out and "authorize bob in the browser" in out, out)
+    git(proj, "config", "--local", "--unset", key_pin)
+    out = run(proj, "@GIT_PUSH")
+    check("with nothing pinned the push does not name an account", "[ACCOUNT]" not in out, out)
     print("test workspace: " + BASE)
     sys.exit(0 if all(RESULTS) else 1)
 

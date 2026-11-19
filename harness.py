@@ -1517,6 +1517,15 @@ def offer_account_pin():
         run_git(["config", "--local", key, shown[int(pressed) - 1]])
         print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], shown[int(pressed) - 1]))
 
+def announce_account():
+    """Before a push or pull the user asked for: say which account is pinned, so a sign-in window that opens can be answered with the right one (the browser page does not say which account it is for)."""
+    info = remote_login_info()
+    if not info or not info["scheme"]:
+        return
+    pinned = run_git(["config", "--get", "credential.%s://%s.username" % (info["scheme"], info["host"])])[1].strip()
+    if pinned:
+        print("  [ACCOUNT] signing in to %s as %s (pinned for this project); if a sign-in window opens, authorize %s in the browser" % (info["host"], pinned, pinned))
+
 def account_hint():
     """One footer line when the automatic fetch could not sign in, the remote is https and no account is pinned: with several accounts that is the usual reason, and a single pin fixes it for this project on this machine."""
     if MODE != "git" or not (load_json(os.path.join(SHARED_DIR, "fetch.json"), {}) or {}).get("_signin"):
@@ -1707,6 +1716,7 @@ def run_repo_ops(ops):
                     continue
                 args, shown = ["push"] + ([] if rc_up == 0 else ["-u"]) + [remote, branch], "%s -> %s/%s" % (branch, remote, branch)
             offer_account_pin()
+            announce_account()
             # Comment (invariant): a push is never forced and never takes a refspec from the script; a rejected push is reported, not overridden
             rc, out, err = run_git_network(args)
             text = "\n".join(x for x in (out, err) if x)
@@ -1726,6 +1736,7 @@ def run_repo_ops(ops):
                 print("  [PULL REFUSED] %s. Nothing changed." % why)
                 return False
             offer_account_pin()
+            announce_account()
             rc, out, err = run_git_network(["fetch", "--quiet", up.split("/", 1)[0]], timeout=60)
             if rc:
                 print("  [PULL FAILED] could not fetch %s: %s. Nothing changed." % (up, (err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
