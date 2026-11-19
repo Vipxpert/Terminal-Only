@@ -55,6 +55,7 @@
     ├── git_push_test.py (@GIT_PUSH publishes the branch or one tag to a remote; never forced, never a protected branch; a rejected push is reported; a raw git push is still refused)
     ├── git_reads_test.py (git tag listings and git stash list/show are allowed through @RUN; creating or deleting a tag and a plain stash are still refused)
     ├── upstream_test.py (The footer's UPSTREAM line sorts incoming files without changing any; @GIT_PULL fast-forwards a clean checkout with a bookmark and refuses a dirty, diverged or upstream-less branch; an unreachable remote stays quiet)
+    ├── memory_merge_test.py (notes.md merges by note id and verdicts.json by key through a git merge driver the harness registers; @GIT_INIT writes the .gitattributes lines; incoming memory without them gets a hint)
     ├── hints_test.py (Refusal hints point at the stated reason; a space-separated @SCOPE gets the comma hint; no tree reminder for names the trees already describe)
     ├── undo_file_test.py (@UNDO <script> | /path restores only that file, also across a range; scripts that never touched it are passed over)
     ├── changed_rules_test.py (A rule that changed since a chat last saw it is marked [CHANGED] once; new chats and runs without a session see no marks)
