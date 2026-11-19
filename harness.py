@@ -630,7 +630,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -865,6 +865,8 @@ def parse_payload(txt):
             P["git"].append({"kind": "push", "what": arg.strip()})
         elif d == "GIT_PULL":
             P["git"].append({"kind": "pull"})
+        elif d == "GIT_ACCOUNT":
+            P["git"].append({"kind": "account", "arg": arg.strip()})
         elif d == "GIT_COMMIT":
             j = i + 1
             while j < n and lines[j].rstrip() != "@END_GIT_COMMIT" and not lines[j].lstrip().startswith("@"):
@@ -1429,7 +1431,7 @@ def git_status_report():
 MEMORY_FILES = {p: p for p in (WORKSPACE_NOTES_DIR + "/goal.md", WORKSPACE_NOTES_DIR + "/notes.md", WORKSPACE_NOTES_DIR + "/verdicts.json", ".gitignore")}
 
 COMMIT_TYPES = ("build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test")
-REPO_KINDS = ("branch", "worktree", "tag", "push", "pull")
+REPO_KINDS = ("branch", "worktree", "tag", "push", "pull", "account")
 ACTIVE_S = 15 * 60
 
 def repo_guard(what, clean=True, alone=True):
@@ -1464,6 +1466,36 @@ def new_branch_problem(name, policy):
     if pattern and name not in (policy.get("protected") or []) and not re.match(pattern, name):
         return "%s does not match this project's branch pattern %s" % (name, pattern)
     return ""
+
+def parse_cmdkey_accounts(text, host):
+    """Account names from 'cmdkey /list' output: Git Credential Manager keeps one entry per account as git:https://<account>@<host>. Reading the name from the target keeps this independent of the Windows display language."""
+    return list(dict.fromkeys(m.group(1) for m in re.finditer(r"git:https?://([^@/\s]+)@%s\b" % re.escape(host), text or "", re.I)))
+
+def remote_login_info():
+    """The remote this branch pushes to (its upstream's, else origin) as {url, scheme, host}; scheme is None for SSH and other non-http remotes; None when there is no remote."""
+    rc, up, _ = run_git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    rc2, url, _ = run_git(["remote", "get-url", up.split("/", 1)[0] if rc == 0 else "origin"])
+    if rc2 != 0 or not url.strip():
+        return None
+    m = re.match(r"^(https?)://(?:[^@/]+@)?([^/:]+)", url.strip())
+    return {"url": url.strip(), "scheme": m.group(1) if m else None, "host": m.group(2) if m else ""}
+
+def known_accounts(host):
+    """(accounts, source): the signed-in accounts for a host. GitHub is asked through Git Credential Manager ('github list'); failing that, on Windows, the git entries of the credential list."""
+    found = []
+    if host == "github.com":
+        rc, out, _ = run_git(["credential-manager", "github", "list"])
+        if rc == 0:
+            found = [l.strip() for l in out.splitlines() if l.strip()]
+            if found:
+                return list(dict.fromkeys(found)), "Git Credential Manager"
+    if os.name == "nt":
+        rc, out, _ = run_tool(["cmdkey", "/list"])
+        if rc == 0:
+            found = parse_cmdkey_accounts(out, host)
+            if found:
+                return found, "the Windows credential list"
+    return [], ""
 
 def count_pair(spec):
     """(commits only on the left, commits only on the right) for a 'A...B' range; (0, 0) when git cannot say."""
@@ -1697,6 +1729,46 @@ def run_repo_ops(ops):
             hit = [f for f in files if any(scope_path_covers(f, e) for e in mine)]
             print("  [PULLED] fast-forwarded %d commit(s) from %s; %d file(s) changed: %s%s" % (behind, up, len(files), ", ".join(files[:8]) + (" +%d more" % (len(files) - 8) if len(files) > 8 else ""), "; INSIDE YOUR SCOPE: " + ", ".join(hit[:6]) if hit else ""))
             print("  -> where this branch was is bookmarked as %s; going back is the user's command (a hard reset), and @UNDO does not cover a pull" % bookmark)
+        elif op["kind"] == "account":
+            info = remote_login_info()
+            if not info:
+                print("  [GIT ACCOUNT] this repository has no remote to sign in to")
+                continue
+            if not info["scheme"]:
+                print("  [GIT ACCOUNT] %s is not an https remote (an SSH key picks the account there), so there is nothing to pin" % info["url"])
+                continue
+            key = "credential.%s://%s.username" % (info["scheme"], info["host"])
+            pinned = run_git(["config", "--local", "--get", key])[1].strip()
+            accounts, source = known_accounts(info["host"])
+            want = (op.get("arg") or "").strip()
+            if want.lower() == "clear":
+                if pinned:
+                    run_git(["config", "--local", "--unset", key])
+                print("  [GIT ACCOUNT] %s" % ("cleared: this project no longer pins an account for %s" % info["host"] if pinned else "nothing was pinned for %s" % info["host"]))
+                continue
+            if want:
+                match = next((a for a in accounts if a.lower() == want.lower()), None)
+                if accounts and not match:
+                    print("  [GIT ACCOUNT REFUSED] %s is not among the accounts signed in for %s (%s); add it first with: git credential-manager github login. Nothing changed." % (want, info["host"], ", ".join(accounts)))
+                    return False
+                pick = match or want
+                run_git(["config", "--local", key, pick])
+                print("  [PINNED] this project signs in to %s as %s (kept in this clone's .git/config, so other projects are unaffected)" % (info["host"], pick))
+                continue
+            print("  [GIT ACCOUNT] sign-in for %s (%s)" % (info["host"], info["url"]))
+            print("  signed-in accounts%s: %s" % (" via " + source if source else "", "  ".join("%d. %s" % (i + 1, a) for i, a in enumerate(accounts)) if accounts else "none found"))
+            print("  pinned for this project: %s" % (pinned if pinned else "none, so git may open the account chooser whenever it needs to sign in"))
+            who = "%s <%s>" % (run_git(["config", "user.name"])[1].strip() or "(no name)", run_git(["config", "user.email"])[1].strip() or "(no email)")
+            print("  commit author here: %s (separate from the sign-in account: set with git config user.name / user.email in this folder)" % who)
+            if accounts:
+                shown = accounts[:9]
+                pressed = ask_key("\nPress 1-%d to pin that account for this project, X to leave it as it is: " % len(shown), "".join(str(i + 1) for i in range(len(shown))) + "x")
+                if pressed and pressed != "x":
+                    pick = shown[int(pressed) - 1]
+                    run_git(["config", "--local", key, pick])
+                    print("  [PINNED] this project signs in to %s as %s (kept in this clone's .git/config, so other projects are unaffected)" % (info["host"], pick))
+                elif pressed is None:
+                    print("  -> pin one with @GIT_ACCOUNT <account>, or clear it with @GIT_ACCOUNT clear")
     return True
 
 def git_policy():
@@ -4400,6 +4472,7 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true
   @GIT_PUSH [tag <name>]                          publishes the current branch's commits to its upstream (origin the first time), or one tag; never forced, never a protected branch (git.json); a rejected push is reported, not overridden
   @GIT_PULL                                       fast-forwards a clean checkout to its upstream (bookmarking where it was); when the branches have diverged it only reports whether a merge would conflict, and changes nothing. The footer's UPSTREAM line says what is incoming
+  @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager) and, at a terminal, lets the user press a number to pin one for this project; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
 """
 
 def print_help(name, shell):
