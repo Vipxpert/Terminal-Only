@@ -45,7 +45,7 @@ def run_tty(text, keys, limit=20):
                 break
             out += chunk
         tail = out[mark:].decode("utf-8", "replace").rstrip(" ")
-        if answers and (tail.endswith(">") or tail.endswith("(y/n)") or tail.endswith("skip):")):
+        if answers and (tail.endswith(">") or tail.endswith("(y/n)") or tail.endswith("bar:") or tail.endswith("again:") or tail.endswith("one):") or tail.endswith("address:")):
             os.write(fd, (answers.pop(0) + "\n").encode())
             mark = len(out)
     else:
@@ -66,7 +66,7 @@ def main():
     with open(os.path.join(WS, "a.txt"), "w") as f:
         f.write("first line here\n")
     out = run("alpha | work on a", "@SCOPE edit a | a.txt")
-    check("without a terminal no address question is asked", "has no chat address yet" not in out, out)
+    check("without a terminal no address question is asked", "needs its address" not in out, out)
     out = user("--link", "alpha", link)
     check("the user's --link command stores a chat address", "LINKED: session alpha" in out, out)
     out = user("--link", "nobody", link)
@@ -81,14 +81,34 @@ def main():
     else:
         script = lambda n: "\n".join(["@SCRIPT [P: look %d]" % n, "@SESSION gamma | g", "@WORKSPACE " + WS, "@GREP first line", ""])
         out = run_tty(script(1), link.replace("alpha-123", "gamma") + "\n")
-        check("at a terminal a new session is asked once for its chat address", "has no chat address yet" in out, out)
+        check("at a terminal a new session is asked once for its chat address", "needs its address" in out, out)
         out = run_tty(script(2), "")
-        check("the address is kept and not asked for again", "has no chat address yet" not in out and "chat: " + link.replace("alpha-123", "gamma") in out, out)
+        check("the address is kept and not asked for again", "needs its address" not in out and "chat: " + link.replace("alpha-123", "gamma") in out, out)
         delta = lambda n: "\n".join(["@SCRIPT [P: delta %d]" % n, "@SESSION delta | d", "@WORKSPACE " + WS, "@GREP first line", ""])
-        out = run_tty(delta(1), "not an address\n")
+        out = run_tty(delta(1), "not an address\n" * 5)
         check("an answer that is not a web address is not saved", "[NOT SAVED]" in out and "chat: not an address" not in out, out)
-        out = run_tty(delta(2), "\n")
-        check("after an invalid answer the question comes again", "has no chat address yet" in out, out)
+        out = run_tty(delta(2), "\n" * 5)
+        check("after an invalid answer the question comes again", "needs its address" in out, out)
+    out = run("alpha | work on a", "@CHAT_LINK https://chat.example/c/alpha-NEW")
+    check("@CHAT_LINK replaces a wrong address and says what it replaced", "[CHAT LINK] alpha -> https://chat.example/c/alpha-NEW" in out and "(was %s)" % LINK in out, out)
+    out = run("beta | other work", "@SCOPE overlap two | a.txt")
+    check("the new address is the one other chats show", "(chat: https://chat.example/c/alpha-NEW)" in out and LINK not in out, out)
+    out = run("alpha | work on a", "@CHAT_LINK banana")
+    check("an address that is not a web address is refused and the old one stays", "[CHAT LINK REFUSED]" in out and "chat: https://chat.example/c/alpha-NEW" in run("beta | other work", "@SCOPE overlap three | a.txt"), out)
+    out = run("alpha | work on a", "@CHAT_LINK")
+    check("without an address and without a terminal it says what is on file and how to change it", "current: https://chat.example/c/alpha-NEW" in out and "@CHAT_LINK <address>" in out, out)
+    STEP[0] += 1
+    p = subprocess.run([sys.executable, HARNESS], input=("@SCRIPT [C: step %d]\n@WORKSPACE %s\n@CHAT_LINK https://chat.example/c/x\n" % (STEP[0], WS)).encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    text = p.stdout.decode("utf-8", "replace")
+    check("@CHAT_LINK needs a session", "needs an @SESSION line" in text, text)
+    if os.name != "nt":
+        scr = lambda n, *extra: "\n".join(["@SCRIPT [P: look %d]" % n, "@SESSION delta | d", "@WORKSPACE " + WS] + list(extra) + ["@GREP first line", ""])
+        out = run_tty(scr(10), "\nnope\nhttps://chat.example/c/delta\n")
+        check("at a terminal the address cannot be skipped: Enter and a wrong answer ask again", out.count("not a web address") >= 2 and "needs its address" in out, out)
+        out = run_tty(scr(11), "")
+        check("once given it is kept", "needs its address" not in out and "chat: https://chat.example/c/delta" in out, out)
+        out = run_tty(scr(12, "@CHAT_LINK"), "https://chat.example/c/delta2\n")
+        check("a bare @CHAT_LINK at a terminal asks for the new address", "[CHAT LINK] delta -> https://chat.example/c/delta2" in out, out)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 

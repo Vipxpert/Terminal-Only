@@ -69,9 +69,9 @@ exec "REAL_GIT" "$@"
 
     key = "credential.https://github.com.username"
     out = run(proj, "@GIT_ACCOUNT")
-    check("the accounts are listed, with what is pinned and how to pin", "1. alice  2. bob" in out and "via Git Credential Manager" in out and "none, so git may open the account chooser" in out and "pin one with @GIT_ACCOUNT" in out, out)
+    check("the accounts are listed, with what is pinned and how to pin", "1. alice" in out and "2. bob" in out and "accounts from Git Credential Manager" in out and "none pinned yet" in out and "pin one with @GIT_ACCOUNT" in out, out)
     out = run(proj, "@GIT_ACCOUNT BOB")
-    check("an account is pinned by name (any letter case), under its real spelling", "[PINNED] this project signs in to github.com as bob" in out and git(proj, "config", "--local", "--get", key) == "bob", out)
+    check("an account is pinned by name (any letter case), under its real spelling", "[PINNED] github.com -> bob" in out and git(proj, "config", "--local", "--get", key) == "bob", out)
     git(proj, "config", "--local", "credential.helper", helper)
     git(proj, "credential", "fill", input=b"protocol=https\nhost=github.com\n\n", env=env)
     got = open(log).read() if os.path.exists(log) else ""
@@ -79,7 +79,7 @@ exec "REAL_GIT" "$@"
     out = run(proj, "@GIT_ACCOUNT carol")
     check("an account that is not signed in is refused and the pin stays", "[GIT ACCOUNT REFUSED]" in out and "alice, bob" in out and git(proj, "config", "--local", "--get", key) == "bob", out)
     out = run(proj, "@GIT_ACCOUNT")
-    check("the listing shows the pinned account", "pinned for this project: bob" in out, out)
+    check("the listing shows the pinned account", "2. bob   <- pinned for this project" in out, out)
     out = run(proj, "@GIT_ACCOUNT clear")
     check("clear removes the pin", "cleared" in out and git(proj, "config", "--local", "--get", key) == "", out)
     out = run(ssh, "@GIT_ACCOUNT")
@@ -88,7 +88,7 @@ exec "REAL_GIT" "$@"
     check("a repository without a remote says so", "no remote" in out, out)
     import pty, select
 
-    def pressed(answer, lines=("@GIT_ACCOUNT",), marker=b"to pin that account"):
+    def pressed(answer, lines=("@GIT_ACCOUNT",), marker=b"to pin one for this project"):
         STEP[0] += 1
         path = os.path.join(BASE, "script%d.txt" % STEP[0])
         with open(path, "w") as f:
@@ -116,7 +116,7 @@ exec "REAL_GIT" "$@"
         return buf.decode("utf-8", "replace")
 
     out = pressed(b"2")
-    check("at a terminal, pressing a number pins that account", "[PINNED] this project signs in to github.com as bob" in out and git(proj, "config", "--local", "--get", key) == "bob", out)
+    check("at a terminal, pressing a number pins that account", "[PINNED] github.com -> bob" in out and git(proj, "config", "--local", "--get", key) == "bob", out)
     git(proj, "config", "--local", "--unset", key)
     out = pressed(b"x")
     check("pressing X leaves the project as it was", "[PINNED]" not in out and git(proj, "config", "--local", "--get", key) == "", out)
@@ -133,7 +133,7 @@ exec "REAL_GIT" "$@"
     out = run(proj, "@GIT_PUSH")
     check("without a terminal a push does not ask, and pins nothing", "Several accounts are signed in" not in out and git(proj, "config", "--local", "--get", key_pin) == "", out)
     out = pressed(b"2", ("@GIT_PUSH",), b"Several accounts are signed in")
-    check("a push the user asked for asks once which account to use, and pins it", "[PINNED] this project signs in to github.com as bob" in out and git(proj, "config", "--local", "--get", key_pin) == "bob", out)
+    check("a push the user asked for asks once which account to use, and pins it", "[PINNED] github.com -> bob" in out and git(proj, "config", "--local", "--get", key_pin) == "bob", out)
     out = pressed(b"", ("@GIT_PUSH",), b"Several accounts are signed in")
     check("once pinned the same push never asks again", "Several accounts are signed in" not in out, out)
     git(proj, "config", "--local", "--unset", key_pin)

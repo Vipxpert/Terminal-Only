@@ -4,6 +4,9 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- The account listing and the first-push question show one account per line with the pinned one marked, and `[PINNED]` is one short line.
+- A chat's address is required at a terminal (an empty or wrong answer asks again; sessions that skipped it before are asked on their next script), and the new `@CHAT_LINK <address>` replaces a wrong one: the user gives the address, the chat sends it.
+
 - A push or pull you asked for asks once, with one key, which account to use when several are signed in and none is pinned for the project, and keeps the answer in the clone's git config (per project and per machine); the footer says why when the automatic fetch cannot sign in and nothing is pinned.
 
 - `@GIT_ACCOUNT` lists the accounts signed in for the remote's host (GitHub through Git Credential Manager, or the Windows credential list) and pins one for the project (a number at the terminal, or by name; `clear` removes it) in the clone's git config, so git hands that username to the credential helper and stops showing the account chooser; an account that is not signed in is refused, and SSH remotes have nothing to pin.

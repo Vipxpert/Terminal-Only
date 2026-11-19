@@ -630,7 +630,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @CHAT_LINK @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -686,6 +686,8 @@ def parse_payload(txt):
             P["scope_end"] = arg.strip() or True
         elif d == "SESSION_END":
             P["session_end"] = arg.strip() or True
+        elif d == "CHAT_LINK":
+            P["chat_link"] = arg.strip()
         elif d in ("MESSAGE", "SCOPE_REQUEST", "BRAKE", "DELEGATE", "RETURN"):
             P["msgs"].append(({"MESSAGE": "message", "SCOPE_REQUEST": "scope request", "BRAKE": "brake", "DELEGATE": "delegate", "RETURN": "return"}[d], arg))
         elif d == "VERDICT":
@@ -1509,10 +1511,11 @@ def offer_account_pin():
     if len(accounts) < 2:
         return
     shown = accounts[:9]
-    pressed = ask_key("\nSeveral accounts are signed in for %s and this project has none pinned. Press 1-%d to pin the one it uses (kept for this project on this machine, asked once), X to decide later: %s " % (info["host"], len(shown), "  ".join("%d=%s" % (i + 1, a) for i, a in enumerate(shown))), "".join(str(i + 1) for i in range(len(shown))) + "x")
+    listing = "\n".join("    %d. %s" % (i + 1, a) for i, a in enumerate(shown))
+    pressed = ask_key("\nSeveral accounts are signed in for %s. Which one does this project use?\n%s\nPress 1-%d (asked once for this project on this machine), X to decide later: " % (info["host"], listing, len(shown)), "".join(str(i + 1) for i in range(len(shown))) + "x")
     if pressed and pressed != "x":
         run_git(["config", "--local", key, shown[int(pressed) - 1]])
-        print("  [PINNED] this project signs in to %s as %s (kept in this clone's .git/config; another project or another machine asks once for itself)" % (info["host"], shown[int(pressed) - 1]))
+        print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], shown[int(pressed) - 1]))
 
 def account_hint():
     """One footer line when the automatic fetch could not sign in, the remote is https and no account is pinned: with several accounts that is the usual reason, and a single pin fixes it for this project on this machine."""
@@ -1782,22 +1785,24 @@ def run_repo_ops(ops):
                     return False
                 pick = match or want
                 run_git(["config", "--local", key, pick])
-                print("  [PINNED] this project signs in to %s as %s (kept in this clone's .git/config, so other projects are unaffected)" % (info["host"], pick))
+                print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], pick))
                 continue
-            print("  [GIT ACCOUNT] sign-in for %s (%s)" % (info["host"], info["url"]))
-            print("  signed-in accounts%s: %s" % (" via " + source if source else "", "  ".join("%d. %s" % (i + 1, a) for i, a in enumerate(accounts)) if accounts else "none found"))
-            print("  pinned for this project: %s" % (pinned if pinned else "none, so git may open the account chooser whenever it needs to sign in"))
-            who = "%s <%s>" % (run_git(["config", "user.name"])[1].strip() or "(no name)", run_git(["config", "user.email"])[1].strip() or "(no email)")
-            print("  commit author here: %s (separate from the sign-in account: set with git config user.name / user.email in this folder)" % who)
+            print("  [GIT ACCOUNT] %s%s" % (info["host"], "  (accounts from %s)" % source if source else ""))
+            for i, a in enumerate(accounts):
+                print("    %d. %s%s" % (i + 1, a, "   <- pinned for this project" if pinned and a.lower() == pinned.lower() else ""))
+            if not accounts:
+                print("    none found")
+            if not pinned:
+                print("  none pinned yet: git may ask which account to use each time")
             if accounts:
                 shown = accounts[:9]
-                pressed = ask_key("\nPress 1-%d to pin that account for this project, X to leave it as it is: " % len(shown), "".join(str(i + 1) for i in range(len(shown))) + "x")
+                pressed = ask_key("\nPress 1-%d to pin one for this project, X to skip: " % len(shown), "".join(str(i + 1) for i in range(len(shown))) + "x")
                 if pressed and pressed != "x":
                     pick = shown[int(pressed) - 1]
                     run_git(["config", "--local", key, pick])
-                    print("  [PINNED] this project signs in to %s as %s (kept in this clone's .git/config, so other projects are unaffected)" % (info["host"], pick))
+                    print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], pick))
                 elif pressed is None:
-                    print("  -> pin one with @GIT_ACCOUNT <account>, or clear it with @GIT_ACCOUNT clear")
+                    print("  -> pin one with @GIT_ACCOUNT <account>, or remove the pin with @GIT_ACCOUNT clear")
     return True
 
 def git_policy():
@@ -3076,26 +3081,52 @@ def chat_link(name):
 def valid_link(link):
     return bool(link) and re.match(r"^https?://\S+$", link.strip()) is not None
 
-def ask_chat_link(name):
-    """Once per session, at a terminal: ask for the chat's address, so other chats can point the user back to it."""
-    if not name:
-        return
-    rec = load_json(sessions_path(), {}).get(name) or {}
-    if valid_link(rec.get("link")) or (rec.get("link_asked") and not rec.get("link")):
-        return
-    ans = ask_console("\nSession %s has no chat address yet. Paste this chat's address from the browser, so other chats can point you back to it (Enter to skip): " % name)
-    if ans is None:
-        return
-    if ans.strip() and not valid_link(ans):
-        print("  [NOT SAVED] that is not a web address (it should start with http); you will be asked again, or use --link %s <address>" % name)
-        return
+def store_chat_link(name, address):
+    """Keep a chat's address in its session record."""
     with state_lock():
         reg = load_json(sessions_path(), {})
         if name in reg:
-            if ans.strip():
-                reg[name]["link"] = ans.strip()
-            reg[name]["link_asked"] = True
+            reg[name]["link"], reg[name]["link_asked"] = address.strip(), True
             save_json(sessions_path(), reg)
+
+def ask_chat_link(name):
+    """At a terminal, until it is known: ask for this chat's address, so other chats can point the user back to it. It cannot be skipped: an empty or wrong answer asks again (five tries end this run's question, and it returns on the next script); a wrong address already on file is replaced with @CHAT_LINK."""
+    if not name:
+        return
+    rec = load_json(sessions_path(), {}).get(name) or {}
+    if valid_link(rec.get("link")):
+        return
+    ans = ask_console("\nThis chat (session %s) needs its address, so other chats can point you back to it.\nPaste it from the browser's address bar: " % name)
+    tries = 1
+    while ans is not None and not valid_link(ans) and tries < 5:
+        ans = ask_console("  That is not a web address (it starts with http). Paste it again: ")
+        tries += 1
+    if ans is None:
+        return
+    if not valid_link(ans):
+        print("  [NOT SAVED] no web address was given; you will be asked again on the next script, or use @CHAT_LINK <address>")
+        return
+    store_chat_link(name, ans)
+
+def set_chat_link(name, address):
+    """@CHAT_LINK [<address>]: replace this chat's address when the one on file is wrong. The address is one the user gave; without one, at a terminal, the user is asked for the new one."""
+    rec = load_json(sessions_path(), {}).get(name) or {}
+    old = rec.get("link") if valid_link(rec.get("link")) else ""
+    print("\n=== CHAT LINK ===")
+    if not address:
+        print("  current: %s" % (old or "none"))
+        address = ask_console("\nPaste the new address%s: " % (" (Enter keeps the current one)" if old else ""))
+        if address is None:
+            print("  -> to change it, send @CHAT_LINK <address> with the address the user gave you")
+            return
+        if not address.strip():
+            print("  kept as it was")
+            return
+    if not valid_link(address):
+        print("  [CHAT LINK REFUSED] that is not a web address (it starts with http). Nothing changed.")
+        return
+    store_chat_link(name, address)
+    print("  [CHAT LINK] %s -> %s%s" % (name, address.strip(), "  (was %s)" % old if old and old != address.strip() else ""))
 
 def link_cli():
     """User-only command: harness.py --workspace <folder> --link <session> <chat address>."""
@@ -4573,6 +4604,7 @@ def print_card(shell, workspace):
   @DELEGATE <session> | <paths> | <task>          hands those files (entries of your scope) and a task to that session at once, with your uncommitted work in them; its footer says INHERITED
   @RETURN <session> | <result>                    hands back what that session delegated to you: the files are released, the result goes to it as a note
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
+  @CHAT_LINK [<address>]                          replaces this chat's address when the one on file is wrong (use the address the user gave you); at a terminal the user is asked for it once and cannot skip it
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_REMOVE <note-id>                          removes an existing note
@@ -4895,8 +4927,12 @@ def main():
         P["used"] = sorted(d for d in P.get("seen", ()) if d in known)
         touch_session(P)
         check_waiting(P["session"])
+        if P.get("chat_link") is not None:
+            set_chat_link(P["session"], P["chat_link"])
         if not P.get("again"):
             ask_chat_link(P["session"])
+    elif P.get("chat_link") is not None:
+        print("  [CHAT LINK REFUSED] @CHAT_LINK needs an @SESSION line. Nothing changed.")
     globals()["CURRENT_SESSION"] = P["session"]
     globals()["CURRENT_SCRIPT"], globals()["CURRENT_RUN"] = P["id"], "%s@%.6f" % (P["id"], time.time())
     globals()["CURRENT_PART"] = P.get("part")
