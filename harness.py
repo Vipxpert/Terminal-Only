@@ -2858,6 +2858,28 @@ def link_cli():
         save_json(sessions_path(), reg)
     print("LINKED: session %s -> %s" % (sess, link))
 
+def find_deadlocks(reg):
+    """Circles in who-waits-on-whom, as [(names, details)]: each chat waits on a file the next one still holds, so none of them can finish. Waits whose holder let go do not count. Each circle is listed once, from its alphabetically first chat; details is [(waiter, holder, [paths])] around it."""
+    edges = {}
+    for me, rec in reg.items():
+        for w in rec.get("waiting", []):
+            owner = w.get("owner")
+            held = ((reg.get(owner) or {}).get("scope") or {}).get("paths", [])
+            if owner and owner != me and owner in reg and held and scope_overlap([w["path"]], held):
+                edges.setdefault(me, {}).setdefault(owner, []).append(w["path"])
+    found = []
+
+    def walk(start, node, trail):
+        for nxt in sorted(edges.get(node, {})):
+            if nxt == start and len(trail) >= 2:
+                found.append(list(trail))
+            elif nxt not in trail and nxt > start:
+                walk(start, nxt, trail + [nxt])
+
+    for start in sorted(edges):
+        walk(start, start, [start])
+    return [(names, [(a, names[(i + 1) % len(names)], edges[a][names[(i + 1) % len(names)]]) for i, a in enumerate(names)]) for names in found]
+
 def print_sessions(current):
     reg = load_json(sessions_path(), {})
     if not reg:
@@ -2875,6 +2897,9 @@ def print_sessions(current):
         print("=== THIS SESSION: %s | %s ===" % (current, describe(reg[current])))
         if reg[current].get("waiting"):
             print("=== WAITING ON (blocked work to resume, never to drop silently): %s ===" % "; ".join("/%s held by %s%s since %s" % (w["path"], w["owner"], chat_link(w["owner"]), w.get("script") or "?") for w in reg[current]["waiting"]))
+        for names, details in find_deadlocks(reg):
+            if current in names:
+                print("=== DEADLOCK (chats waiting on each other's files, so none can finish): %s | chats: %s | tell the user; the chat that can finish its part first commits and releases (@SCOPE_END), the others resume on [UNBLOCKED] ===" % ("; ".join("%s waits on %s for %s" % (a, b, ", ".join("/" + p for p in paths[:3])) for a, b, paths in details), ", ".join(n + chat_link(n) for n in names if n != current)))
     others = sorted(((n, r) for n, r in reg.items() if n != current), key=lambda kv: -kv[1].get("last_active", 0))
     if others:
         print("=== OTHER SESSIONS (newest first) ===")

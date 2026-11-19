@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- When chats wait on each other's files in a circle (two or more), every footer in the circle says `DEADLOCK` and names who waits on whom; a wait whose holder has let go does not count.
+
 ## 3.9
 
 - `@FIND` and the `| in` filter of `@GREP` accept `re:<regex>` on the path.
