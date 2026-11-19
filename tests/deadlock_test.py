@@ -13,7 +13,8 @@ def run(session, *lines):
     STEP[0] += 1
     head = ["@SCRIPT [C: step %d]" % STEP[0], "@SESSION %s | try waiting" % session, "@WORKSPACE " + WS]
     p = subprocess.run([sys.executable, HARNESS], input="\n".join(head + list(lines) + [""]).encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
-    return p.stdout.decode("utf-8", "replace").replace("\r", "")
+    # Comment (constraint): the standing rules printed at the end of every run contain the words REFUSED and WAITING ON, so a check must look only at the part before them
+    return p.stdout.decode("utf-8", "replace").split("=== L1 CONTRACT")[0].replace("\r", "")
 
 
 def want(path):
