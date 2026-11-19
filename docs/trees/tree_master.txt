@@ -1,5 +1,6 @@
 # /llm_harness/docs/trees/tree_master.txt
 /llm_harness (Source of the LLM coding harness: one stdlib Python CLI, the workflow rules it prints, and installers that copy both into ~/.llm_harness)
+├── .gitattributes (The harness's merge rules for its committed notes and verdicts: notes by note id, verdicts by key, run by git through a merge driver the harness registers in each clone)
 ├── .gitignore (Keeps machine-local harness state out of git; .llm_harness/goal.md and notes.md stay tracked)
 ├── CHANGELOG.md (Notable changes per version, newest first; feat, fix and perf commits add their line under Unreleased)
 ├── harness.py (Declarative patch / probe / search / run / undo / git CLI; reads one payload from stdin per run; git and no-git workspaces)
@@ -56,6 +57,7 @@
     ├── git_reads_test.py (git tag listings and git stash list/show are allowed through @RUN; creating or deleting a tag and a plain stash are still refused)
     ├── upstream_test.py (The footer's UPSTREAM line sorts incoming files without changing any; @GIT_PULL fast-forwards a clean checkout with a bookmark and refuses a dirty, diverged or upstream-less branch; an unreachable remote stays quiet)
     ├── memory_merge_test.py (notes.md merges by note id and verdicts.json by key through a git merge driver the harness registers; @GIT_INIT writes the .gitattributes lines; incoming memory without them gets a hint)
+    ├── quiet_fetch_test.py (The automatic fetch asks Git Credential Manager not to open a window while a fetch inside @GIT_PULL does not; checked with a stand-in git on Linux and macOS)
     ├── hints_test.py (Refusal hints point at the stated reason; a space-separated @SCOPE gets the comma hint; no tree reminder for names the trees already describe)
     ├── undo_file_test.py (@UNDO <script> | /path restores only that file, also across a range; scripts that never touched it are passed over)
     ├── changed_rules_test.py (A rule that changed since a chat last saw it is marked [CHANGED] once; new chats and runs without a session see no marks)
