@@ -50,6 +50,7 @@
     ├── json_atomic_test.py (A state file is never seen empty or half-written while another chat saves it; a refused replace still saves)
     ├── encoding_test.py (A Python program run through @RUN prints Vietnamese correctly even when its streams would default to a legacy code page)
     ├── setup_test.py (setup.sh pulls the latest changes first in a clone and runs a newer setup.sh once; a non-clone or a failed pull still installs; Linux and macOS only)
+    ├── deadlock_test.py (Chats waiting on each other's files in a circle, two or three, get DEADLOCK in every footer in it; a plain wait or a released holder does not)
     ├── hints_test.py (Refusal hints point at the stated reason; a space-separated @SCOPE gets the comma hint; no tree reminder for names the trees already describe)
     ├── undo_file_test.py (@UNDO <script> | /path restores only that file, also across a range; scripts that never touched it are passed over)
     ├── changed_rules_test.py (A rule that changed since a chat last saw it is marked [CHANGED] once; new chats and runs without a session see no marks)
