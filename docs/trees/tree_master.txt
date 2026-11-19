@@ -58,6 +58,7 @@
     ├── upstream_test.py (The footer's UPSTREAM line sorts incoming files without changing any; @GIT_PULL fast-forwards a clean checkout with a bookmark and refuses a dirty, diverged or upstream-less branch; an unreachable remote stays quiet)
     ├── memory_merge_test.py (notes.md merges by note id and verdicts.json by key through a git merge driver the harness registers; @GIT_INIT writes the .gitattributes lines; incoming memory without them gets a hint)
     ├── quiet_fetch_test.py (The automatic fetch asks Git Credential Manager not to open a window while a fetch inside @GIT_PULL does not; checked with a stand-in git on Linux and macOS)
+    ├── git_account_test.py (@GIT_ACCOUNT lists signed-in accounts, pins one in the clone's git config so git hands that username to the credential helper, refuses an account that is not signed in, clears the pin and skips SSH remotes; a pressed number pins at a terminal)
     ├── hints_test.py (Refusal hints point at the stated reason; a space-separated @SCOPE gets the comma hint; no tree reminder for names the trees already describe)
     ├── undo_file_test.py (@UNDO <script> | /path restores only that file, also across a range; scripts that never touched it are passed over)
     ├── changed_rules_test.py (A rule that changed since a chat last saw it is marked [CHANGED] once; new chats and runs without a session see no marks)
