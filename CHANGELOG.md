@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- `@DELEGATE <chat> | <paths> | <task>` and `@RETURN <chat> | <result>`: a chat hands files and a task to another chat at once (no acceptance step), with its uncommitted work in them; the receiver's footer says `INHERITED`. Returned files are released, not handed back; a chat holding delegated work cannot release or end until it returns it or ends with `drop`. The `DEADLOCK` line offers delegation as a way out.
+
 - When chats wait on each other's files in a circle (two or more), every footer in the circle says `DEADLOCK` and names who waits on whom; a wait whose holder has let go does not count.
 
 ## 3.9

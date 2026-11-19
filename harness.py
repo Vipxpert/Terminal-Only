@@ -632,7 +632,7 @@ def check_files(changed, pre):
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
-              "@MESSAGE @SCOPE_REQUEST @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
+              "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
 
@@ -686,8 +686,8 @@ def parse_payload(txt):
             P["scope_end"] = arg.strip() or True
         elif d == "SESSION_END":
             P["session_end"] = arg.strip() or True
-        elif d in ("MESSAGE", "SCOPE_REQUEST", "BRAKE"):
-            P["msgs"].append(({"MESSAGE": "message", "SCOPE_REQUEST": "scope request", "BRAKE": "brake"}[d], arg))
+        elif d in ("MESSAGE", "SCOPE_REQUEST", "BRAKE", "DELEGATE", "RETURN"):
+            P["msgs"].append(({"MESSAGE": "message", "SCOPE_REQUEST": "scope request", "BRAKE": "brake", "DELEGATE": "delegate", "RETURN": "return"}[d], arg))
         elif d == "VERDICT":
             P["verdicts"].append(arg)
         elif d == "VERDICTS":
@@ -2899,7 +2899,12 @@ def print_sessions(current):
             print("=== WAITING ON (blocked work to resume, never to drop silently): %s ===" % "; ".join("/%s held by %s%s since %s" % (w["path"], w["owner"], chat_link(w["owner"]), w.get("script") or "?") for w in reg[current]["waiting"]))
         for names, details in find_deadlocks(reg):
             if current in names:
-                print("=== DEADLOCK (chats waiting on each other's files, so none can finish): %s | chats: %s | tell the user; the chat that can finish its part first commits and releases (@SCOPE_END), the others resume on [UNBLOCKED] ===" % ("; ".join("%s waits on %s for %s" % (a, b, ", ".join("/" + p for p in paths[:3])) for a, b, paths in details), ", ".join(n + chat_link(n) for n in names if n != current)))
+                print("=== DEADLOCK (chats waiting on each other's files, so none can finish): %s | chats: %s | tell the user; the chat that can finish its part first commits and releases (@SCOPE_END), or one hands the files the other waits for to it with @DELEGATE <chat> | <paths> | <task>; the others resume on [UNBLOCKED] ===" % ("; ".join("%s waits on %s for %s" % (a, b, ", ".join("/" + p for p in paths[:3])) for a, b, paths in details), ", ".join(n + chat_link(n) for n in names if n != current)))
+    mine = reg.get(current) or {}
+    if mine.get("inherited"):
+        print("=== INHERITED (the user set delegation to run automatically: these files and tasks were handed to this chat and are in its scope now; do each task, then @RETURN <chat> | <result>): %s ===" % "; ".join("from %s%s: %s (%s)" % (i["from"], chat_link(i["from"]), i["task"], ", ".join("/" + p for p in i["paths"][:4])) for i in mine["inherited"]))
+    if mine.get("delegated"):
+        print("=== DELEGATED (handed to other chats; each hands the files back with @RETURN, then claim them again to continue): %s ===" % "; ".join("%s%s has %s (%s)" % (d["to"], chat_link(d["to"]), ", ".join("/" + p for p in d["paths"][:4]), d["task"]) for d in mine["delegated"]))
     others = sorted(((n, r) for n, r in reg.items() if n != current), key=lambda kv: -kv[1].get("last_active", 0))
     if others:
         print("=== OTHER SESSIONS (newest first) ===")
@@ -3080,6 +3085,10 @@ def apply_scope_change(P):
     with state_lock():
         reg = load_json(sessions_path(), {})
         rec = reg.setdefault(me, {})
+        if (P["session_end"] or P["scope_end"]) and rec.get("inherited") and not re.search(r"\b(drop|handover)\b", str(P["session_end"] or P["scope_end"]).lower()):
+            print("  [RELEASE REFUSED] this session still holds work other chats delegated to it: %s" % "; ".join("%s (from %s)" % (i["task"], i["from"]) for i in rec["inherited"][:4]))
+            print("  -> finish it and @RETURN it, or end with 'drop' (@SESSION_END drop) to give it back unfinished and tell the user.")
+            return
         if P["session_end"] and rec.get("waiting") and not re.search(r"\b(drop|handover)\b", str(P["session_end"]).lower()):
             print("  [SESSION END REFUSED] this session still waits on blocked work: %s" % "; ".join("/%s (held by %s)" % (w["path"], w["owner"]) for w in rec["waiting"][:6]))
             print("  -> finish it once it is free, or end with '@SESSION_END drop' to give it up and tell the user what is left undone.")
@@ -3098,6 +3107,7 @@ def apply_scope_change(P):
             if pending:
                 kind += "; uncommitted work handed over: " + ", ".join(pending[:8])
             event = {"session": me, "kind": kind, "aim": "", "paths": []}
+            release_unfinished(reg, me)
             if P["session_end"]:
                 reg.pop(me, None)
         else:
@@ -3316,6 +3326,82 @@ def log_event(event):
     log["events"] = (log["events"] + [event])[-200:]
     save_json(events_path(), log)
 
+def hand_over_work(reg, me, arg):
+    """@DELEGATE <session> | <paths> | <task>: give another chat write access to some of this chat's files together with a task. The files move at once (the other chat finds them in its scope and its footer says INHERITED), with this chat's uncommitted work in them; the other chat hands them back with @RETURN. Call inside state_lock."""
+    parts = [x.strip() for x in arg.split("|")]
+    to = re.sub(r"[^A-Za-z0-9_.-]+", "-", parts[0]).strip("-")
+    paths = [x.strip().replace("\\", "/").lstrip("/") for x in (parts[1] if len(parts) > 1 else "").split(",") if x.strip()]
+    task = " | ".join(parts[2:]).strip()
+    mine = (reg.get(me) or {}).get("scope") or {}
+    held = mine.get("paths", [])
+    problem = ""
+    if to not in reg or to == me:
+        problem = "no other session by that name (see the sessions list)"
+    elif not paths or not task:
+        problem = "the form is @DELEGATE <session> | <paths> | <task>"
+    elif reg[to].get("brake"):
+        problem = "session %s is braked and cannot take work on" % to
+    else:
+        for p in paths:
+            if p not in held:
+                wider = [e for e in held if scope_path_covers(p, e)]
+                problem = ("/%s is only part of your scope entry '%s': narrow your scope with @SCOPE so it lists /%s on its own, then delegate it" % (p, wider[0], p)) if wider else "you do not hold /%s (your scope: %s)" % (p, ", ".join(held) or "none")
+                break
+    if problem:
+        print("  [DELEGATE REFUSED] %s" % problem)
+        return
+    pending = [r for r in own_uncommitted(me) if any(path_in(r, p) for p in paths)]
+    left = [e for e in held if e not in paths]
+    reg[me]["scope"] = dict(mine, paths=left) if left else None
+    reg[me]["handed_over"] = sorted(set(reg[me].get("handed_over", [])) | set(pending))
+    theirs = reg[to].get("scope") or {"aim": "delegated by %s: %s" % (me, task[:60]), "paths": []}
+    theirs["paths"] = theirs.get("paths", []) + [p for p in paths if p not in theirs.get("paths", [])]
+    reg[to]["scope"] = theirs
+    reg[to]["waiting"] = [w for w in reg[to].get("waiting", []) if not (w.get("owner") == me and any(path_in(w["path"], p) or path_in(p, w["path"]) for p in paths))]
+    now = {"paths": paths, "task": task, "script": CURRENT_SCRIPT, "time": time.time()}
+    reg[to].setdefault("inherited", []).append(dict(now, **{"from": me}))
+    reg[me].setdefault("delegated", []).append(dict(now, to=to))
+    log_event({"session": me, "kind": "delegation", "to": to, "paths": paths, "text": "handed you %s to do: %s. They are in your scope now%s; when done, @RETURN %s | <what was done>" % (", ".join("/" + p for p in paths), task, " (with the uncommitted work in them)" if pending else "", me)})
+    print("  [DELEGATED] %s -> %s: %s%s" % (", ".join("/" + p for p in paths), to, task, chat_link(to)))
+
+def take_back_work(reg, me, arg):
+    """@RETURN <session> | <result>: hand back everything that chat delegated to this one. The files are released (the delegating chat claims them again to continue) and the result goes to it as a note. Refused while this chat has uncommitted work in them, unless the result says 'handover'. Call inside state_lock."""
+    parts = [x.strip() for x in arg.split("|")]
+    to = re.sub(r"[^A-Za-z0-9_.-]+", "-", parts[0]).strip("-")
+    result = " | ".join(parts[1:]).strip()
+    rec = reg.get(me) or {}
+    items = [i for i in rec.get("inherited", []) if i.get("from") == to]
+    if not items:
+        print("  [RETURN REFUSED] nothing was delegated to this session by '%s'" % parts[0])
+        return
+    if not result:
+        print("  [RETURN REFUSED] say what was done: @RETURN %s | <result>" % to)
+        return
+    paths = sorted({p for i in items for p in i["paths"]})
+    pending = [r for r in own_uncommitted(me) if any(path_in(r, p) for p in paths)]
+    if pending and "handover" not in result.lower():
+        print("  [RETURN REFUSED] this session's changes in them are not committed yet: %s" % ", ".join("/" + p for p in pending[:8]))
+        print("  -> commit them first, or put the word 'handover' in the result to leave them to the other session.")
+        return
+    sc = rec.get("scope") or {}
+    left = [e for e in sc.get("paths", []) if e not in paths]
+    rec["scope"] = dict(sc, paths=left) if left else None
+    rec["inherited"] = [i for i in rec.get("inherited", []) if i.get("from") != to]
+    rec["handed_over"] = sorted(set(rec.get("handed_over", [])) | set(pending))
+    wake_waiters(reg, me, paths)
+    if to in reg:
+        reg[to]["delegated"] = [d for d in reg[to].get("delegated", []) if d.get("to") != me]
+        log_event({"session": me, "kind": "delegation returned", "to": to, "paths": paths, "text": "finished %s: %s. The files are free now; claim them again with @SCOPE to continue" % (", ".join("/" + p for p in paths), result)})
+    print("  [RETURNED] %s -> %s: %s%s" % (", ".join("/" + p for p in paths), to, result, "" if to in reg else " (that session has ended; the files are simply free)"))
+
+def release_unfinished(reg, me):
+    """A session that ends with delegated work still in hand gives it back unfinished: the delegating chats are told, and the files are free. Call inside state_lock."""
+    for i in (reg.get(me) or {}).get("inherited", []):
+        src = i.get("from")
+        if src in reg:
+            reg[src]["delegated"] = [d for d in reg[src].get("delegated", []) if d.get("to") != me]
+            log_event({"session": me, "kind": "delegation dropped", "to": src, "paths": i["paths"], "text": "ended without finishing %s (%s); the files are free, claim them again with @SCOPE to continue" % (", ".join("/" + p for p in i["paths"]), i["task"])})
+
 def send_messages(P):
     """@MESSAGE, @SCOPE_REQUEST and @BRAKE: notes this session writes for another one, delivered once on that session's next run."""
     if not P["msgs"]:
@@ -3327,6 +3413,9 @@ def send_messages(P):
     with state_lock():
         reg = load_json(sessions_path(), {})
         for kind, arg in P["msgs"]:
+            if kind in ("delegate", "return"):
+                (hand_over_work if kind == "delegate" else take_back_work)(reg, me, arg)
+                continue
             parts = [x.strip() for x in arg.split("|")]
             to = re.sub(r"[^A-Za-z0-9_.-]+", "-", parts[0]).strip("-")
             text = " | ".join(parts[1:]).strip()
@@ -4148,6 +4237,8 @@ def print_card(shell, workspace):
   @SCOPE_END    @SESSION_END                      release this session's scope / end the session; refused while its changes are uncommitted, unless followed by 'handover'; @SESSION_END also waits for blocked work listed under WAITING ON, unless followed by 'drop'
   @MESSAGE <session> | <text>                     a note for another session, shown once on its next run (labelled as from an AI, not the user)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
+  @DELEGATE <session> | <paths> | <task>          hands those files (entries of your scope) and a task to that session at once, with your uncommitted work in them; its footer says INHERITED
+  @RETURN <session> | <result>                    hands back what that session delegated to you: the files are released, the result goes to it as a note
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
