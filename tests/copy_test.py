@@ -22,12 +22,12 @@ def script():
     return "@SCRIPT [P: step %d]\n@WORKSPACE %s\n@GREP nothing\n" % (STEP[0], WS)
 
 
-def pty_run(answer, marker=b"to copy this output", text=None):
+def pty_run(answer, marker=b"to copy this output", text=None, extra=None):
     import pty, select
     path = os.path.join(FAKE, "script%d.txt" % STEP[0])
     with open(path, "w") as f:
         f.write(text or script())
-    env = dict(os.environ, PATH=FAKE, LLM_TEST_CLIP=CLIP)
+    env = dict(os.environ, PATH=FAKE, LLM_TEST_CLIP=CLIP, **(extra or {}))
     env.pop("LLM_HARNESS_NO_COPY", None)
     env.pop("LLM_HARNESS_NO_PROMPT", None)
     pid, master = pty.fork()
@@ -99,6 +99,16 @@ def main():
     out = pty_run(b"\n", marker=b"replay its saved output", text=again)
     copied = open(CLIP, "rb").read().decode("utf-8", "replace") if os.path.exists(CLIP) else ""
     check("a replay copies at once, without the question", "[COPIED]" in out and "[REPLAY]" in copied and "Press C" not in out, out + copied)
+    check("the walk up a process table finds every ancestor and survives a loop", hh.ancestors(5, {5: 4, 4: 3, 3: 0}) == {4, 3} and hh.ancestors(1, {1: 2, 2: 1}) == {1, 2}, "")
+    if os.path.exists(CLIP):
+        os.remove(CLIP)
+    out = pty_run(b"", extra={"LLM_HARNESS_COPY": "auto"})
+    copied = open(CLIP, "rb").read().decode("utf-8", "replace") if os.path.exists(CLIP) else ""
+    check("LLM_HARNESS_COPY=auto copies without asking and says why", "[COPIED]" in out and "(without asking: LLM_HARNESS_COPY=auto)" in out and "to copy this output to the clipboard, X" not in out and "=== RUN TIME" in copied, out + copied)
+    if os.path.exists(CLIP):
+        os.remove(CLIP)
+    out = pty_run(b"x", extra={"LLM_HARNESS_COPY": "ask"})
+    check("LLM_HARNESS_COPY=ask always asks", "to copy this output to the clipboard, X" in out and "[COPIED]" not in out and not os.path.exists(CLIP), out)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 

@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- On Windows, when the terminal is still the window in front at the end of a run, the output is copied at once without the question (also after a replay, or with `LLM_HARNESS_COPY=auto`); a terminal in the background still waits for a key, and `LLM_HARNESS_COPY=ask` always asks.
+
 - `@GIT_PUSH` publishes the current branch's commits (setting the upstream the first time) or, as `@GIT_PUSH tag <name>`, one tag: never forced, never a protected branch, a rejected push is reported and never overridden; a raw `git push` through `@RUN` is still refused, now pointing to `@GIT_PUSH`.
 - After a replay the output is copied to the clipboard at once, without the question.
 

@@ -3626,6 +3626,64 @@ def copy_to_clipboard(text):
     except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)
 
+def ancestors(pid, parents):
+    """Every ancestor of a process, from a {pid: parent pid} table; a loop in the table (a recycled pid) ends the walk instead of repeating."""
+    seen, p = set(), parents.get(pid)
+    while p and p not in seen:
+        seen.add(p)
+        p = parents.get(p)
+    return seen
+
+def process_parents():
+    """{pid: parent pid} for every running process (Windows, through a toolhelp snapshot)."""
+    import ctypes
+    from ctypes import wintypes
+
+    class Entry(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+    k32 = ctypes.windll.kernel32
+    k32.CreateToolhelp32Snapshot.argtypes, k32.CreateToolhelp32Snapshot.restype = [wintypes.DWORD, wintypes.DWORD], wintypes.HANDLE
+    k32.Process32FirstW.argtypes = k32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Entry)]
+    k32.Process32FirstW.restype = k32.Process32NextW.restype = wintypes.BOOL
+    snap = k32.CreateToolhelp32Snapshot(0x2, 0)
+    table = {}
+    if snap in (None, 0, -1, 0xFFFFFFFFFFFFFFFF):
+        return table
+    try:
+        entry = Entry()
+        entry.dwSize = ctypes.sizeof(Entry)
+        ok = k32.Process32FirstW(snap, ctypes.byref(entry))
+        while ok:
+            table[entry.th32ProcessID] = entry.th32ParentProcessID
+            ok = k32.Process32NextW(snap, ctypes.byref(entry))
+    finally:
+        k32.CloseHandle(snap)
+    return table
+
+def terminal_has_focus():
+    """(focused, why): True when the window in front is this run's own terminal. Windows only: the foreground window is the console window itself, or belongs to a program this process descends from (Windows Terminal, an editor's terminal). It cannot tell two tabs of one Windows Terminal window apart. Elsewhere there is no reliable way, so (False, "")."""
+    if os.name != "nt":
+        return False, ""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
+        u32.GetForegroundWindow.restype = wintypes.HWND
+        k32.GetConsoleWindow.restype = wintypes.HWND
+        front = u32.GetForegroundWindow()
+        if not front:
+            return False, ""
+        if front == k32.GetConsoleWindow():
+            return True, "console window"
+        owner = wintypes.DWORD(0)
+        u32.GetWindowThreadProcessId(wintypes.HWND(front), ctypes.byref(owner))
+        if owner.value and owner.value in ancestors(os.getpid(), process_parents()):
+            return True, "terminal program %d" % owner.value
+    except Exception:
+        pass
+    return False, ""
+
 AUTO_COPY = []
 
 def ask_key(prompt, keys, aliases=None):
@@ -3685,18 +3743,26 @@ def ask_key(prompt, keys, aliases=None):
         return None
 
 def offer_copy():
-    """At a real terminal, wait for one key after a run: C (or Enter) copies the whole output to the clipboard, so it can be pasted straight into the chat; X (or Esc) skips; other keys are ignored. Nothing happens when the output is captured, no console is attached, or LLM_HARNESS_NO_COPY is set."""
+    """At a real terminal, copy the whole output of this run to the clipboard so it can be pasted straight into the chat. After a replay, with LLM_HARNESS_COPY=auto, and on Windows while this terminal is still the window in front, it copies at once; otherwise it waits for one key: C (or Enter) copies, X (or Esc) skips, other keys are ignored. LLM_HARNESS_COPY=ask always asks. Nothing happens when the output is captured, no console is attached, or LLM_HARNESS_NO_COPY is set."""
     if os.environ.get("LLM_HARNESS_NO_COPY") or os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
         return
     text = getattr(sys.stdout, "text", None)
     text = text() if callable(text) else ""
     if not text.strip():
         return
-    # Comment (decision): a replay is instant, so there is nothing to wait for: it copies at once, without the question
-    if not AUTO_COPY and ask_key("\nPress C or Enter to copy this output to the clipboard, X to skip: ", "cx", {"\r": "c", "\n": "c"}) != "c":
+    # Comment (decision): a replay is instant and a terminal still in front means the user is looking at it, so there is nothing to wait for; a terminal left in the background waits, so the clipboard is never replaced behind the user's back
+    mode, why = os.environ.get("LLM_HARNESS_COPY", "").lower(), ""
+    if AUTO_COPY:
+        why = "after a replay"
+    elif mode == "auto":
+        why = "LLM_HARNESS_COPY=auto"
+    elif mode != "ask":
+        focused, reason = terminal_has_focus()
+        why = "the terminal is in front: " + reason if focused else ""
+    if not why and ask_key("\nPress C or Enter to copy this output to the clipboard, X to skip: ", "cx", {"\r": "c", "\n": "c"}) != "c":
         return
     ok, how = copy_to_clipboard(text)
-    print("  [COPIED] %d characters via %s. Paste them into the chat." % (len(text), how) if ok else "  [NOT COPIED] %s. Select the output by hand." % how)
+    print("  [COPIED] %d characters via %s%s. Paste them into the chat." % (len(text), how, " (without asking: %s)" % why if why else "") if ok else "  [NOT COPIED] %s. Select the output by hand." % how)
 
 def lock_holders(folder):
     """Names of processes whose working folder is inside this folder (needs the optional psutil package); [] when psutil is missing or nothing is found. Only reported, never stopped."""
