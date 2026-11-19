@@ -1497,6 +1497,32 @@ def known_accounts(host):
                 return found, "the Windows credential list"
     return [], ""
 
+def offer_account_pin():
+    """Before a push or pull the user asked for: when several accounts are signed in for the remote's host and this project has none pinned, ask once (at a terminal, one key) which one it uses and pin it in this clone's git config, so Git Credential Manager never has to show its chooser for this project on this machine. Silent when the remote is not https, the URL names the user, an account is pinned (in any git config), fewer than two accounts exist, or nobody is at a terminal."""
+    info = remote_login_info()
+    if not info or not info["scheme"] or re.match(r"^https?://[^@/]+@", info["url"]):
+        return
+    key = "credential.%s://%s.username" % (info["scheme"], info["host"])
+    if run_git(["config", "--get", key])[1].strip():
+        return
+    accounts, _ = known_accounts(info["host"])
+    if len(accounts) < 2:
+        return
+    shown = accounts[:9]
+    pressed = ask_key("\nSeveral accounts are signed in for %s and this project has none pinned. Press 1-%d to pin the one it uses (kept for this project on this machine, asked once), X to decide later: %s " % (info["host"], len(shown), "  ".join("%d=%s" % (i + 1, a) for i, a in enumerate(shown))), "".join(str(i + 1) for i in range(len(shown))) + "x")
+    if pressed and pressed != "x":
+        run_git(["config", "--local", key, shown[int(pressed) - 1]])
+        print("  [PINNED] this project signs in to %s as %s (kept in this clone's .git/config; another project or another machine asks once for itself)" % (info["host"], shown[int(pressed) - 1]))
+
+def account_hint():
+    """One footer line when the automatic fetch could not sign in, the remote is https and no account is pinned: with several accounts that is the usual reason, and a single pin fixes it for this project on this machine."""
+    if MODE != "git" or not (load_json(os.path.join(SHARED_DIR, "fetch.json"), {}) or {}).get("_signin"):
+        return
+    info = remote_login_info()
+    if not info or not info["scheme"] or run_git(["config", "--get", "credential.%s://%s.username" % (info["scheme"], info["host"])])[1].strip():
+        return
+    print("=== GIT ACCOUNT: the automatic fetch could not sign in to %s and this project has no account pinned; with several accounts signed in that is the usual reason. Pin one once with @GIT_ACCOUNT (kept for this project on this machine only) ===" % info["host"])
+
 def count_pair(spec):
     """(commits only on the left, commits only on the right) for a 'A...B' range; (0, 0) when git cannot say."""
     out = run_git(["rev-list", "--left-right", "--count", spec])[1]
@@ -1521,7 +1547,8 @@ def upstream_status():
         if time.time() - seen.get(up, 0) >= every:
             # Comment (decision): the time is stored even when the fetch fails, so being offline costs one short wait per interval, not one per script
             # Comment (constraint): with several accounts signed in, Git Credential Manager opens an account chooser on every fetch; a fetch nobody asked for must never do that, so it runs quiet and is simply skipped when it cannot authenticate by itself
-            run_git_network(["fetch", "--quiet", up.split("/", 1)[0]], timeout=8, quiet=True)
+            rc_f, out_f, err_f = run_git_network(["fetch", "--quiet", up.split("/", 1)[0]], timeout=8, quiet=True)
+            seen["_signin"] = bool(rc_f and re.search(r"terminal prompts disabled|could not read username|authentication failed|invalid username or password", out_f + " " + err_f, re.I))
             seen[up] = time.time()
             save_json(stamp, seen)
     ahead, behind = count_pair("HEAD...@{u}")
@@ -1676,6 +1703,7 @@ def run_repo_ops(ops):
                     print("  [PUSH] nothing to push: %s is level with %s" % (branch, up))
                     continue
                 args, shown = ["push"] + ([] if rc_up == 0 else ["-u"]) + [remote, branch], "%s -> %s/%s" % (branch, remote, branch)
+            offer_account_pin()
             # Comment (invariant): a push is never forced and never takes a refspec from the script; a rejected push is reported, not overridden
             rc, out, err = run_git_network(args)
             text = "\n".join(x for x in (out, err) if x)
@@ -1694,6 +1722,7 @@ def run_repo_ops(ops):
             if why:
                 print("  [PULL REFUSED] %s. Nothing changed." % why)
                 return False
+            offer_account_pin()
             rc, out, err = run_git_network(["fetch", "--quiet", up.split("/", 1)[0]], timeout=60)
             if rc:
                 print("  [PULL FAILED] could not fetch %s: %s. Nothing changed." % (up, (err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
@@ -4271,6 +4300,7 @@ def print_footer(state):
             print("=== GIT POLICY: on branch %s%s | protected: %s%s ===" % (br, " (protected: no direct commits here)" if br in prot else "", ", ".join(prot) or "none", " | branch names: " + pol["branches"] if pol.get("branches") else ""))
     if rules:
         upstream_line(CURRENT_SESSION)
+        account_hint()
     if CURRENT_SESSION and (load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("idle_runs", 0) >= LOOP_AT:
         print("=== LOOP CHECK: this chat's last %d scripts did nothing (footer only). The user may be pasting in a loop: send no manifest and no script, and ask in a friendly line whether they are still there and what they want next ===" % LOOP_AT)
     if rules:

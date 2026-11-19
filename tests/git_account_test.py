@@ -1,6 +1,6 @@
 # /llm_harness/tests/git_account_test.py
 """Git-account test for llm_harness: @GIT_ACCOUNT lists the accounts signed in for the remote's host (GitHub through Git Credential Manager, with a stand-in here), pins one for this project in the clone's git config so git passes that username to the credential helper instead of showing a chooser, refuses an account that is not signed in, clears the pin, and does nothing for SSH remotes; at a terminal a pressed number pins the account. The account-name reading from the Windows credential list is checked everywhere."""
-import importlib.util, os, subprocess, sys, tempfile, time
+import importlib.util, os, shutil, subprocess, sys, tempfile, time
 
 HARNESS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser("~"), ".llm_harness", "harness.py")
 BASE = tempfile.mkdtemp(prefix="harness-account-")
@@ -44,12 +44,28 @@ def main():
         git(d, "init", "-q")
     git(proj, "remote", "add", "origin", "https://github.com/alice-org/proj.git")
     git(ssh, "remote", "add", "origin", "git@github.com:alice-org/proj.git")
-    env = dict(os.environ, PATH=fake + os.pathsep + os.environ.get("PATH", ""), LLM_HARNESS_FETCH="off", LLM_HARNESS_NO_COPY="1", GIT_TERMINAL_PROMPT="0")
+    git(proj, "checkout", "-q", "-b", "main")
+    git(proj, "commit", "--allow-empty", "-q", "-m", "chore: start")
+    git(proj, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(proj, "config", "branch.main.remote", "origin")
+    git(proj, "config", "branch.main.merge", "refs/heads/main")
+    git(proj, "commit", "--allow-empty", "-q", "-m", "feat: one commit ahead")
+    wrapper = """#!/bin/sh
+if [ "$1" = "fetch" ] && [ -n "$LLM_FAIL_FETCH" ]; then
+  if [ "$LLM_FAIL_FETCH" = "auth" ]; then echo "fatal: could not read Username for 'https://github.com': terminal prompts disabled" >&2; else echo "fatal: unable to access 'https://github.com/': Could not resolve host: github.com" >&2; fi
+  exit 128
+fi
+exec "REAL_GIT" "$@"
+""".replace("REAL_GIT", shutil.which("git"))
+    with open(os.path.join(fake, "git"), "w") as f:
+        f.write(wrapper)
+    os.chmod(os.path.join(fake, "git"), 0o755)
+    env = dict(os.environ, PATH=fake + os.pathsep + os.environ.get("PATH", ""), LLM_HARNESS_FETCH="off", LLM_HARNESS_NO_COPY="1", GIT_TERMINAL_PROMPT="0", https_proxy="http://127.0.0.1:9", HTTPS_PROXY="http://127.0.0.1:9")
 
-    def run(ws, *lines):
+    def run(ws, *lines, extra=None):
         STEP[0] += 1
         head = ["@SCRIPT [C: step %d]" % STEP[0], "@WORKSPACE " + ws]
-        return subprocess.run([sys.executable, HARNESS], input="\n".join(head + list(lines) + [""]).encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120, env=env).stdout.decode("utf-8", "replace").split("=== L1 CONTRACT")[0].replace("\r", "")
+        return subprocess.run([sys.executable, HARNESS], input="\n".join(head + list(lines) + [""]).encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120, env=dict(env, **(extra or {}))).stdout.decode("utf-8", "replace").split("=== L1 CONTRACT")[0].replace("\r", "")
 
     key = "credential.https://github.com.username"
     out = run(proj, "@GIT_ACCOUNT")
@@ -72,11 +88,11 @@ def main():
     check("a repository without a remote says so", "no remote" in out, out)
     import pty, select
 
-    def pressed(answer):
+    def pressed(answer, lines=("@GIT_ACCOUNT",), marker=b"to pin that account"):
         STEP[0] += 1
         path = os.path.join(BASE, "script%d.txt" % STEP[0])
         with open(path, "w") as f:
-            f.write("@SCRIPT [C: pty %d]\n@WORKSPACE %s\n@GIT_ACCOUNT\n" % (STEP[0], proj))
+            f.write("@SCRIPT [C: pty %d]\n@WORKSPACE %s\n%s\n" % (STEP[0], proj, "\n".join(lines)))
         pid, master = pty.fork()
         if pid == 0:
             os.dup2(os.open(path, os.O_RDONLY), 0)
@@ -93,7 +109,7 @@ def main():
             if not chunk:
                 break
             buf += chunk
-            if not sent and b"to pin that account" in buf:
+            if not sent and marker in buf:
                 os.write(master, answer)
                 sent = True
         os.waitpid(pid, 0)
@@ -104,6 +120,25 @@ def main():
     git(proj, "config", "--local", "--unset", key)
     out = pressed(b"x")
     check("pressing X leaves the project as it was", "[PINNED]" not in out and git(proj, "config", "--local", "--get", key) == "", out)
+    key_pin = "credential.https://github.com.username"
+    git(proj, "config", "--local", "--unset", key_pin)
+    out = run(proj, extra={"LLM_HARNESS_FETCH": "0", "LLM_FAIL_FETCH": "auth"})
+    check("when the automatic fetch cannot sign in and nothing is pinned, the footer says why and what to do", "=== GIT ACCOUNT: the automatic fetch could not sign in to github.com" in out and "@GIT_ACCOUNT" in out, out)
+    git(proj, "config", "--local", key_pin, "bob")
+    out = run(proj, extra={"LLM_HARNESS_FETCH": "0", "LLM_FAIL_FETCH": "auth"})
+    check("with an account pinned there is no such line", "=== GIT ACCOUNT" not in out, out)
+    git(proj, "config", "--local", "--unset", key_pin)
+    out = run(proj, extra={"LLM_HARNESS_FETCH": "0", "LLM_FAIL_FETCH": "net"})
+    check("a fetch that fails for another reason (no network) says nothing about accounts", "=== GIT ACCOUNT" not in out, out)
+    out = run(proj, "@GIT_PUSH")
+    check("without a terminal a push does not ask, and pins nothing", "Several accounts are signed in" not in out and git(proj, "config", "--local", "--get", key_pin) == "", out)
+    out = pressed(b"2", ("@GIT_PUSH",), b"Several accounts are signed in")
+    check("a push the user asked for asks once which account to use, and pins it", "[PINNED] this project signs in to github.com as bob" in out and git(proj, "config", "--local", "--get", key_pin) == "bob", out)
+    out = pressed(b"", ("@GIT_PUSH",), b"Several accounts are signed in")
+    check("once pinned the same push never asks again", "Several accounts are signed in" not in out, out)
+    git(proj, "config", "--local", "--unset", key_pin)
+    out = pressed(b"x", ("@GIT_PUSH",), b"Several accounts are signed in")
+    check("X decides later and pins nothing", "[PINNED]" not in out and git(proj, "config", "--local", "--get", key_pin) == "", out)
     print("test workspace: " + BASE)
     sys.exit(0 if all(RESULTS) else 1)
 
