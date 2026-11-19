@@ -39,6 +39,8 @@ Several chats can work in the same project at once, each with its own aim:
 - Chats can leave each other notes with `@MESSAGE` and `@SCOPE_REQUEST`, shown once and labelled as coming from an AI, not from you. `@BRAKE` pauses another chat's changes until it acknowledges with `@BRAKE_ACK`; you can lift a brake with `--unbrake <session>`, and end a closed chat's session with `--release <session>`.
 - Only you can override a scope: `python harness.py --workspace <folder> --grant <session> <path or glob>` (or `--revoke`), typed in your own terminal. A script that tries to run it is refused.
 - Chats that work on different branches at the same time should each use their own folder: `@GIT_WORKTREE add <branch>` creates `../<project>.<branch>` and prints the `@WORKSPACE` line to continue there. Script numbering stays shared; claims and undo are each folder's own. Switching branches inside a shared folder is refused while other chats are active.
+- `@DELEGATE <chat> | <paths> | <task>` hands files and a task to another chat on the same machine: the files move at once (there is no acceptance step), with your uncommitted work in them, and that chat's footer says `INHERITED`. It finishes the task and answers `@RETURN <chat> | <result>`: the files are released and the result reaches you as a note, and you claim them again with `@SCOPE` to continue. A chat cannot release or end while it still holds delegated work, unless it ends with `drop`. It is also a way out of a `DEADLOCK`.
+- Chats on different machines share nothing but git: claims, waits and delegations live in each machine's own harness state. Use one branch per chat and merge through git.
 
 ## Install (once per machine)
 
