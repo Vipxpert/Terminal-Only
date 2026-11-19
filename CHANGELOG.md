@@ -4,6 +4,9 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- The harness's committed notes and verdicts merge by themselves: with the two `.gitattributes` lines (`@GIT_INIT` writes them), git merges `notes.md` by note id (both sides' new notes kept, a clashing id renumbered) and `verdicts.json` by key (the newer wins), through a merge driver the harness registers in each clone; the UPSTREAM line hints when incoming memory arrives without the lines.
+- A refusal about uncommitted or untracked changes (branch, worktree, tag, pull) now names the files in the way; `@GIT_INIT` says to commit `.gitattributes` with `.gitignore`.
+
 - The footer says `UPSTREAM` when the branch's remote has commits this checkout lacks (fetched at most once a minute, quietly; `LLM_HARNESS_FETCH=off` or a number of seconds), sorting the incoming files into inside your scope, project memory and other files. `@GIT_PULL` fast-forwards a clean checkout and bookmarks where it was; a diverged branch is only reported (a dry-run merge says whether it would conflict) and nothing changes.
 
 - `@RUN` allows the reading forms of `git tag` (listing) and `git stash` (`list`, `show`); creating or deleting a tag and stashing are still refused.

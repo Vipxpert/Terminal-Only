@@ -1334,6 +1334,11 @@ def git_blockers():
     names = ("MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG", "index.lock")
     return [x for x in names if os.path.exists(os.path.join(GIT_DIR, x))]
 
+GITATTRIBUTES_DEFAULT = """# The harness merges its own committed memory (notes by id, verdicts by key) so two devices adding notes do not leave conflict markers.
+.llm_harness/notes.md merge=llm-harness-notes
+.llm_harness/verdicts.json merge=llm-harness-verdicts
+"""
+
 GITIGNORE_DEFAULT = """# Machine-local harness state (numbering, undo journal, saved runs, graph stamp).
 # goal.md and notes.md are project memory and stay tracked.
 .llm_harness/*
@@ -1372,6 +1377,10 @@ def git_init(ident):
         with open(".gitignore", "w", encoding="utf-8", newline="\n") as f:
             f.write(GITIGNORE_DEFAULT)
         print("  wrote .gitignore (machine state ignored; goal.md and notes.md tracked)")
+    if not os.path.exists(".gitattributes"):
+        with open(".gitattributes", "w", encoding="utf-8", newline="\n") as f:
+            f.write(GITATTRIBUTES_DEFAULT)
+        print("  wrote .gitattributes (the harness's merge rules for notes and verdicts); commit it with .gitignore in the first commit")
     old = HARNESS_DIR
     set_mode("git")
     carry_state(old, False)
@@ -1431,8 +1440,9 @@ def repo_guard(what, clean=True, alone=True):
     if clean:
         _, st, _ = run_git(["status", "--porcelain"])
         # Comment (decision): the harness's own project memory (.llm_harness/: notes, verdicts, git.json) changes outside commits; git itself refuses a switch that would overwrite it
-        if [l for l in st.splitlines() if l.strip() and not l[3:].strip('"').startswith(WORKSPACE_NOTES_DIR + "/")]:
-            return "this checkout has uncommitted or untracked changes; commit them (or ask the user) first"
+        dirty = [l[3:].strip('"') for l in st.splitlines() if l.strip() and not l[3:].strip('"').startswith(WORKSPACE_NOTES_DIR + "/")]
+        if dirty:
+            return "this checkout has uncommitted or untracked changes (%s%s); commit them (or ask the user) first" % (", ".join(dirty[:4]), " +%d more" % (len(dirty) - 4) if len(dirty) > 4 else "")
     if alone:
         now = time.time()
         busy = [nm for nm, rec in load_json(sessions_path(), {}).items() if nm != CURRENT_SESSION and (rec.get("scope") or now - rec.get("last_active", 0) < ACTIVE_S)]
@@ -1497,6 +1507,8 @@ def upstream_line(me):
     other = [f for f in st["files"] if f not in inside and f not in memory]
     few = lambda items: ", ".join(items[:6]) + (" +%d more" % (len(items) - 6) if len(items) > 6 else "")
     parts = (["INSIDE YOUR SCOPE: " + few(inside)] if inside else []) + (["project memory: " + few(memory)] if memory else []) + (["other files: " + few(other)] if other else [])
+    if memory and not has_merge_rules():
+        parts.append("the harness's merge rules for notes and verdicts are not in .gitattributes yet (README: Several chats), so merging that memory may leave conflict markers")
     print("=== UPSTREAM: %s has %d commit(s) this checkout lacks%s | incoming changes: %s | nothing was pulled; %s ===" % (st["up"], st["behind"], " and this checkout has %d the upstream lacks (diverged)" % st["ahead"] if st["ahead"] else "", "; ".join(parts) or "none in files", "if INSIDE YOUR SCOPE is listed stop changing those files and tell the user, otherwise bring them in with @GIT_PULL once your work is committed (fast-forward only)" if not st["ahead"] else "a fast-forward is impossible: tell the user, and @GIT_PULL will name any conflict"))
 
 def run_git_network(args, timeout=120):
@@ -4537,6 +4549,131 @@ def timed(fn, *args):
     fn(*args)
     print("  (%.1fs)" % (time.time() - t))
 
+def parse_notes_text(text):
+    """(notes, next_id) from the text of notes.md, without touching the file; unknown lines (git's conflict markers, say) raise ValueError."""
+    next_id, notes = 1, []
+    for line in text.splitlines():
+        header = NOTE_HEADER_RE.fullmatch(line)
+        if header:
+            next_id = max(next_id, int(header.group(1)))
+        elif line.strip():
+            entry = NOTE_ENTRY_RE.fullmatch(line)
+            if not entry:
+                raise ValueError("unrecognized line in notes.md: %s" % line[:80])
+            nid, body = entry.group(1).upper(), entry.group(2)
+            fm = re.match(r"^\[(?:pin|for): ([^\]]+)\] (.+)$", body)
+            notes.append({"id": nid, "text": fm.group(2) if fm else body, "for": [x.strip() for x in fm.group(1).split(",") if x.strip()] if fm else None})
+            next_id = max(next_id, int(nid[1:]) + 1)
+    return notes, next_id
+
+def merge_notes_text(base, ours, theirs):
+    """Three-way merge of notes.md by note id: new notes from both sides are kept (a clash on the same new id gets the other side's note a fresh id), an edit by one side wins over no edit, a removal by one side stands unless the other side edited it, and when both edited the same note this side's text stays and the other side's becomes a new note. Returns the merged file text; raises ValueError when a side cannot be read."""
+    (b, _), (o, next_o), (t, next_t) = parse_notes_text(base), parse_notes_text(ours), parse_notes_text(theirs)
+    bm, om, tm = ({n["id"]: n for n in side} for side in (b, o, t))
+    same = lambda x, y: x["text"] == y["text"] and (x.get("for") or []) == (y.get("for") or [])
+    merged, extra = dict(om), []
+    for nid, note in tm.items():
+        if nid in bm:
+            if nid not in om or same(note, bm[nid]):
+                continue
+            if same(om[nid], bm[nid]):
+                merged[nid] = note
+            elif not same(om[nid], note):
+                extra.append(dict(note, text="(the other side's edit of %s) %s" % (nid, note["text"])))
+        elif nid not in om:
+            merged[nid] = note
+        elif not same(om[nid], note):
+            extra.append(note)
+    for nid in bm:
+        if nid not in tm and nid in om and same(om[nid], bm[nid]):
+            merged.pop(nid, None)
+    next_id = max([next_o, next_t] + [int(k[1:]) + 1 for k in merged])
+    for note in extra:
+        note = dict(note, id="N%03d" % next_id)
+        merged[note["id"]] = note
+        next_id += 1
+    lines = ["<!-- llm_harness_notes_next_id: %d -->" % next_id]
+    for note in sorted(merged.values(), key=lambda n: int(n["id"][1:])):
+        lines.append("- [%s] %s%s" % (note["id"], "[pin: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
+    return "\n".join(lines) + "\n"
+
+def merge_verdicts_text(base, ours, theirs):
+    """Three-way merge of verdicts.json, entry by entry in 'verdicts' and 'campaigns': entries only one side has are kept, a change by one side wins over no change, a removal stands unless the other side changed that entry, and when both changed it the newer one (by its time field) wins. Other top-level keys stay as this side has them. Raises ValueError when a side is not a JSON object."""
+    def load(text):
+        data = json.loads(text) if text.strip() else {}
+        if not isinstance(data, dict):
+            raise ValueError("verdicts.json is not a JSON object")
+        return data
+    b, o, t = load(base), load(ours), load(theirs)
+    out = dict(o)
+    newer = lambda x, y: y if (y.get("time") or 0) > (x.get("time") or 0) else x
+    for section in ("verdicts", "campaigns"):
+        bs, os_, ts = (side.get(section) or {} for side in (b, o, t))
+        merged = dict(os_)
+        for key, tv in ts.items():
+            if key in bs:
+                if key not in os_ or tv == bs[key]:
+                    continue
+                if os_[key] == bs[key]:
+                    merged[key] = tv
+                elif os_[key] != tv:
+                    merged[key] = newer(os_[key], tv)
+            elif key not in os_:
+                merged[key] = tv
+            elif os_[key] != tv:
+                merged[key] = newer(os_[key], tv)
+        for key in bs:
+            if key not in ts and key in os_ and os_[key] == bs[key]:
+                merged.pop(key, None)
+        if merged or section in o or section in t:
+            out[section] = merged
+    return json.dumps(out, ensure_ascii=True, indent=1)
+
+def merge_memory_cli(args):
+    """git's merge driver: --merge-memory <notes|verdicts> <base> <ours> <theirs>. The merged text replaces <ours>; exit 0 when merged, 1 when a side could not be read (git then leaves the usual conflict)."""
+    try:
+        kind, base_p, ours_p, theirs_p = args[:4]
+        texts = []
+        for path in (base_p, ours_p, theirs_p):
+            try:
+                with open(path, "r", encoding="utf-8", newline="") as f:
+                    texts.append(f.read().replace("\r\n", "\n"))
+            except FileNotFoundError:
+                texts.append("")
+        merged = (merge_notes_text if kind == "notes" else merge_verdicts_text)(*texts)
+        with open(ours_p, "w", encoding="utf-8", newline="\n") as f:
+            f.write(merged)
+        sys.exit(0)
+    except (ValueError, OSError, TypeError) as exc:
+        print("llm_harness merge driver: %s" % exc, file=sys.stderr)
+        sys.exit(1)
+
+MERGE_DRIVERS = {"llm-harness-notes": "notes", "llm-harness-verdicts": "verdicts"}
+
+def has_merge_rules():
+    """True when .gitattributes names the harness's merge drivers."""
+    try:
+        return "llm-harness-notes" in read_text(".gitattributes")
+    except OSError:
+        return False
+
+def ensure_merge_drivers():
+    """The attributes in .gitattributes travel with the project; the driver command is machine-local, so register it in this repository's own git config (and keep it pointing at this harness)."""
+    if MODE != "git":
+        return
+    try:
+        attrs = read_text(".gitattributes")
+    except OSError:
+        return
+    here, py = SELF_PATH.replace("\\", "/"), sys.executable.replace("\\", "/")
+    for name, kind in MERGE_DRIVERS.items():
+        if name not in attrs:
+            continue
+        want = '"%s" "%s" --merge-memory %s %%O %%A %%B' % (py, here, kind)
+        if run_git(["config", "--local", "--get", "merge.%s.driver" % name])[1].strip() != want:
+            run_git(["config", "--local", "merge.%s.driver" % name, want])
+            run_git(["config", "--local", "merge.%s.name" % name, "llm_harness %s merge" % kind])
+
 def arg_value(name):
     args = sys.argv[1:]
     return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else None
@@ -4551,6 +4688,8 @@ def main():
     if "--version" in sys.argv[1:]:
         print("llm_harness v%s" % VERSION)
         return
+    if "--merge-memory" in sys.argv[1:]:
+        return merge_memory_cli(sys.argv[sys.argv.index("--merge-memory") + 1:])
     if "--link" in sys.argv[1:]:
         return link_cli()
     for flag in ("--release", "--unbrake"):
@@ -4727,6 +4866,7 @@ def main():
         print_help(h, state.get("shell") or shell)
     for arg in P["verdict_lists"]:
         list_verdicts(arg)
+    ensure_merge_drivers()
     auto_commit_memory(P)
     save_state(state)
     save_run(P, raw_txt, tee.text()[start:])

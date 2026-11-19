@@ -38,7 +38,7 @@ def main():
     run(None, "@GIT_INIT")
     git("config", "user.email", "t@t")
     git("config", "user.name", "t")
-    run(None, "@GIT_COMMIT chore: start", "/a.txt", "/.gitignore", "@END_GIT_COMMIT")
+    run(None, "@GIT_COMMIT chore: start", "/a.txt", "/.gitignore", "/.gitattributes", "@END_GIT_COMMIT")
     main_branch = git("rev-parse", "--abbrev-ref", "HEAD")
     write(os.path.join(".llm_harness", "git.json"), json.dumps({"version": 1, "branches": "^(feature|fix)/.+$", "tags_from": main_branch, "tag_changelog": True}))
     git("add", ".llm_harness/git.json")
