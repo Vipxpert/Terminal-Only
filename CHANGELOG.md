@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.10
+
 - The harness's committed notes and verdicts merge by themselves: with the two `.gitattributes` lines (`@GIT_INIT` writes them), git merges `notes.md` by note id (both sides' new notes kept, a clashing id renumbered) and `verdicts.json` by key (the newer wins), through a merge driver the harness registers in each clone; the UPSTREAM line hints when incoming memory arrives without the lines.
 - A refusal about uncommitted or untracked changes (branch, worktree, tag, pull) now names the files in the way; `@GIT_INIT` says to commit `.gitattributes` with `.gitignore`.
 
