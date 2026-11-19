@@ -32,7 +32,7 @@ def main():
     fake = os.path.join(BASE, "bin")
     os.makedirs(fake)
     with open(os.path.join(fake, "git-credential-manager"), "w") as f:
-        f.write('#!/bin/sh\nif [ "$1" = "github" ] && [ "$2" = "list" ]; then echo alice; echo bob; exit 0; fi\nexit 1\n')
+        f.write('#!/bin/sh\nSTATE="%s"\n[ -f "$STATE" ] || printf "alice\\nbob\\n" > "$STATE"\nif [ "$1" = "github" ] && [ "$2" = "list" ]; then cat "$STATE"; exit 0; fi\nif [ "$1" = "github" ] && [ "$2" = "login" ]; then echo carol >> "$STATE"; exit 0; fi\nexit 1\n' % os.path.join(BASE, "accounts.txt"))
     os.chmod(os.path.join(fake, "git-credential-manager"), 0o755)
     helper, log = os.path.join(fake, "helper.sh"), os.path.join(BASE, "helper.log")
     with open(helper, "w") as f:
@@ -97,7 +97,7 @@ exec "REAL_GIT" "$@"
         if pid == 0:
             os.dup2(os.open(path, os.O_RDONLY), 0)
             os.execve(sys.executable, [sys.executable, HARNESS], env)
-        buf, sent, deadline = b"", False, time.time() + 40
+        answers = answer if isinstance(answer, list) else [answer]; buf, sent, deadline = b"", 0, time.time() + 40
         while time.time() < deadline:
             ready, _, _ = select.select([master], [], [], 1)
             if not ready:
@@ -109,9 +109,9 @@ exec "REAL_GIT" "$@"
             if not chunk:
                 break
             buf += chunk
-            if not sent and marker in buf:
-                os.write(master, answer)
-                sent = True
+            if sent < len(answers) and buf.count(marker) > sent:
+                os.write(master, answers[sent])
+                sent += 1
         os.waitpid(pid, 0)
         return buf.decode("utf-8", "replace")
 
@@ -145,6 +145,10 @@ exec "REAL_GIT" "$@"
     git(proj, "config", "--local", "--unset", key_pin)
     out = run(proj, "@GIT_PUSH")
     check("with nothing pinned the push does not name an account", "[ACCOUNT]" not in out, out)
+    out = pressed([b"a", b"3"], ("@GIT_ACCOUNT",))
+    check("A signs another account in first, the list then offers it, and its number pins it", "3. carol" in out and "[PINNED] github.com -> carol" in out and git(proj, "config", "--local", "--get", key_pin) == "carol", out)
+    out = run(proj, "@GIT_ACCOUNT")
+    check("without a terminal the listing says how to add an account", "git credential-manager github login" in out, out)
     print("test workspace: " + BASE)
     sys.exit(0 if all(RESULTS) else 1)
 

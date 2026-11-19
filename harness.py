@@ -1510,12 +1510,31 @@ def offer_account_pin():
     accounts, _ = known_accounts(info["host"])
     if len(accounts) < 2:
         return
-    shown = accounts[:9]
-    listing = "\n".join("    %d. %s" % (i + 1, a) for i, a in enumerate(shown))
-    pressed = ask_key("\nSeveral accounts are signed in for %s. Which one does this project use?\n%s\nPress 1-%d (asked once for this project on this machine), X to decide later: " % (info["host"], listing, len(shown)), "".join(str(i + 1) for i in range(len(shown))) + "x")
-    if pressed and pressed != "x":
-        run_git(["config", "--local", key, shown[int(pressed) - 1]])
-        print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], shown[int(pressed) - 1]))
+    while True:
+        shown = accounts[:9]
+        listing = "\n".join("    %d. %s" % (i + 1, a) for i, a in enumerate(shown))
+        pressed = ask_key("\nSeveral accounts are signed in for %s. Which one does this project use?\n%s\nPress 1-%d (asked once for this project on this machine), A to add another account, X to decide later: " % (info["host"], listing, len(shown)), "".join(str(i + 1) for i in range(len(shown))) + "ax")
+        if pressed == "a":
+            accounts, _ = add_account(info["host"])
+            continue
+        if pressed and pressed != "x":
+            run_git(["config", "--local", key, shown[int(pressed) - 1]])
+            print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], shown[int(pressed) - 1]))
+        return
+
+def add_account(host):
+    """The picker's A key: run Git Credential Manager's own sign-in to add another account (GitHub only), then return the refreshed (accounts, source). The browser page does not say which account it is for, so the user is told to check first."""
+    if host != "github.com":
+        print("  adding an account from here works for github.com only; sign in with your git host's own tool")
+        return known_accounts(host)
+    print("  Git Credential Manager will open its sign-in. Before you authorize, make sure the browser is signed in to the account you want to add.")
+    try:
+        rc = subprocess.run(["git", "credential-manager", "github", "login"], stdin=subprocess.DEVNULL, timeout=600).returncode
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print("  the sign-in could not run: %s" % exc)
+        return known_accounts(host)
+    print("  sign-in %s" % ("finished" if rc == 0 else "ended with code %d" % rc))
+    return known_accounts(host)
 
 def announce_account():
     """Before a push or pull the user asked for: say which account is pinned, so a sign-in window that opens can be answered with the right one (the browser page does not say which account it is for)."""
@@ -1798,22 +1817,27 @@ def run_repo_ops(ops):
                 run_git(["config", "--local", key, pick])
                 print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], pick))
                 continue
-            print("  [GIT ACCOUNT] %s%s" % (info["host"], "  (accounts from %s)" % source if source else ""))
-            for i, a in enumerate(accounts):
-                print("    %d. %s%s" % (i + 1, a, "   <- pinned for this project" if pinned and a.lower() == pinned.lower() else ""))
-            if not accounts:
-                print("    none found")
-            if not pinned:
-                print("  none pinned yet: git may ask which account to use each time")
-            if accounts:
+            while True:
+                print("  [GIT ACCOUNT] %s%s" % (info["host"], "  (accounts from %s)" % source if source else ""))
+                for i, a in enumerate(accounts):
+                    print("    %d. %s%s" % (i + 1, a, "   <- pinned for this project" if pinned and a.lower() == pinned.lower() else ""))
+                if not accounts:
+                    print("    none found")
+                if not pinned:
+                    print("  none pinned yet: git may ask which account to use each time")
                 shown = accounts[:9]
-                pressed = ask_key("\nPress 1-%d to pin one for this project, X to skip: " % len(shown), "".join(str(i + 1) for i in range(len(shown))) + "x")
+                lead = "Press 1-%d to pin one for this project, " % len(shown) if len(shown) > 1 else "Press 1 to pin it for this project, " if shown else "Press "
+                pressed = ask_key("\n%sA to add %s account, X to skip: " % (lead, "another" if shown else "an"), "".join(str(i + 1) for i in range(len(shown))) + "ax")
+                if pressed == "a":
+                    accounts, source = add_account(info["host"])
+                    continue
                 if pressed and pressed != "x":
                     pick = shown[int(pressed) - 1]
                     run_git(["config", "--local", key, pick])
                     print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], pick))
                 elif pressed is None:
-                    print("  -> pin one with @GIT_ACCOUNT <account>, or remove the pin with @GIT_ACCOUNT clear")
+                    print("  -> pin one with @GIT_ACCOUNT <account>, add one with 'git credential-manager github login', or remove the pin with @GIT_ACCOUNT clear")
+                break
     return True
 
 def git_policy():
@@ -4544,7 +4568,7 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true
   @GIT_PUSH [tag <name>]                          publishes the current branch's commits to its upstream (origin the first time), or one tag; never forced, never a protected branch (git.json); a rejected push is reported, not overridden
   @GIT_PULL                                       fast-forwards a clean checkout to its upstream (bookmarking where it was); when the branches have diverged it only reports whether a merge would conflict, and changes nothing. The footer's UPSTREAM line says what is incoming
-  @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager) and, at a terminal, lets the user press a number to pin one for this project; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
+  @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager) and, at a terminal, lets the user press a number to pin one for this project, or A to sign in another account first; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
 """
 
 def print_help(name, shell):

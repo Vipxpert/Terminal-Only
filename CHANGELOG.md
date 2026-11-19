@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Both account pickers offer A to sign another account in first (Git Credential Manager's `github login`) and then list again; with one account the prompt says "Press 1 to pin it", and without a terminal the listing names the command to run by hand.
+
 - A push or pull you ask for names the pinned account first (`[ACCOUNT] signing in to github.com as <account> ...`), so a sign-in window that opens can be answered with the right account.
 
 - The account listing and the first-push question show one account per line with the pinned one marked, and `[PINNED]` is one short line.
