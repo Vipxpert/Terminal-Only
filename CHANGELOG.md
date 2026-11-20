@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- `@SCOPE` accepts tree node paths (`docs/trees/tree_*.txt#Node > Path`) with validation that the target node resolves uniquely, and `[L1-Notes]` allows user-approved to-do list notes (`Todo: ...`).
+
 ## 3.11
 
 - Bare `@CHAT_LINK` prompts the user directly at the terminal (retrying invalid addresses) so a chat inheriting a session or fixing a wrong address never has to ask the user to paste the URL into the chat.

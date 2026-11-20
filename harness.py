@@ -3478,6 +3478,13 @@ def apply_scope_change(P):
             if spaced:
                 print("  [REFUSED] scope entry '%s' holds a space and names no existing path: separate scope paths with commas (a.py, b.py). Scopes are unchanged." % spaced[0])
                 return
+            for x in paths:
+                pat, sym, _ = scope_item(x)
+                if sym and os.path.isfile(pat):
+                    _, _, note = resolve_scope(pat, decode_bytes(read_bytes(pat))[0].split("\n"), sym)
+                    if note:
+                        print("  [REFUSED] scope entry '%s': %s. Scopes are unchanged." % (x, note))
+                        return
             clashes = [(name, x, y) for name, other in reg.items() if name != me and other.get("scope")
                        for x, y in scope_overlap(paths, other["scope"].get("paths", [])) if not granted(me, literal_base(scope_item(x)[0]))]
             if clashes:
@@ -4666,7 +4673,7 @@ def print_card(shell, workspace):
   @CAMPAIGN <name> | <word> = <meaning>; ...      starts a sweep (only when the user asks): its verdict words, a footer line and the [L1-Campaign] rule while it runs; Tree probes show <<verdict: ...>> on marked nodes
   @CAMPAIGN_END <name>                            ends the sweep and removes every verdict it recorded
   @SCOPE <aim> | <path or glob>, ...              declares or changes this session's write scope; other sessions are told once; their scopes are refused to this session's file changes
-  (a scope entry may be file#Class.method, file#Class.method > # Stage: Name or file## Stage: Name, claiming only that part so others can still edit the rest of the file, or end with ' depth N')
+  (a scope entry may be file#Class.method, file#Class.method > # Stage: Name, file## Stage: Name or tree_file#Node > Path, claiming only that part so others can still edit the rest of the file, or end with ' depth N')
   @SCOPE_END    @SESSION_END                      release this session's scope / end the session; refused while its changes are uncommitted, unless followed by 'handover'; @SESSION_END also waits for blocked work listed under WAITING ON, unless followed by 'drop'
   @MESSAGE <session> | <text>                     a note for another session, shown once on its next run (labelled as from an AI, not the user)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
@@ -4674,7 +4681,7 @@ def print_card(shell, workspace):
   @RETURN <session> | <result>                    hands back what that session delegated to you: the files are released, the result goes to it as a note
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
   @CHAT_LINK [<address>]                          asks the user at the terminal for this chat's address (or sets it when given), replacing any old address on file; at a terminal a new session is asked once and cannot skip it
-  @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:...) makes it searchable
+  @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_REMOVE <note-id>                          removes an existing note
   @NOTE_LIST [words]                              prints all workspace notes, or those whose category, pins or text contain every word
