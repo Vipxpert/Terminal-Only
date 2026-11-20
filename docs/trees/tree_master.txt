@@ -75,7 +75,7 @@
     ├── repeat_test.py (@REPEATABLE scripts run on every paste with fresh numbers, ordinary identical scripts still replay, and repeatable scripts cannot change files or carry a number)
     ├── revisit_test.py ([REVISIT] for rereads of unchanged definitions across ranges, scopes, sessions and side scripts; silence for changed code and within one run)
     ├── scopes_test.py (Two sessions with write scopes: overlap refusal, one-time announcements, refused edits into another scope, @RUN alerts, the user's grant, session-limited undo, scope release)
-    ├── symbol_scope_test.py (Scopes on single methods: sibling methods stay free, edits, text replacements and deletes inside an owned method are refused, the enclosing class overlaps; folder scopes with a depth)
+    ├── symbol_scope_test.py (Scopes on single methods, # Stage anchors and tree node paths: sibling nodes stay free, edits inside an owned node are refused, enclosing parents overlap; folder scopes with a depth)
     ├── text_replace_test.py (Count-locked @TEXT_REPLACE: edits inside a long line, insert and trim, folder-wide import paths, refusals for wrong counts, ambiguity, short or multi-line text, #Class.method scopes, undo and session scopes)
     ├── verdict_test.py (@VERDICT on folders, files and definitions; @VERDICTS with tree descriptions, collapsed children, stale detection and filters; verdicts shown on reads; refusals and clearing)
     └── waiting_test.py (Blocked work from refusals, overlaps and scope requests listed under WAITING ON, the holder told once, [UNBLOCKED] once when free, @SESSION_END refused until done or dropped)
