@@ -31,7 +31,7 @@ def run_tty(text, keys, limit=20):
     pid, fd = pty.fork()
     if pid == 0:
         os.dup2(os.open(path, os.O_RDONLY), 0)
-        os.execv(sys.executable, [sys.executable, HARNESS])
+        os.execve(sys.executable, [sys.executable, HARNESS], dict(os.environ, LLM_HARNESS_NO_COPY="1"))
     answers = keys.split("\n")[:-1] if keys else []
     out, mark, end = b"", 0, time.time() + limit
     while time.time() < end:
@@ -109,6 +109,8 @@ def main():
         check("once given it is kept", "needs its address" not in out and "chat: https://chat.example/c/delta" in out, out)
         out = run_tty(scr(12, "@CHAT_LINK"), "https://chat.example/c/delta2\n")
         check("a bare @CHAT_LINK at a terminal asks for the new address", "[CHAT LINK] delta -> https://chat.example/c/delta2" in out, out)
+        out = run_tty(scr(13, "@CHAT_LINK"), "bad-url\nhttps://chat.example/c/delta3\n")
+        check("a bare @CHAT_LINK retries an invalid address and saves the valid one", "not a web address" in out and "[CHAT LINK] delta -> https://chat.example/c/delta3" in out, out)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 

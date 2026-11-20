@@ -149,6 +149,28 @@ mv "$TEMP_DIR/harness.py" "$TARGET_DIR/harness.py"
 mv "$TEMP_DIR/workflow_commands.txt" "$TARGET_DIR/workflow_commands.txt"
 chmod 644 "$TARGET_DIR/harness.py" "$TARGET_DIR/workflow_commands.txt"
 
+# Comment (workaround): Linux terminal output copy needs wl-copy, xclip, or xsel; install one best-effort without aborting setup under set -eu
+if [ "$(uname -s 2>/dev/null || true)" != "Darwin" ] && ! command -v pbcopy >/dev/null 2>&1 && ! command -v wl-copy >/dev/null 2>&1 && ! command -v xclip >/dev/null 2>&1 && ! command -v xsel >/dev/null 2>&1; then
+    CLIP_PKG="xclip"
+    if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then CLIP_PKG="wl-clipboard"; fi
+    SUDO=""
+    if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+    CLIP_OK=0
+    if command -v apt-get >/dev/null 2>&1; then
+        $SUDO apt-get update -qq >/dev/null 2>&1 || true
+        if $SUDO apt-get install -y -qq "$CLIP_PKG" >/dev/null 2>&1; then CLIP_OK=1; fi
+    elif command -v dnf >/dev/null 2>&1; then
+        if $SUDO dnf install -y -q "$CLIP_PKG" >/dev/null 2>&1; then CLIP_OK=1; fi
+    elif command -v pacman >/dev/null 2>&1; then
+        if $SUDO pacman -S --noconfirm --needed "$CLIP_PKG" >/dev/null 2>&1; then CLIP_OK=1; fi
+    elif command -v zypper >/dev/null 2>&1; then
+        if $SUDO zypper --non-interactive install "$CLIP_PKG" >/dev/null 2>&1; then CLIP_OK=1; fi
+    elif command -v apk >/dev/null 2>&1; then
+        if $SUDO apk add --no-cache "$CLIP_PKG" >/dev/null 2>&1; then CLIP_OK=1; fi
+    fi
+    if [ "$CLIP_OK" -eq 1 ]; then echo "Clipboard: Installed $CLIP_PKG."; else echo "WARNING: Could not install $CLIP_PKG automatically. Install xclip, xsel or wl-copy by hand if needed."; fi
+fi
+
 echo ""
 echo "Setup successful."
 echo "Harness installed at: $TARGET_DIR"

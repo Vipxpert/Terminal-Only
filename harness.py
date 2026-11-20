@@ -6,7 +6,7 @@
 #   python harness.py --workspace "<project folder>"
 import os, sys, re, json, glob, time, zlib, base64, fnmatch, hashlib, shutil, contextlib, subprocess, warnings
 
-VERSION = "3.10"
+VERSION = "3.11"
 WORKSPACE_NOTES_DIR = ".llm_harness"
 MODE = "git"
 HARNESS_DIR = os.path.join(".git", "llm_harness")
@@ -1537,20 +1537,44 @@ def add_account(host):
     return known_accounts(host)
 
 def announce_account():
-    """Before a push or pull the user asked for: say which account is pinned, so a sign-in window that opens can be answered with the right one (the browser page does not say which account it is for)."""
+    """Before a push or pull the user asked for: say which account is pinned (and warn if it is no longer signed in), so a sign-in window that opens can be answered with the right one."""
     info = remote_login_info()
     if not info or not info["scheme"]:
         return
     pinned = run_git(["config", "--get", "credential.%s://%s.username" % (info["scheme"], info["host"])])[1].strip()
     if pinned:
-        print("  [ACCOUNT] signing in to %s as %s (pinned for this project); if a sign-in window opens, authorize %s in the browser" % (info["host"], pinned, pinned))
+        accounts, source = known_accounts(info["host"])
+        if accounts and not any(a.lower() == pinned.lower() for a in accounts):
+            print("  [ACCOUNT WARNING] pinned account %s for %s is no longer signed in (%s has: %s); run @GIT_ACCOUNT to switch or sign %s back in" % (pinned, info["host"], source, ", ".join(accounts), pinned))
+        else:
+            print("  [ACCOUNT] signing in to %s as %s (pinned for this project); if a sign-in window opens, authorize %s in the browser" % (info["host"], pinned, pinned))
 
 def account_hint():
-    """One footer line when the automatic fetch could not sign in, the remote is https and no account is pinned: with several accounts that is the usual reason, and a single pin fixes it for this project on this machine."""
-    if MODE != "git" or not (load_json(os.path.join(SHARED_DIR, "fetch.json"), {}) or {}).get("_signin"):
+    """One footer line when the pinned account is no longer signed in, or when the automatic fetch could not sign in without a pin."""
+    if MODE != "git":
         return
     info = remote_login_info()
-    if not info or not info["scheme"] or run_git(["config", "--get", "credential.%s://%s.username" % (info["scheme"], info["host"])])[1].strip():
+    if not info or not info["scheme"]:
+        return
+    pinned = run_git(["config", "--get", "credential.%s://%s.username" % (info["scheme"], info["host"])])[1].strip()
+    if pinned:
+        setting = os.environ.get("LLM_HARNESS_FETCH", "60").strip().lower()
+        if setting != "off":
+            every = int(setting) if setting.isdigit() else 60
+            stamp = os.path.join(SHARED_DIR, "fetch.json")
+            seen = load_json(stamp, {}) or {}
+            ckey = "acct:" + info["host"]
+            cached = seen.get(ckey) if isinstance(seen.get(ckey), dict) else {}
+            if time.time() - cached.get("t", 0) >= every:
+                accounts, source = known_accounts(info["host"])
+                seen[ckey] = {"t": time.time(), "accounts": accounts, "source": source}
+                save_json(stamp, seen)
+            else:
+                accounts, source = cached.get("accounts", []), cached.get("source", "")
+            if accounts and not any(a.lower() == pinned.lower() for a in accounts):
+                print("=== GIT ACCOUNT: pinned account %s for %s is no longer signed in (%s has: %s). Pick another with @GIT_ACCOUNT, or sign %s back in ===" % (pinned, info["host"], source, ", ".join(accounts), pinned))
+        return
+    if not (load_json(os.path.join(SHARED_DIR, "fetch.json"), {}) or {}).get("_signin"):
         return
     print("=== GIT ACCOUNT: the automatic fetch could not sign in to %s and this project has no account pinned; with several accounts signed in that is the usual reason. Pin one once with @GIT_ACCOUNT (kept for this project on this machine only) ===" % info["host"])
 
@@ -3144,7 +3168,7 @@ def ask_chat_link(name):
     store_chat_link(name, ans)
 
 def set_chat_link(name, address):
-    """@CHAT_LINK [<address>]: replace this chat's address when the one on file is wrong. The address is one the user gave; without one, at a terminal, the user is asked for the new one."""
+    """@CHAT_LINK [<address>]: ask the user at the terminal for this chat's address (or set it when given), replacing any old address on file."""
     rec = load_json(sessions_path(), {}).get(name) or {}
     old = rec.get("link") if valid_link(rec.get("link")) else ""
     print("\n=== CHAT LINK ===")
@@ -3152,10 +3176,20 @@ def set_chat_link(name, address):
         print("  current: %s" % (old or "none"))
         address = ask_console("\nPaste the new address%s: " % (" (Enter keeps the current one)" if old else ""))
         if address is None:
-            print("  -> to change it, send @CHAT_LINK <address> with the address the user gave you")
+            print("  -> at a terminal, bare @CHAT_LINK asks the user directly; without one, send @CHAT_LINK <address>")
             return
-        if not address.strip():
+        if old and not address.strip():
             print("  kept as it was")
+            return
+        tries = 1
+        while address is not None and not valid_link(address) and tries < 5:
+            address = ask_console("  That is not a web address (it starts with http). Paste it again: ")
+            if old and address is not None and not address.strip():
+                print("  kept as it was")
+                return
+            tries += 1
+        if not address or not valid_link(address):
+            print("  [NOT SAVED] no web address was given. Nothing changed.")
             return
     if not valid_link(address):
         print("  [CHAT LINK REFUSED] that is not a web address (it starts with http). Nothing changed.")
@@ -4639,7 +4673,7 @@ def print_card(shell, workspace):
   @DELEGATE <session> | <paths> | <task>          hands those files (entries of your scope) and a task to that session at once, with your uncommitted work in them; its footer says INHERITED
   @RETURN <session> | <result>                    hands back what that session delegated to you: the files are released, the result goes to it as a note
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
-  @CHAT_LINK [<address>]                          replaces this chat's address when the one on file is wrong (use the address the user gave you); at a terminal the user is asked for it once and cannot skip it
+  @CHAT_LINK [<address>]                          asks the user at the terminal for this chat's address (or sets it when given), replacing any old address on file; at a terminal a new session is asked once and cannot skip it
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_REMOVE <note-id>                          removes an existing note

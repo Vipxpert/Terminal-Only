@@ -26,7 +26,7 @@ def run_tty(text, keys, limit=20):
     pid, fd = pty.fork()
     if pid == 0:
         os.dup2(os.open(path, os.O_RDONLY), 0)
-        os.execv(sys.executable, [sys.executable, HARNESS])
+        os.execve(sys.executable, [sys.executable, HARNESS], dict(os.environ, LLM_HARNESS_NO_COPY="1"))
     answers = keys.split("\n")[:-1] if keys else []
     out, mark, end = b"", 0, time.time() + limit
     while time.time() < end:

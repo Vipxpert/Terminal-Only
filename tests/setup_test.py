@@ -90,6 +90,22 @@ def main():
     os.makedirs(home)
     code, out = setup(clone, home)
     check("a pull that fails warns and still installs the files already there", code == 0 and "WARNING: git pull did not complete" in out and get(os.path.join(home, ".llm_harness", "harness.py")) == "# harness v3\n", out)
+    if os.uname().sysname != "Darwin":
+        clip_bin, clip_log, home5 = os.path.join(BASE, "clipbin"), os.path.join(BASE, "clip.log"), os.path.join(BASE, "home5")
+        os.makedirs(clip_bin, exist_ok=True)
+        os.makedirs(home5)
+        for tool in ("xclip", "xsel", "wl-copy", "pbcopy"):
+            put(os.path.join(clip_bin, tool), "#!/bin/sh\nexit 127\n")
+            os.chmod(os.path.join(clip_bin, tool), 0o755)
+        put(os.path.join(clip_bin, "sudo"), '#!/bin/sh\nexec "$@"\n')
+        put(os.path.join(clip_bin, "apt-get"), '#!/bin/sh\necho "$*" >> "%s"\nexit 0\n' % clip_log)
+        os.chmod(os.path.join(clip_bin, "sudo"), 0o755)
+        os.chmod(os.path.join(clip_bin, "apt-get"), 0o755)
+        env5 = dict(os.environ, HOME=home5, NO_PAUSE="1", PATH=os.pathsep.join([clip_bin, os.path.join(BASE, "nobin"), "/usr/bin", "/bin"]), XDG_SESSION_TYPE="x11", WAYLAND_DISPLAY="")
+        env5.pop("LLM_SETUP_PULLED", None)
+        p5 = subprocess.run(["/bin/sh", os.path.join(plain, "setup.sh")], cwd=plain, env=env5, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60, stdin=subprocess.DEVNULL)
+        logged = get(clip_log) if os.path.exists(clip_log) else ""
+        check("setup.sh installs xclip when no clipboard tool is present", p5.returncode == 0 and "install -y -qq xclip" in logged, p5.stdout.decode("utf-8", "replace") + "\n" + logged)
     print("test workspace: " + BASE)
     sys.exit(0 if all(RESULTS) else 1)
 

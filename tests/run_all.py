@@ -4,7 +4,8 @@
 Usage: python tests/run_all.py [path to harness.py]
 Without an argument each suite tests the installed copy (~/.llm_harness/harness.py); with one, every suite tests that file, which is what the GitHub Actions workflow does. Exit code 0 only when every suite passed.
 """
-import glob, os, re, subprocess, sys, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import glob, os, re, subprocess, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KINDS = ("PASS", "FAIL", "SKIP")
@@ -18,8 +19,10 @@ def main():
     suites = sorted(glob.glob(os.path.join(HERE, "*_test.py")))
     total = dict.fromkeys(KINDS, 0)
     failed = []
+    lock = threading.Lock()
     started = time.time()
-    for path in suites:
+
+    def run_suite(path):
         name = os.path.basename(path)[:-len("_test.py")]
         begun = time.time()
         try:
@@ -28,14 +31,22 @@ def main():
         except subprocess.TimeoutExpired:
             out, code = "timed out after 600 s\n", 1
         counts = dict((k, len(re.findall(r"(?m)^%s " % k, out))) for k in KINDS)
-        for k in KINDS:
-            total[k] += counts[k]
         bad = code != 0 or counts["FAIL"] > 0 or (counts["PASS"] == 0 and counts["SKIP"] == 0)
-        print("%s %-16s PASS %-3d FAIL %-3d SKIP %-3d (%.1fs)" % ("FAIL" if bad else "ok  ", name, counts["PASS"], counts["FAIL"], counts["SKIP"], time.time() - begun))
-        sys.stdout.flush()
-        if bad:
-            failed.append(name)
-            print("    " + out.rstrip().replace("\n", "\n    "))
+        return name, time.time() - begun, out, counts, bad
+
+    workers = min(len(suites) or 1, max(4, os.cpu_count() or 4))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(run_suite, p) for p in suites]
+        for fut in as_completed(futures):
+            name, elapsed, out, counts, bad = fut.result()
+            with lock:
+                for k in KINDS:
+                    total[k] += counts[k]
+                print("%s %-16s PASS %-3d FAIL %-3d SKIP %-3d (%.1fs)" % ("FAIL" if bad else "ok  ", name, counts["PASS"], counts["FAIL"], counts["SKIP"], elapsed))
+                sys.stdout.flush()
+                if bad:
+                    failed.append(name)
+                    print("    " + out.rstrip().replace("\n", "\n    "))
     print("")
     print("%d suite(s), %d check(s) passed, %d failed, %d skipped, %.0fs" % (len(suites), total["PASS"], total["FAIL"], total["SKIP"], time.time() - started))
     if failed:

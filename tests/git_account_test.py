@@ -26,6 +26,10 @@ def main():
     spec.loader.exec_module(hh)
     sample = "\nCurrent credentials:\n\n    Target: LegacyGeneric:target=git:https://github.com\n    Type: Generic\n    User: alice\n    Local machine persistence\n\n    Target: LegacyGeneric:target=git:https://alice@github.com\n    Type: Generic\n    User: alice\n\n    Target: LegacyGeneric:target=git:https://bob@github.com\n    Type: Generic\n    User: bob\n\n    Target: LegacyGeneric:target=git:https://carol@gitlab.com\n    Type: Generic\n    User: carol\n"
     check("account names are read from the git entries of the Windows credential list, one host at a time", hh.parse_cmdkey_accounts(sample, "github.com") == ["alice", "bob"] and hh.parse_cmdkey_accounts(sample, "gitlab.com") == ["carol"] and hh.parse_cmdkey_accounts("", "github.com") == [], hh.parse_cmdkey_accounts(sample, "github.com"))
+    nogit = os.path.join(BASE, "nogit")
+    os.makedirs(nogit)
+    ng = subprocess.run([sys.executable, HARNESS], input=("@SCRIPT [G: nogit check]\n@WORKSPACE %s\n@GIT_ACCOUNT\n@GIT_PUSH\n@GIT_PULL\n" % nogit).encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60).stdout.decode("utf-8", "replace")
+    check("in a no-git workspace, @GIT_ACCOUNT, @GIT_PUSH and @GIT_PULL are cleanly refused", "git directives in a no-git workspace" in ng and "Traceback" not in ng, ng)
     if os.name == "nt":
         print("SKIP the stand-ins for Git Credential Manager and the credential helper are shell scripts; the rest is checked on Linux and macOS")
         sys.exit(0 if all(RESULTS) else 1)
@@ -149,6 +153,12 @@ exec "REAL_GIT" "$@"
     check("A signs another account in first, the list then offers it, and its number pins it", "3. carol" in out and "[PINNED] github.com -> carol" in out and git(proj, "config", "--local", "--get", key_pin) == "carol", out)
     out = run(proj, "@GIT_ACCOUNT")
     check("without a terminal the listing says how to add an account", "git credential-manager github login" in out, out)
+    git(proj, "config", "--local", key_pin, "ghost")
+    out = run(proj, extra={"LLM_HARNESS_FETCH": "0"})
+    check("when a pinned account is no longer signed in, the footer warns", "=== GIT ACCOUNT: pinned account ghost for github.com is no longer signed in" in out and "alice, bob" in out, out)
+    out = run(proj, "@GIT_PUSH", extra={"LLM_HARNESS_FETCH": "0"})
+    check("a push with a missing pinned account prints an account warning", "[ACCOUNT WARNING] pinned account ghost for github.com is no longer signed in" in out, out)
+    git(proj, "config", "--local", "--unset", key_pin)
     print("test workspace: " + BASE)
     sys.exit(0 if all(RESULTS) else 1)
 

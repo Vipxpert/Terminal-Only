@@ -4,6 +4,12 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.11
+
+- Bare `@CHAT_LINK` prompts the user directly at the terminal (retrying invalid addresses) so a chat inheriting a session or fixing a wrong address never has to ask the user to paste the URL into the chat.
+- Footer and pre-push/pull account announcements warn when the project's pinned account is no longer signed in.
+- `setup.sh` installs `xclip` (or `wl-clipboard` on Wayland) automatically on Linux when no clipboard tool is present.
+- `tests/run_all.py` runs test suites in parallel and Linux pty tests disable the copy prompt (`LLM_HARNESS_NO_COPY=1`).
 - Both account pickers offer A to sign another account in first (Git Credential Manager's `github login`) and then list again; with one account the prompt says "Press 1 to pin it", and without a terminal the listing names the command to run by hand.
 
 - A push or pull you ask for names the pinned account first (`[ACCOUNT] signing in to github.com as <account> ...`), so a sign-in window that opens can be answered with the right account.
