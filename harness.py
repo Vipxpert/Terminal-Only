@@ -4319,9 +4319,10 @@ def offer_copy():
         return
     ok, how = copy_to_clipboard(text)
     if ok:
-        tok, total_tok, pastes = record_copied_tokens(text, replay=bool(AUTO_COPY))
-        print("  [COPIED] %d characters (~%s tok this paste, ~%s tok project total across %d paste%s) via %s%s. Paste them into the chat." % (
-            len(text), format(tok, ","), format(total_tok, ","), pastes, "" if pastes == 1 else "s", how, " (without asking: %s)" % why if why else ""))
+        tok, sess_tok, bucket_tok, proj_tok, pastes, bkey, sess = record_copied_tokens(text, replay=bool(AUTO_COPY))
+        scope_part = "~%s tok %s, ~%s tok project total" % (format(bucket_tok, ","), bkey, format(proj_tok, ",")) if bucket_tok != proj_tok else "~%s tok project total [%s]" % (format(proj_tok, ","), bkey)
+        print("  [COPIED] %d characters (~%s tok this paste, ~%s tok session %s, %s across %d paste%s) via %s%s. Paste them into the chat." % (
+            len(text), format(tok, ","), format(sess_tok, ","), sess, scope_part, pastes, "" if pastes == 1 else "s", how, " (without asking: %s)" % why if why else ""))
     else:
         print("  [NOT COPIED] %s. Select the output by hand." % how)
 
@@ -4332,29 +4333,110 @@ def estimate_tokens(text):
     """Heuristic token count (~4 chars/token) for harness output sent to the AI."""
     return max(1, (len(text) + 3) // 4) if text else 0
 
-def record_copied_tokens(text, replay=False):
-    """Accumulate estimated tokens sent to the AI in .llm_harness/tokens.json so totals travel with git; a replay replaces the previous paste's count instead of adding again. Returns (this_tok, total_tok, pastes)."""
+def token_bucket_key():
+    """Return '<github_account>@<machine>' so uploaded token totals stay separated per preferred GitHub account + machine pair."""
+    acct = ""
+    if MODE == "git":
+        info = remote_login_info()
+        if info and info.get("scheme") and info.get("host"):
+            acct = run_git(["config", "--get", "credential.%s://%s.username" % (info["scheme"], info["host"])])[1].strip()
+            if not acct:
+                accts, _ = known_accounts(info["host"])
+                if len(accts) == 1:
+                    acct = accts[0]
+        if not acct:
+            acct = run_git(["config", "--get", "user.name"])[1].strip()
+    if not acct:
+        acct = os.environ.get("USERNAME") or os.environ.get("USER") or "local"
+    host = (os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or __import__("socket").gethostname() or "local").strip()
+    return "%s@%s" % (acct, host)
+
+def _normalize_tokens_doc(data):
+    if not isinstance(data, dict):
+        return {"buckets": {}}
+    buckets = {}
+    raw_buckets = data.get("buckets") if isinstance(data.get("buckets"), dict) else {}
+    for bkey, bval in raw_buckets.items():
+        if not isinstance(bval, dict):
+            continue
+        acct, _, mach = bkey.partition("@")
+        sessions = {}
+        raw_sess = bval.get("sessions") if isinstance(bval.get("sessions"), dict) else {}
+        for skey, sval in raw_sess.items():
+            if isinstance(sval, dict):
+                sessions[skey] = {
+                    "tokens": int(sval.get("tokens") or 0),
+                    "pastes": int(sval.get("pastes") or 0),
+                    "chars": int(sval.get("chars") or 0),
+                    "last_tok": int(sval.get("last_tok") or 0),
+                    "last_chars": int(sval.get("last_chars") or 0),
+                }
+        entry = {
+            "account": str(bval.get("account") or acct or "local"),
+            "machine": str(bval.get("machine") or mach or "local"),
+            "tokens": int(bval.get("tokens") or 0),
+            "pastes": int(bval.get("pastes") or 0),
+            "chars": int(bval.get("chars") or 0),
+            "last_tok": int(bval.get("last_tok") or 0),
+            "last_chars": int(bval.get("last_chars") or 0),
+            "sessions": sessions,
+        }
+        if bval.get("last_session"):
+            entry["last_session"] = str(bval["last_session"])
+        buckets[bkey] = entry
+    if not buckets and any(int(data.get(k) or 0) > 0 for k in ("tokens", "pastes", "chars")):
+        buckets["legacy@local"] = {
+            "account": "legacy",
+            "machine": "local",
+            "tokens": int(data.get("tokens") or 0),
+            "pastes": int(data.get("pastes") or 0),
+            "chars": int(data.get("chars") or 0),
+            "last_tok": int(data.get("last_tok") or 0),
+            "last_chars": int(data.get("last_chars") or 0),
+            "sessions": {},
+        }
+    return {"buckets": buckets}
+
+def record_copied_tokens(text, replay=False, bucket_key=None, session=None):
+    """Accumulate estimated tokens in .llm_harness/tokens.json under <github_account>@<machine> and per session; a replay replaces the previous paste's count instead of adding again. Returns (this_tok, session_tok, bucket_tok, project_tok, project_pastes, bucket_key, session)."""
     tok = estimate_tokens(text)
+    bkey = bucket_key or token_bucket_key()
+    sess = session or CURRENT_SESSION or "default"
     if not os.path.isdir(".git") and not os.path.isdir(WORKSPACE_NOTES_DIR):
-        return tok, tok, 1
+        return tok, tok, tok, tok, 1, bkey, sess
     with state_lock():
-        cur = load_json(tokens_path(), {"tokens": 0, "pastes": 0, "chars": 0, "last_tok": 0, "last_chars": 0})
-        total_tok = int(cur.get("tokens") or 0)
-        pastes = int(cur.get("pastes") or 0)
-        chars = int(cur.get("chars") or 0)
-        last_tok = int(cur.get("last_tok") or 0)
-        last_chars = int(cur.get("last_chars") or 0)
+        doc = _normalize_tokens_doc(load_json(tokens_path(), {"buckets": {}}))
+        buckets = doc["buckets"]
+        acct, _, mach = bkey.partition("@")
+        b = buckets.setdefault(bkey, {"account": acct or "local", "machine": mach or "local", "tokens": 0, "pastes": 0, "chars": 0, "last_tok": 0, "last_chars": 0, "sessions": {}})
+        s = b["sessions"].setdefault(sess, {"tokens": 0, "pastes": 0, "chars": 0, "last_tok": 0, "last_chars": 0})
         if tok:
-            if replay and pastes > 0:
-                total_tok = max(0, total_tok - last_tok) + tok
-                chars = max(0, chars - last_chars) + len(text)
+            if replay and s["pastes"] > 0:
+                prev_tok = s["last_tok"]
+                prev_chars = s["last_chars"]
+                s["tokens"] = max(0, s["tokens"] - prev_tok) + tok
+                s["chars"] = max(0, s["chars"] - prev_chars) + len(text)
+                b["tokens"] = max(0, b["tokens"] - prev_tok) + tok
+                b["chars"] = max(0, b["chars"] - prev_chars) + len(text)
             else:
-                total_tok += tok
-                pastes += 1
-                chars += len(text)
+                s["tokens"] += tok
+                s["pastes"] += 1
+                s["chars"] += len(text)
+                b["tokens"] += tok
+                b["pastes"] += 1
+                b["chars"] += len(text)
+            s["last_tok"] = tok
+            s["last_chars"] = len(text)
+            b["last_tok"] = tok
+            b["last_chars"] = len(text)
+            b["last_session"] = sess
             os.makedirs(WORKSPACE_NOTES_DIR, exist_ok=True)
-            save_json(tokens_path(), {"tokens": total_tok, "pastes": pastes, "chars": chars, "last_tok": tok, "last_chars": len(text)})
-    return tok, max(total_tok, tok), max(pastes, 1)
+            save_json(tokens_path(), doc)
+        sess_tok = max(s["tokens"], tok)
+        bucket_tok = max(b["tokens"], tok)
+        proj_tok = max(sum(v["tokens"] for v in buckets.values()), tok)
+        proj_pastes = max(sum(v["pastes"] for v in buckets.values()), 1)
+    return tok, sess_tok, bucket_tok, proj_tok, proj_pastes, bkey, sess
 
 def lock_holders(folder):
     """Names of processes whose working folder is inside this folder (needs the optional psutil package); [] when psutil is missing or nothing is found. Only reported, never stopped."""
@@ -5141,15 +5223,46 @@ def merge_verdicts_text(base, ours, theirs):
     return json.dumps(out, ensure_ascii=True, indent=1)
 
 def merge_tokens_text(base, ours, theirs):
-    """Additive three-way merge of tokens.json: each branch's delta since base is added to ours so parallel branches never lose token counts."""
+    """Three-way merge of tokens.json: distinct <account>@<machine> buckets stay separate without conflict, while same-bucket/session deltas since base merge additively."""
     def load(text):
         data = json.loads(text) if text.strip() else {}
         if not isinstance(data, dict):
             raise ValueError("tokens.json is not a JSON object")
-        return {k: int(data.get(k) or 0) for k in ("tokens", "pastes", "chars")}
-    b, o, t = load(base), load(ours), load(theirs)
-    merged = {k: max(o[k], o[k] + max(0, t[k] - b[k])) for k in ("tokens", "pastes", "chars")}
-    return json.dumps(merged, ensure_ascii=True, indent=1)
+        return _normalize_tokens_doc(data)["buckets"]
+    bb, ob, tb = load(base), load(ours), load(theirs)
+    merged = {}
+    for bkey in sorted(set(bb) | set(ob) | set(tb)):
+        if bkey not in ob and bkey not in tb:
+            continue
+        if bkey not in ob:
+            merged[bkey] = json.loads(json.dumps(tb[bkey]))
+            continue
+        if bkey not in tb:
+            merged[bkey] = json.loads(json.dumps(ob[bkey]))
+            continue
+        b_ent = bb.get(bkey) or {"tokens": 0, "pastes": 0, "chars": 0, "sessions": {}}
+        o_ent = ob[bkey]
+        t_ent = tb[bkey]
+        ent = json.loads(json.dumps(o_ent))
+        for k in ("tokens", "pastes", "chars"):
+            ent[k] = max(o_ent[k], o_ent[k] + max(0, t_ent[k] - b_ent.get(k, 0)))
+        bs, os_, ts = b_ent.get("sessions") or {}, o_ent.get("sessions") or {}, t_ent.get("sessions") or {}
+        ms = {}
+        for skey in sorted(set(bs) | set(os_) | set(ts)):
+            if skey not in os_ and skey not in ts:
+                continue
+            if skey not in os_:
+                ms[skey] = json.loads(json.dumps(ts[skey]))
+            elif skey not in ts:
+                ms[skey] = json.loads(json.dumps(os_[skey]))
+            else:
+                s_entry = dict(os_[skey])
+                for k in ("tokens", "pastes", "chars"):
+                    s_entry[k] = max(os_[skey][k], os_[skey][k] + max(0, ts[skey][k] - (bs.get(skey) or {}).get(k, 0)))
+                ms[skey] = s_entry
+        ent["sessions"] = ms
+        merged[bkey] = ent
+    return json.dumps({"buckets": merged}, ensure_ascii=True, indent=1, sort_keys=True)
 
 def merge_memory_cli(args):
     """git's merge driver: --merge-memory <notes|verdicts|tokens> <base> <ours> <theirs>. The merged text replaces <ours>; exit 0 when merged, 1 when a side could not be read (git then leaves the usual conflict)."""

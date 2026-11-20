@@ -81,13 +81,24 @@ def main():
         try:
             os.chdir(ws)
             os.makedirs(".llm_harness", exist_ok=True)
-            t_a, tot_a, p_a = hh.record_copied_tokens("x" * 400, replay=False)
-            t_b, tot_b, p_b = hh.record_copied_tokens("y" * 200, replay=False)
-            t_rep, tot_rep, p_rep = hh.record_copied_tokens("z" * 280, replay=True)
-            m_json = hh.merge_tokens_text('{"tokens":100,"pastes":1,"chars":400}', '{"tokens":150,"pastes":2,"chars":600}', '{"tokens":180,"pastes":3,"chars":720}')
-            check("token estimation persists project totals in .llm_harness/tokens.json, replaces on replay, and merges additively",
-                  (t_a, tot_a, p_a) == (100, 100, 1) and (t_b, tot_b, p_b) == (50, 150, 2) and (t_rep, tot_rep, p_rep) == (70, 170, 2) and '"tokens": 230' in m_json,
-                  repr([(t_a, tot_a, p_a), (t_b, tot_b, p_b), (t_rep, tot_rep, p_rep), m_json]))
+            r_a = hh.record_copied_tokens("x" * 400, replay=False, bucket_key="alice@laptop", session="s1")
+            r_b = hh.record_copied_tokens("y" * 200, replay=False, bucket_key="alice@laptop", session="s2")
+            r_rep = hh.record_copied_tokens("z" * 280, replay=True, bucket_key="alice@laptop", session="s2")
+            r_other = hh.record_copied_tokens("w" * 160, replay=False, bucket_key="bob@desktop", session="s1")
+            m_json = hh.merge_tokens_text(
+                '{"buckets":{"alice@laptop":{"tokens":100,"pastes":1,"chars":400,"sessions":{"s1":{"tokens":100,"pastes":1,"chars":400}}}}}',
+                '{"buckets":{"alice@laptop":{"tokens":150,"pastes":2,"chars":600,"sessions":{"s1":{"tokens":150,"pastes":2,"chars":600}}}}}',
+                '{"buckets":{"alice@laptop":{"tokens":100,"pastes":1,"chars":400,"sessions":{"s1":{"tokens":100,"pastes":1,"chars":400}}},"bob@desktop":{"tokens":80,"pastes":1,"chars":320,"sessions":{"s1":{"tokens":80,"pastes":1,"chars":320}}}}}'
+            )
+            m_doc = __import__("json").loads(m_json)
+            check("token estimation tracks <account>@<machine> buckets and per-session totals, replaces on replay, and merges buckets cleanly",
+                  r_a[:6] == (100, 100, 100, 100, 1, "alice@laptop")
+                  and r_b[:6] == (50, 50, 150, 150, 2, "alice@laptop")
+                  and r_rep[:6] == (70, 70, 170, 170, 2, "alice@laptop")
+                  and r_other[:6] == (40, 40, 40, 210, 3, "bob@desktop")
+                  and m_doc["buckets"]["alice@laptop"]["tokens"] == 150
+                  and m_doc["buckets"]["bob@desktop"]["tokens"] == 80,
+                  repr([r_a, r_b, r_rep, r_other, m_doc]))
         finally:
             os.chdir(old_cwd)
     finally:

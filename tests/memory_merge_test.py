@@ -114,6 +114,23 @@ def main():
     except ValueError:
         merged = {}
     check("two devices' verdicts merge through git into valid JSON with both entries", code == 0 and set(merged.get("verdicts", {})) == {"a.txt\tdevA", "a.txt\tdevB"}, merge_out)
+    put(clone_a, ".llm_harness/tokens.json", json.dumps({"buckets": {"alice@laptop": {"account": "alice", "machine": "laptop", "tokens": 200, "pastes": 3, "chars": 800, "sessions": {"s1": {"tokens": 200, "pastes": 3, "chars": 800}}}}}, indent=1))
+    git(clone_a, "add", "-f", ".llm_harness/tokens.json")
+    git(clone_a, "commit", "-q", "-m", "chore(harness): tokens from alice")
+    git(clone_a, "push", "-q", "origin", "main")
+    put(clone_b, ".llm_harness/tokens.json", json.dumps({"buckets": {"bob@desktop": {"account": "bob", "machine": "desktop", "tokens": 90, "pastes": 1, "chars": 360, "sessions": {"s2": {"tokens": 90, "pastes": 1, "chars": 360}}}}}, indent=1))
+    git(clone_b, "add", "-f", ".llm_harness/tokens.json")
+    git(clone_b, "commit", "-q", "-m", "chore(harness): tokens from bob")
+    rc_tok, out_tok = git(clone_b, "pull", "--no-rebase", "--no-edit", "-q", "origin", "main")
+    try:
+        merged_tok = json.loads(get(clone_b, ".llm_harness/tokens.json"))
+    except ValueError:
+        merged_tok = {}
+    check("two branches' <account>@<machine> token buckets merge through git without conflict",
+          rc_tok == 0
+          and merged_tok.get("buckets", {}).get("alice@laptop", {}).get("tokens") == 200
+          and merged_tok.get("buckets", {}).get("bob@desktop", {}).get("tokens") == 90,
+          (out_tok or "") + repr(merged_tok))
     fresh = os.path.join(BASE, "fresh")
     os.makedirs(fresh)
     out = run(fresh, "@GIT_INIT Tester <t@t.t>")

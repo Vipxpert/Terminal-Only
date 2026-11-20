@@ -1,3 +1,4 @@
 # The harness merges its own committed memory (notes by id, verdicts by key) so two devices adding notes do not leave conflict markers.
 .llm_harness/notes.md merge=llm-harness-notes
 .llm_harness/verdicts.json merge=llm-harness-verdicts
+.llm_harness/tokens.json merge=llm-harness-tokens
