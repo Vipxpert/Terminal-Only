@@ -4,6 +4,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- POSIX and SSH terminals now track xterm `DECSET 1004` focus events (`\033[?1004h` / `\033[?1004l` on `/dev/tty` with `ECHO` suppressed and `termios` restored on exit) so runs auto-copy immediately when the SSH/POSIX terminal stays focused (or regains focus via `\033[I`) and fall back to prompting `Press C or Enter` if focus left via `\033[O`.
 - Clipboard copy over SSH and headless POSIX terminals now sends an OSC 52 escape sequence (`\033]52;c;...\a`, with `tmux` passthrough when `TMUX` is set) to `/dev/tty` so output copies straight to the local client clipboard instead of failing on remote X11 `xclip`, and reports tool `stderr` when local clipboard commands fail.
 - `[L1-Harness]` now explicitly names `Talk:` (with zero prose before the script header) and all 11 manifest labels in order so long chats never drift away from the manifest format.
 - `[L1-Debug]` and its brief now distinguish fast-path fixes (proven cause in code/traceback, including Bug A exposing downstream Bug B) from structured escalation (`@INIT_DEBUG <slug>` when the next edit would be a guess, the same failure survives 2 fixes, or symptoms loop), choosing between real-module standalone reproduction (progressively reintroducing app state when standalone passes) and in-pipeline telemetry on coupled systems.

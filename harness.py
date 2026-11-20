@@ -1187,6 +1187,7 @@ def drain_console(fi):
             while msvcrt.kbhit():
                 msvcrt.getwch()
         else:
+            poll_tty_focus()
             import termios
             termios.tcflush(fi.fileno(), termios.TCIFLUSH)
     except Exception:
@@ -1196,6 +1197,9 @@ def ask_console(prompt):
     """Ask the person at the terminal while the script itself arrives on stdin; None when no one is there (output captured, no console, or prompts turned off)."""
     if os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
         return None
+    was_tracking = bool(TTY_FOCUS.get("active"))
+    if was_tracking:
+        stop_tty_focus(keep_state=True)
     try:
         tin, tout = ("CONIN$", "CONOUT$") if os.name == "nt" else ("/dev/tty", "/dev/tty")
         with open(tin, "r") as fi, open(tout, "w") as fo:
@@ -1206,6 +1210,9 @@ def ask_console(prompt):
             return fi.readline().strip()
     except (OSError, ValueError):
         return None
+    finally:
+        if was_tracking:
+            start_tty_focus(resume=True)
 
 def journal_entries(start, session):
     """Journaled scripts of one chat (or of no chat) from number start on, newest first."""
@@ -4001,9 +4008,94 @@ def process_parents():
         k32.CloseHandle(snap)
     return table
 
+TTY_FOCUS = {"active": False, "fd": None, "old": None, "buf": b"", "focused": None, "reason": ""}
+
+def parse_focus_events(buf, focused=None, reason=""):
+    """Scan raw TTY bytes for xterm DECSET 1004 focus events (\\033[I = focus in, \\033[O = focus out) in arrival order; keep any trailing incomplete '\\033' or '\\033[' prefix for the next read."""
+    for m in re.finditer(rb"\033\[([IO])", buf):
+        if m.group(1) == b"I":
+            focused, reason = True, "terminal focus event"
+        else:
+            focused, reason = False, ""
+    tail = b"\033[" if buf.endswith(b"\033[") else (b"\033" if buf.endswith(b"\033") else b"")
+    return focused, reason, tail
+
+def start_tty_focus(resume=False):
+    """Enable xterm DECSET 1004 focus reporting (\\033[?1004h) on /dev/tty with ECHO/ICANON off (keeping ISIG for Ctrl-C) so focus-out (\\033[O) during a run is caught silently without printing ^[[O."""
+    if os.name == "nt" or TTY_FOCUS["active"] or os.environ.get("LLM_HARNESS_NO_COPY") or os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
+        return
+    try:
+        import termios
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NONBLOCK)
+        old = termios.tcgetattr(fd)
+        cur = termios.tcgetattr(fd)
+        # Comment (constraint): suppress ICANON and ECHO while focus reporting is on so \033[O / \033[I never echo as ^[[O^[[I on screen, while keeping ISIG so Ctrl-C still raises SIGINT
+        cur[3] &= ~(termios.ICANON | termios.ECHO)
+        termios.tcsetattr(fd, termios.TCSANOW, cur)
+        os.write(fd, b"\033[?1004h")
+        if not resume:
+            is_ssh = bool(os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY")) and not os.environ.get("TMUX")
+            TTY_FOCUS["focused"] = True if is_ssh else None
+            TTY_FOCUS["reason"] = "SSH terminal stayed focused" if is_ssh else ""
+            TTY_FOCUS["buf"] = b""
+        TTY_FOCUS.update({"active": True, "fd": fd, "old": old})
+    except Exception:
+        pass
+
+def poll_tty_focus():
+    """Read any non-blocking bytes from /dev/tty while DECSET 1004 is active and update focus state."""
+    fd = TTY_FOCUS.get("fd")
+    if not TTY_FOCUS.get("active") or fd is None:
+        return
+    chunks = []
+    while True:
+        try:
+            b = os.read(fd, 1024)
+            if not b:
+                break
+            chunks.append(b)
+        except BlockingIOError:
+            break
+        except OSError:
+            break
+    if chunks:
+        focused, reason, tail = parse_focus_events(TTY_FOCUS["buf"] + b"".join(chunks), TTY_FOCUS["focused"], TTY_FOCUS["reason"])
+        TTY_FOCUS["focused"], TTY_FOCUS["reason"], TTY_FOCUS["buf"] = focused, reason, tail
+
+def stop_tty_focus(keep_state=False):
+    """Disable DECSET 1004 (\\033[?1004l), harvest final focus events, and restore original /dev/tty termios."""
+    if not TTY_FOCUS.get("active"):
+        return
+    poll_tty_focus()
+    fd, old = TTY_FOCUS.get("fd"), TTY_FOCUS.get("old")
+    try:
+        if fd is not None:
+            try:
+                os.write(fd, b"\033[?1004l")
+            except OSError:
+                pass
+            poll_tty_focus()
+            if old is not None:
+                import termios
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    except Exception:
+        pass
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        TTY_FOCUS.update({"active": False, "fd": None, "old": None, "buf": b""})
+        if not keep_state:
+            TTY_FOCUS.update({"focused": None, "reason": ""})
+
 def terminal_has_focus():
-    """(focused, why): True when the window in front is this run's own terminal. Windows only: the foreground window is the console window itself, or belongs to a program this process descends from (Windows Terminal, an editor's terminal). It cannot tell two tabs of one Windows Terminal window apart. Elsewhere there is no reliable way, so (False, "")."""
+    """(focused, why): True when the window in front is this run's own terminal. On Windows, checks GetForegroundWindow against console/ancestor PIDs; on POSIX/SSH, checks DECSET 1004 focus events (\\033[I / \\033[O) captured during the run."""
     if os.name != "nt":
+        poll_tty_focus()
+        if TTY_FOCUS.get("focused") is True:
+            return True, TTY_FOCUS.get("reason") or "terminal focus event"
         return False, ""
     try:
         import ctypes
@@ -4099,6 +4191,7 @@ def offer_copy():
     elif mode != "ask":
         focused, reason = terminal_has_focus()
         why = "the terminal is in front: " + reason if focused else ""
+    stop_tty_focus()
     if not why and ask_key("\nPress C or Enter to copy this output to the clipboard, X to skip: ", "cx", {"\r": "c", "\n": "c"}) != "c":
         return
     ok, how = copy_to_clipboard(text)
@@ -4944,6 +5037,7 @@ def main():
         handshake(arg_value("--workspace"), shell)
         return
     raw_txt = decode_payload(sys.stdin.buffer.read())
+    start_tty_focus()
     P = parse_payload(raw_txt)
     tee = sys.stdout = OutputTee(sys.stdout)
     t_start = time.time()
@@ -5126,5 +5220,8 @@ def main():
     print_footer(state)
 
 if __name__ == "__main__":
-    main()
-    offer_copy()
+    try:
+        main()
+        offer_copy()
+    finally:
+        stop_tty_focus()

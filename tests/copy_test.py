@@ -69,6 +69,13 @@ def main():
         hh.osc52_copy(b"hi", tty_out)
         raw_tmux = open(tty_out, "rb").read()
         check("OSC 52 wraps sequence for tmux passthrough when TMUX is set", raw_tmux.startswith(b"\033Ptmux;\033\033]52;c;") and raw_tmux.endswith(b"\033\\"), repr(raw_tmux))
+        f1, r1, t1 = hh.parse_focus_events(b"", True, "SSH terminal stayed focused")
+        f2, r2, t2 = hh.parse_focus_events(b"\033[O", True, "SSH terminal stayed focused")
+        f3, r3, t3 = hh.parse_focus_events(b"\033[Onoise\033[I\033[", True, "SSH terminal stayed focused")
+        f4, r4, t4 = hh.parse_focus_events(b"", None, "")
+        check("DECSET 1004 focus parser tracks stay-focused, focus-out (\\033[O), refocus (\\033[I), and split escape tails",
+              (f1, r1, t1) == (True, "SSH terminal stayed focused", b"") and (f2, r2) == (False, "") and (f3, r3, t3) == (True, "terminal focus event", b"\033[") and f4 is None,
+              repr([(f1, r1, t1), (f2, r2, t2), (f3, r3, t3), (f4, r4, t4)]))
     finally:
         if old_tmux is not None:
             os.environ["TMUX"] = old_tmux
