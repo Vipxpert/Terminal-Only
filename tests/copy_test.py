@@ -76,6 +76,20 @@ def main():
         check("DECSET 1004 focus parser tracks stay-focused, focus-out (\\033[O), refocus (\\033[I), and split escape tails",
               (f1, r1, t1) == (True, "SSH terminal stayed focused", b"") and (f2, r2) == (False, "") and (f3, r3, t3) == (True, "terminal focus event", b"\033[") and f4 is None,
               repr([(f1, r1, t1), (f2, r2, t2), (f3, r3, t3), (f4, r4, t4)]))
+        ws = tempfile.mkdtemp(prefix="harness-tok-")
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(ws)
+            os.makedirs(".llm_harness", exist_ok=True)
+            t_a, tot_a, p_a = hh.record_copied_tokens("x" * 400, replay=False)
+            t_b, tot_b, p_b = hh.record_copied_tokens("y" * 200, replay=False)
+            t_rep, tot_rep, p_rep = hh.record_copied_tokens("z" * 280, replay=True)
+            m_json = hh.merge_tokens_text('{"tokens":100,"pastes":1,"chars":400}', '{"tokens":150,"pastes":2,"chars":600}', '{"tokens":180,"pastes":3,"chars":720}')
+            check("token estimation persists project totals in .llm_harness/tokens.json, replaces on replay, and merges additively",
+                  (t_a, tot_a, p_a) == (100, 100, 1) and (t_b, tot_b, p_b) == (50, 150, 2) and (t_rep, tot_rep, p_rep) == (70, 170, 2) and '"tokens": 230' in m_json,
+                  repr([(t_a, tot_a, p_a), (t_b, tot_b, p_b), (t_rep, tot_rep, p_rep), m_json]))
+        finally:
+            os.chdir(old_cwd)
     finally:
         if old_tmux is not None:
             os.environ["TMUX"] = old_tmux

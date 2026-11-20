@@ -4,6 +4,10 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- `[L1-Sessions]` and `[L1-Git Gate]` now fold into concise `L1 Brief` summaries when the workspace is single-session and git-clean, automatically expanding in full whenever multiple sessions, waiting/delegation/brake states, uncommitted changes, unpushed commits, or protected branches are active.
+- `[COPIED]` now reports both the estimated token count of the current paste and the accumulated project-wide tokens sent to the AI (`~X tok this paste, ~Y tok project total across N pastes`), persisted in `.llm_harness/tokens.json` so it travels with git (with an additive 3-way merge driver and no double-counting on replays).
+- Users can now run `harness.py --workspace <folder> --merge <from_session> <into_session>` from their terminal to absorb a dead or already-released session's write scope, user grants, uncommitted history/undo ownership, pinned notes (`[pin: ...]`), verdicts, and delegation/waiting queues into an ongoing session.
+- `LOOP CHECK` prompt wording now suggests a clearer, playful human-loop check when a user pastes three idle scripts in a row.
 - POSIX and SSH terminals now track xterm `DECSET 1004` focus events (`\033[?1004h` / `\033[?1004l` on `/dev/tty` with `ECHO` suppressed and `termios` restored on exit) so runs auto-copy immediately when the SSH/POSIX terminal stays focused (or regains focus via `\033[I`) and fall back to prompting `Press C or Enter` if focus left via `\033[O`.
 - Clipboard copy over SSH and headless POSIX terminals now sends an OSC 52 escape sequence (`\033]52;c;...\a`, with `tmux` passthrough when `TMUX` is set) to `/dev/tty` so output copies straight to the local client clipboard instead of failing on remote X11 `xclip`, and reports tool `stderr` when local clipboard commands fail.
 - `[L1-Harness]` now explicitly names `Talk:` (with zero prose before the script header) and all 11 manifest labels in order so long chats never drift away from the manifest format.

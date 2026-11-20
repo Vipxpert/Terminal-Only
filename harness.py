@@ -1345,9 +1345,10 @@ def git_blockers():
     names = ("MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG", "index.lock")
     return [x for x in names if os.path.exists(os.path.join(GIT_DIR, x))]
 
-GITATTRIBUTES_DEFAULT = """# The harness merges its own committed memory (notes by id, verdicts by key) so two devices adding notes do not leave conflict markers.
+GITATTRIBUTES_DEFAULT = """# The harness merges its own committed memory (notes by id, verdicts by key, tokens additively) so two devices adding notes do not leave conflict markers.
 .llm_harness/notes.md merge=llm-harness-notes
 .llm_harness/verdicts.json merge=llm-harness-verdicts
+.llm_harness/tokens.json merge=llm-harness-tokens
 """
 
 GITIGNORE_DEFAULT = """# Machine-local harness state (numbering, undo journal, saved runs, graph stamp).
@@ -1356,6 +1357,7 @@ GITIGNORE_DEFAULT = """# Machine-local harness state (numbering, undo journal, s
 !.llm_harness/goal.md
 !.llm_harness/notes.md
 !.llm_harness/verdicts.json
+!.llm_harness/tokens.json
 !.llm_harness/git.json
 __pycache__/
 """
@@ -2358,8 +2360,8 @@ def run_command(cmd, timeout, shell):
     if GIT_WRITE_RE.search(cmd):
         print("  [REFUSED] git commands that change history or the working tree go through @GIT_COMMIT / @GIT_FOLD; publishing goes through @GIT_PUSH.")
         return
-    if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake)\b", cmd, re.I):
-        print("  [REFUSED] --grant, --revoke, --release and --unbrake are the user's own commands, typed in their terminal; a script never runs them.")
+    if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake|merge)\b", cmd, re.I):
+        print("  [REFUSED] --grant, --revoke, --release, --unbrake and --merge are the user's own commands, typed in their terminal; a script never runs them.")
         return
     if shell == "powershell":
         prefix = "$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
@@ -3347,7 +3349,7 @@ def auto_commit_memory(P):
     """In a git project, commit the harness's project memory (goal, notes, verdicts, git policy) after a script changed it: no chat lists these files in its own commits, so they would never travel with the project. Left alone, with a note, on a protected branch, during an unfinished git operation, on a detached HEAD, and when .gitignore hides them."""
     if MODE != "git":
         return
-    present = [n for n in (os.path.join(WORKSPACE_NOTES_DIR, f).replace("\\", "/") for f in ("goal.md", "notes.md", "verdicts.json", "git.json")) if os.path.isfile(n)]
+    present = [n for n in (os.path.join(WORKSPACE_NOTES_DIR, f).replace("\\", "/") for f in ("goal.md", "notes.md", "verdicts.json", "tokens.json", "git.json")) if os.path.isfile(n)]
     if not present:
         return
     _, out, _ = run_git(["status", "--porcelain", "--"] + present)
@@ -3852,6 +3854,127 @@ def session_cli(flag):
         log_event({"session": sess, "kind": kind})
     print("%s: %s" % (kind.upper(), sess))
 
+def merge_session_cli():
+    """User-only command: --merge <from_session> <into_session> folds a dead or ended session's write scope, grants, uncommitted history ownership, pinned notes, verdicts, and delegation/waiting queues into an ongoing session."""
+    args = sys.argv[1:]
+    i = args.index("--merge")
+    src = re.sub(r"[^A-Za-z0-9_.-]+", "-", args[i + 1]).strip("-") if len(args) > i + 1 else ""
+    dst = re.sub(r"[^A-Za-z0-9_.-]+", "-", args[i + 2]).strip("-") if len(args) > i + 2 else ""
+    err = enter_workspace(arg_value("--workspace"))
+    if err or not src or not dst or src == dst:
+        print("usage: harness.py --workspace <project folder> --merge <from_session> <into_session>" + ((" | " + err) if err else ""))
+        return
+    moved = []
+    moved_notes, moved_verdicts = 0, 0
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        if dst not in reg:
+            print("no target session named %s; sessions: %s" % (dst, ", ".join(sorted(reg)) or "none"))
+            return
+        src_rec = reg.pop(src, None)
+        grants = load_json(grants_path(), {})
+        src_grants = grants.pop(src, [])
+        hist_paths = []
+        for hp in sorted(glob.glob(os.path.join(HISTORY_DIR, "*.json"))):
+            e = load_json(hp, None)
+            if isinstance(e, dict) and e.get("session") == src:
+                e["session"] = dst
+                save_json(hp, e)
+                hist_paths.extend(r for r, f in e.get("files", {}).items() if not f.get("undone"))
+        notes, next_id = load_workspace_notes()
+        for n in notes:
+            who = n.get("for") or []
+            if any(w.lower() == src.lower() for w in who):
+                merged_for = []
+                for w in who:
+                    rep = dst if w.lower() == src.lower() else w
+                    if not any(x.lower() == rep.lower() for x in merged_for):
+                        merged_for.append(rep)
+                n["for"] = merged_for
+                moved_notes += 1
+        if moved_notes:
+            write_workspace_notes(notes, next_id)
+        vdata = load_json(verdicts_path(), {})
+        verdicts = vdata.get("verdicts") if isinstance(vdata, dict) else None
+        if isinstance(verdicts, dict):
+            new_verdicts = {}
+            for k, v in verdicts.items():
+                if not isinstance(v, dict):
+                    new_verdicts[k] = v
+                    continue
+                target, owner = k.split("\t", 1) if "\t" in k else (v.get("target") or k, v.get("session") or "")
+                if owner == src:
+                    moved_verdicts += 1
+                    dk = "%s\t%s" % (target, dst)
+                    cur = new_verdicts.get(dk) or verdicts.get(dk)
+                    if not isinstance(cur, dict) or float(v.get("time") or 0) >= float(cur.get("time") or 0):
+                        new_verdicts[dk] = dict(v, session=dst, target=target)
+                elif k not in new_verdicts:
+                    new_verdicts[k] = v
+            if moved_verdicts:
+                save_json(verdicts_path(), dict(vdata, verdicts=new_verdicts))
+        if src_rec is None and not src_grants and not hist_paths and not moved_notes and not moved_verdicts:
+            print("nothing found for session %s; sessions: %s" % (src, ", ".join(sorted(reg)) or "none"))
+            return
+        drec = reg[dst]
+        if src_grants:
+            d_grants = grants.get(dst, [])
+            grants[dst] = d_grants + [p for p in src_grants if p not in d_grants]
+            moved.append("grants (%d)" % len(src_grants))
+        save_json(grants_path(), grants)
+        if src_rec:
+            src_sc = src_rec.get("scope") or {}
+            src_paths = src_sc.get("paths") or []
+            if src_paths:
+                dst_sc = drec.get("scope") or {"aim": src_sc.get("aim") or drec.get("aim") or ("merged from " + src), "paths": []}
+                dst_sc["paths"] = dst_sc.get("paths", []) + [p for p in src_paths if p not in dst_sc.get("paths", [])]
+                drec["scope"] = dst_sc
+                moved.append("scope (%s)" % ", ".join("/" + p for p in src_paths))
+            if src_rec.get("handed_over"):
+                drec["handed_over"] = sorted(set(drec.get("handed_over", [])) | set(src_rec["handed_over"]))
+            if src_rec.get("used"):
+                drec["used"] = sorted(set(drec.get("used", [])) | set(src_rec["used"]))
+            for other, orec in reg.items():
+                for item in orec.get("inherited", []):
+                    if item.get("from") == src:
+                        item["from"] = dst
+                for item in orec.get("delegated", []):
+                    if item.get("to") == src:
+                        item["to"] = dst
+                for w in orec.get("waiting", []):
+                    if w.get("owner") == src:
+                        w["owner"] = dst
+                if (orec.get("brake") or {}).get("from") == src:
+                    orec["brake"]["from"] = dst
+            inh = [dict(i) for i in src_rec.get("inherited", []) if i.get("from") != dst]
+            if inh:
+                drec.setdefault("inherited", []).extend(inh)
+                moved.append("inherited (%d)" % len(inh))
+            dlg = [dict(d) for d in src_rec.get("delegated", []) if d.get("to") != dst]
+            if dlg:
+                drec.setdefault("delegated", []).extend(dlg)
+                moved.append("delegated (%d)" % len(dlg))
+            held_now = (drec.get("scope") or {}).get("paths", [])
+            wait = [dict(w) for w in src_rec.get("waiting", []) if w.get("owner") != dst and not (held_now and scope_overlap([w["path"]], held_now))]
+            if wait:
+                seen_w = {(w.get("path"), w.get("owner")) for w in drec.get("waiting", [])}
+                added_w = [w for w in wait if (w.get("path"), w.get("owner")) not in seen_w]
+                if added_w:
+                    drec.setdefault("waiting", []).extend(added_w)
+                    moved.append("waiting (%d)" % len(added_w))
+        if hist_paths:
+            moved.append("history (%s)" % ", ".join("/" + p for p in sorted(set(hist_paths))))
+        if moved_notes:
+            moved.append("notes (%d)" % moved_notes)
+        if moved_verdicts:
+            moved.append("verdicts (%d)" % moved_verdicts)
+        summary = ", ".join(moved) or "empty session record"
+        save_json(sessions_path(), reg)
+        log_event({"session": dst, "kind": "session merged by the user", "to": dst, "text": "merged session %s into your session (%s)" % (src, summary)})
+    if moved_notes or moved_verdicts:
+        auto_commit_memory({"notes": moved_notes, "goal": None, "verdicts": moved_verdicts, "campaigns": []})
+    print("SESSION MERGED BY THE USER: %s -> %s (%s)" % (src, dst, summary))
+
 def grant_cli():
     """User-only command: harness.py --workspace <folder> --grant|--revoke <session> <path or glob>."""
     flag = "--revoke" if "--revoke" in sys.argv[1:] else "--grant"
@@ -4195,7 +4318,43 @@ def offer_copy():
     if not why and ask_key("\nPress C or Enter to copy this output to the clipboard, X to skip: ", "cx", {"\r": "c", "\n": "c"}) != "c":
         return
     ok, how = copy_to_clipboard(text)
-    print("  [COPIED] %d characters via %s%s. Paste them into the chat." % (len(text), how, " (without asking: %s)" % why if why else "") if ok else "  [NOT COPIED] %s. Select the output by hand." % how)
+    if ok:
+        tok, total_tok, pastes = record_copied_tokens(text, replay=bool(AUTO_COPY))
+        print("  [COPIED] %d characters (~%s tok this paste, ~%s tok project total across %d paste%s) via %s%s. Paste them into the chat." % (
+            len(text), format(tok, ","), format(total_tok, ","), pastes, "" if pastes == 1 else "s", how, " (without asking: %s)" % why if why else ""))
+    else:
+        print("  [NOT COPIED] %s. Select the output by hand." % how)
+
+def tokens_path():
+    return os.path.join(WORKSPACE_NOTES_DIR, "tokens.json")
+
+def estimate_tokens(text):
+    """Heuristic token count (~4 chars/token) for harness output sent to the AI."""
+    return max(1, (len(text) + 3) // 4) if text else 0
+
+def record_copied_tokens(text, replay=False):
+    """Accumulate estimated tokens sent to the AI in .llm_harness/tokens.json so totals travel with git; a replay replaces the previous paste's count instead of adding again. Returns (this_tok, total_tok, pastes)."""
+    tok = estimate_tokens(text)
+    if not os.path.isdir(".git") and not os.path.isdir(WORKSPACE_NOTES_DIR):
+        return tok, tok, 1
+    with state_lock():
+        cur = load_json(tokens_path(), {"tokens": 0, "pastes": 0, "chars": 0, "last_tok": 0, "last_chars": 0})
+        total_tok = int(cur.get("tokens") or 0)
+        pastes = int(cur.get("pastes") or 0)
+        chars = int(cur.get("chars") or 0)
+        last_tok = int(cur.get("last_tok") or 0)
+        last_chars = int(cur.get("last_chars") or 0)
+        if tok:
+            if replay and pastes > 0:
+                total_tok = max(0, total_tok - last_tok) + tok
+                chars = max(0, chars - last_chars) + len(text)
+            else:
+                total_tok += tok
+                pastes += 1
+                chars += len(text)
+            os.makedirs(WORKSPACE_NOTES_DIR, exist_ok=True)
+            save_json(tokens_path(), {"tokens": total_tok, "pastes": pastes, "chars": chars, "last_tok": tok, "last_chars": len(text)})
+    return tok, max(total_tok, tok), max(pastes, 1)
 
 def lock_holders(folder):
     """Names of processes whose working folder is inside this folder (needs the optional psutil package); [] when psutil is missing or nothing is found. Only reported, never stopped."""
@@ -4499,6 +4658,22 @@ def brief_reason(conds):
         n = len(open_ledgers())
         if n:
             return "%d open debug ledger%s" % (n, "" if n == 1 else "s")
+    if "sessions" in conds:
+        reg = load_json(sessions_path(), {})
+        if len(reg) > 1 or any(r.get("waiting") or r.get("inherited") or r.get("delegated") or r.get("brake") for r in reg.values()):
+            return "multiple sessions or active handoff/wait state"
+    if "dirty" in conds and MODE == "git":
+        if git_blockers():
+            return "in-progress git operation"
+        _, st_out, _ = run_git(["status", "--porcelain"])
+        if st_out.strip():
+            return "uncommitted changes in workspace"
+        _, br, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+        if br in (git_policy().get("protected") or []):
+            return "on protected branch %s" % br
+        rc_up, ahead_out, _ = run_git(["rev-list", "--count", "@{u}..HEAD"])
+        if rc_up == 0 and int(ahead_out.strip() or "0") > 0:
+            return "unpushed commits on branch"
     return ""
 
 def print_footer(state):
@@ -4533,7 +4708,7 @@ def print_footer(state):
         upstream_line(CURRENT_SESSION)
         account_hint()
     if CURRENT_SESSION and (load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("idle_runs", 0) >= LOOP_AT:
-        print("=== LOOP CHECK: this chat's last %d scripts did nothing (footer only). The user may be pasting in a loop: send no manifest and no script, and ask in a friendly line whether they are still there and what they want next ===" % LOOP_AT)
+        print("=== LOOP CHECK: this chat's last %d scripts did nothing (footer only). The user may be pasting in a loop: send no manifest and no script, and ask in one or two friendly lines whether they are still there and what they want next (for example: Hello? Are you still here? Are you a human stuck in a loop? Like an AI? Beep boop. Waiting for your input...) ===" % LOOP_AT)
     if rules:
         print("=== L1 CONTRACT (standing rules; apply, never echo) ===")
         before, before_mode = rules_seen(rules)
@@ -4965,8 +5140,19 @@ def merge_verdicts_text(base, ours, theirs):
             out[section] = merged
     return json.dumps(out, ensure_ascii=True, indent=1)
 
+def merge_tokens_text(base, ours, theirs):
+    """Additive three-way merge of tokens.json: each branch's delta since base is added to ours so parallel branches never lose token counts."""
+    def load(text):
+        data = json.loads(text) if text.strip() else {}
+        if not isinstance(data, dict):
+            raise ValueError("tokens.json is not a JSON object")
+        return {k: int(data.get(k) or 0) for k in ("tokens", "pastes", "chars")}
+    b, o, t = load(base), load(ours), load(theirs)
+    merged = {k: max(o[k], o[k] + max(0, t[k] - b[k])) for k in ("tokens", "pastes", "chars")}
+    return json.dumps(merged, ensure_ascii=True, indent=1)
+
 def merge_memory_cli(args):
-    """git's merge driver: --merge-memory <notes|verdicts> <base> <ours> <theirs>. The merged text replaces <ours>; exit 0 when merged, 1 when a side could not be read (git then leaves the usual conflict)."""
+    """git's merge driver: --merge-memory <notes|verdicts|tokens> <base> <ours> <theirs>. The merged text replaces <ours>; exit 0 when merged, 1 when a side could not be read (git then leaves the usual conflict)."""
     try:
         kind, base_p, ours_p, theirs_p = args[:4]
         texts = []
@@ -4976,15 +5162,16 @@ def merge_memory_cli(args):
                     texts.append(f.read().replace("\r\n", "\n"))
             except FileNotFoundError:
                 texts.append("")
-        merged = (merge_notes_text if kind == "notes" else merge_verdicts_text)(*texts)
+        fn = {"notes": merge_notes_text, "verdicts": merge_verdicts_text, "tokens": merge_tokens_text}[kind]
+        merged = fn(*texts)
         with open(ours_p, "w", encoding="utf-8", newline="\n") as f:
             f.write(merged)
         sys.exit(0)
-    except (ValueError, OSError, TypeError) as exc:
+    except (ValueError, OSError, TypeError, KeyError) as exc:
         print("llm_harness merge driver: %s" % exc, file=sys.stderr)
         sys.exit(1)
 
-MERGE_DRIVERS = {"llm-harness-notes": "notes", "llm-harness-verdicts": "verdicts"}
+MERGE_DRIVERS = {"llm-harness-notes": "notes", "llm-harness-verdicts": "verdicts", "llm-harness-tokens": "tokens"}
 
 def has_merge_rules():
     """True when .gitattributes names the harness's merge drivers."""
@@ -5028,6 +5215,8 @@ def main():
         return merge_memory_cli(sys.argv[sys.argv.index("--merge-memory") + 1:])
     if "--link" in sys.argv[1:]:
         return link_cli()
+    if "--merge" in sys.argv[1:]:
+        return merge_session_cli()
     for flag in ("--release", "--unbrake"):
         if flag in sys.argv[1:]:
             return session_cli(flag)

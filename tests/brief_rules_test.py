@@ -52,6 +52,27 @@ def main():
     check("a resolved ledger lets it collapse again, without a [CHANGED] mark", "(brief; full rule: @HELP L1-Alpha)" in out and "[CHANGED]" not in out, out)
     out = run("@HELP L1-Alpha")
     check("@HELP L1-<name> prints the rule in full", "=== HELP: L1-ALPHA (full rule) ===" in out and "the full alpha rule with every detail" in out.split("=== HELP: L1-ALPHA")[1].split("===")[1], out)
+    with open(os.path.join(INSTALL, "workflow_commands.txt"), "w", encoding="utf-8") as f:
+        f.write("- **L1 Rule \u2014 `[L1-Sess]`:** `full multi-session handoff rule`\n"
+                "- **L1 Brief \u2014 `[L1-Sess]` (sessions):** `short single-session brief`\n"
+                "- **L1 Rule \u2014 `[L1-Git]` (git):** `full git gate rule`\n"
+                "- **L1 Brief \u2014 `[L1-Git]` (dirty):** `short clean-git brief`\n")
+    out = footer(run("@GREP some"))
+    check("single-session workspace folds sessions brief", "[L1-Sess] (brief; full rule: @HELP L1-Sess) short single-session brief" in out and "full multi-session handoff rule" not in out, out)
+    p2 = subprocess.run([sys.executable, os.path.join(INSTALL, "harness.py")], input=("@SCRIPT [P: second]\n@SESSION beta | second\n@WORKSPACE " + WS + "\n@GREP some\n").encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+    out2 = footer(p2.stdout.decode("utf-8", "replace").replace("\r", ""))
+    check("a second active session expands the sessions brief", "[L1-Sess] (expanded: multiple sessions or active handoff/wait state) full multi-session handoff rule" in out2, out2)
+    subprocess.run(["git", "init", "-q", "-b", "dev"], cwd=WS, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=WS, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=WS, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    subprocess.run(["git", "add", "-A"], cwd=WS, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=WS, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    out_clean = footer(run("@GREP some"))
+    check("clean git workspace folds dirty brief", "[L1-Git] (brief; full rule: @HELP L1-Git) short clean-git brief" in out_clean and "full git gate rule" not in out_clean, out_clean)
+    with open(os.path.join(WS, "a.txt"), "a") as f:
+        f.write("dirty line\n")
+    out_dirty = footer(run("@GREP some"))
+    check("dirty git workspace expands dirty brief", "[L1-Git] (expanded: uncommitted changes in workspace) full git gate rule" in out_dirty, out_dirty)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 
