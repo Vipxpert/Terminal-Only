@@ -4,6 +4,9 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Clipboard copy over SSH and headless POSIX terminals now sends an OSC 52 escape sequence (`\033]52;c;...\a`, with `tmux` passthrough when `TMUX` is set) to `/dev/tty` so output copies straight to the local client clipboard instead of failing on remote X11 `xclip`, and reports tool `stderr` when local clipboard commands fail.
+- `[L1-Harness]` now explicitly names `Talk:` (with zero prose before the script header) and all 11 manifest labels in order so long chats never drift away from the manifest format.
+- `[L1-Debug]` and its brief now distinguish fast-path fixes (proven cause in code/traceback, including Bug A exposing downstream Bug B) from structured escalation (`@INIT_DEBUG <slug>` when the next edit would be a guess, the same failure survives 2 fixes, or symptoms loop), choosing between real-module standalone reproduction (progressively reintroducing app state when standalone passes) and in-pipeline telemetry on coupled systems.
 - `@SCOPE` accepts tree node paths (`docs/trees/tree_*.txt#Node > Path`) with validation that the target node resolves uniquely, and `[L1-Notes]` allows user-approved to-do list notes (`Todo: ...`).
 
 ## 3.11

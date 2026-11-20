@@ -54,16 +54,42 @@ def pty_run(answer, marker=b"to copy this output", text=None, extra=None):
 
 
 def main():
+    spec = importlib.util.spec_from_file_location("harness_under_test", HARNESS)
+    hh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hh)
+    tty_out = os.path.join(FAKE, "tty_osc52.bin")
+    open(tty_out, "wb").close()
+    old_tmux = os.environ.pop("TMUX", None)
+    try:
+        ok, how = hh.osc52_copy("hello \u2014 ssh".encode("utf-8"), tty_out)
+        raw = open(tty_out, "rb").read()
+        check("OSC 52 writes base64 UTF-8 clipboard sequence to the terminal", ok and "OSC 52" in how and raw == b"\033]52;c;aGVsbG8g4oCUHNzaA==\a" or raw == b"\033]52;c;" + hh.base64.b64encode("hello \u2014 ssh".encode("utf-8")) + b"\a", repr(raw))
+        open(tty_out, "wb").close()
+        os.environ["TMUX"] = "/tmp/tmux-1000/default,123,0"
+        hh.osc52_copy(b"hi", tty_out)
+        raw_tmux = open(tty_out, "rb").read()
+        check("OSC 52 wraps sequence for tmux passthrough when TMUX is set", raw_tmux.startswith(b"\033Ptmux;\033\033]52;c;") and raw_tmux.endswith(b"\033\\"), repr(raw_tmux))
+    finally:
+        if old_tmux is not None:
+            os.environ["TMUX"] = old_tmux
+        else:
+            os.environ.pop("TMUX", None)
     if os.name == "nt":
-        print("SKIP the clipboard checks use a stand-in xclip and a pseudo-terminal; on Windows try them by hand")
-        sys.exit(0)
+        print("SKIP the remaining PTY clipboard checks use a stand-in xclip and a pseudo-terminal; on Windows try them by hand")
+        sys.exit(0 if all(RESULTS) else 1)
+    for k in ("SSH_CONNECTION", "SSH_TTY"):
+        os.environ.pop(k, None)
     with open(os.path.join(FAKE, "xclip"), "w") as f:
         f.write('#!/bin/sh\n/bin/cat > "$LLM_TEST_CLIP"\n')
     os.chmod(os.path.join(FAKE, "xclip"), 0o755)
     os.environ["PATH"], os.environ["LLM_TEST_CLIP"] = FAKE, CLIP
-    spec = importlib.util.spec_from_file_location("harness_under_test", HARNESS)
-    hh = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(hh)
+    open(tty_out, "wb").close()
+    os.environ["SSH_CONNECTION"] = "10.0.0.1 55555 10.0.0.2 22"
+    try:
+        ok_ssh, how_ssh = hh.copy_to_clipboard("ssh clip", tty_out)
+        check("over SSH, copy_to_clipboard uses OSC 52 instead of remote X11 xclip", ok_ssh and "OSC 52" in how_ssh and not os.path.exists(CLIP) and open(tty_out, "rb").read().startswith(b"\033]52;c;"), how_ssh)
+    finally:
+        os.environ.pop("SSH_CONNECTION", None)
     sample = "h\u00e9llo \u2014 \u251c\u2500\u2500 line two\n"
     ok, how = hh.copy_to_clipboard(sample)
     with open(CLIP, "rb") as f:

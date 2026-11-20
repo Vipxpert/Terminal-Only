@@ -3903,8 +3903,23 @@ def windows_clipboard_set(text):
     finally:
         user32.CloseClipboard()
 
-def copy_to_clipboard(text):
-    """(ok, how): put text on the system clipboard through a tool the system already has (PowerShell on Windows, pbcopy, wl-copy, xclip or xsel elsewhere); a temp file keeps the encoding exact on Windows."""
+def osc52_copy(data, tty_path="/dev/tty"):
+    """Write an OSC 52 clipboard sequence directly to the controlling terminal so SSH / headless sessions copy to the user's local terminal clipboard."""
+    b64 = base64.b64encode(data).decode("ascii")
+    seq = "\033]52;c;%s\a" % b64
+    if os.environ.get("TMUX"):
+        seq = "\033Ptmux;" + seq.replace("\033", "\033\033") + "\033\\"
+    fd = os.open(tty_path, os.O_WRONLY)
+    try:
+        view = seq.encode("ascii")
+        while view:
+            view = view[os.write(fd, view):]
+    finally:
+        os.close(fd)
+    return True, "OSC 52 terminal escape (SSH/TTY clipboard)"
+
+def copy_to_clipboard(text, tty_path="/dev/tty"):
+    """(ok, how): put text on the system clipboard through a tool the system already has (PowerShell on Windows, OSC 52 over SSH, or pbcopy/wl-copy/xclip/xsel locally); a temp file keeps the encoding exact on Windows."""
     data = text.encode("utf-8")
     try:
         if os.name == "nt":
@@ -3928,10 +3943,26 @@ def copy_to_clipboard(text):
                 return True, "PowerShell Set-Clipboard"
             tries.append("PowerShell Set-Clipboard: " + ((r.stderr or r.stdout or b"").decode("utf-8", "replace").strip().splitlines() or ["exit %d" % r.returncode])[0][:200])
             return False, "; ".join(tries)
+        # Comment (constraint): over SSH, X11/Wayland tools fail with no remote DISPLAY or copy to the remote host's RAM instead of the user's local client clipboard; send OSC 52 to /dev/tty first
+        if os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+            try:
+                return osc52_copy(data, tty_path)
+            except OSError:
+                pass
+        errs = []
         for cmd in (["pbcopy"], ["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
             if shutil.which(cmd[0]):
-                return subprocess.run(cmd, input=data, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30).returncode == 0, cmd[0]
-        return False, "no clipboard tool found (install xclip, xsel or wl-copy)"
+                r = subprocess.run(cmd, input=data, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
+                if r.returncode == 0:
+                    return True, cmd[0]
+                why = ((r.stderr or b"").decode("utf-8", "replace").strip().splitlines() or ["exit %d" % r.returncode])[0][:160]
+                errs.append("%s (%s)" % (cmd[0], why))
+        if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+            try:
+                return osc52_copy(data, tty_path)
+            except OSError:
+                pass
+        return False, "; ".join(errs) if errs else "no clipboard tool found (install xclip, xsel or wl-copy)"
     except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)
 
