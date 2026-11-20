@@ -1,2 +1,3 @@
-<!-- llm_harness_notes_next_id: 5 -->
+<!-- llm_harness_notes_next_id: 6 -->
 - [N004] The user can relay questions to ChatGPT, which can browse the web and inspect GitHub repositories; Claude in this chat cannot. When something external is unknown (a tool's options or docs, a repository's code, a release's changes), ask the user to have ChatGPT look it up instead of guessing.
+- [N005] [pin: harness-dev] Todo: 1) Add --merge <from_session> <into_session> to absorb a dead session's write scope, uncommitted history ownership, pinned notes, verdicts, and delegation/waiting queues; 2) Add state-driven L1 Brief folding for heavy standing rules when idle; 3) Polish LOOP CHECK human-loop prompt text.
