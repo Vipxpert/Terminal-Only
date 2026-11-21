@@ -3355,6 +3355,9 @@ def auto_commit_memory(P):
     _, out, _ = run_git(["status", "--porcelain", "--"] + present)
     changed = [l[3:].strip().strip('"') for l in out.splitlines() if l.strip()]
     touched = bool(P["notes"] or P["goal"] or P["verdicts"] or P["campaigns"])
+    # Comment (decision): the token counts change on every paste, so they are committed only along with other memory changes or when a session ends; a commit after every script buried the history in chore commits
+    if changed and all(os.path.basename(c) == "tokens.json" for c in changed) and not P.get("session_end"):
+        return
     if not changed:
         hidden = [n for n in present if touched and run_git(["check-ignore", "-q", "--", n])[0] == 0]
         if hidden:

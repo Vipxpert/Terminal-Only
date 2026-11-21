@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- `tokens.json` is no longer committed after every script: it is committed together with other memory changes and when a session ends, so the history is not buried in memory commits.
+
 - Token tracking ignores Credential Manager's placeholder account name "Personal Access Token" and falls back to the git user name, so usage is filed under a real login.
 
 - `[L1-Sessions]` and `[L1-Git Gate]` now fold into concise `L1 Brief` summaries when the workspace is single-session and git-clean, automatically expanding in full whenever multiple sessions, waiting/delegation/brake states, uncommitted changes, unpushed commits, or protected branches are active.
