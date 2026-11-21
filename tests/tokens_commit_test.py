@@ -27,6 +27,13 @@ def run(*lines):
     return p.stdout.decode("utf-8", "replace").split("=== L1 CONTRACT")[0].replace("\r", "")
 
 
+def run_full(*lines):
+    STEP[0] += 1
+    head = ["@SCRIPT [C: step %d]" % STEP[0], "@SESSION tok | token commit test", "@WORKSPACE " + WS]
+    p = subprocess.run([sys.executable, HARNESS], input="\n".join(head + list(lines) + [""]).encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+    return p.stdout.decode("utf-8", "replace").replace("\r", "")
+
+
 def bump(n):
     os.makedirs(os.path.join(WS, ".llm_harness"), exist_ok=True)
     with open(os.path.join(WS, ".llm_harness", "tokens.json"), "w", newline="\n") as f:
@@ -45,6 +52,8 @@ def main():
     bump(2)
     run("@GREP first | in a.txt")
     check("tokens.json alone is not committed after a script", git("rev-parse", "HEAD") == head0 and "tokens.json" in git("status", "--porcelain"), git("status", "--porcelain"))
+    full = run_full("@GREP first | in a.txt")
+    check("a modified tokens.json alone does not keep the standing rules expanded", "[L1-Git Gate] (brief" in full and "uncommitted changes in workspace" not in full, full[-900:])
     out = run("@NOTE_ADD A standing fact for the test")
     show = git("show", "--stat", "--format=%s", "HEAD")
     check("with another memory change it is committed along", "tokens.json" in show and "notes.md" in show, show + out)

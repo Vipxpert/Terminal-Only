@@ -176,11 +176,16 @@ def decode_payload(raw):
 
 # ---------------------------------------------------------------- Stage: Line-1 header and tree glyphs
 
-HDR_PREFIX = {".py": "# ", ".sh": "# ", ".txt": "# ", ".yaml": "# ", ".yml": "# ", ".go": "// ", ".js": "// ",
-              ".ts": "// ", ".c": "// ", ".cpp": "// ", ".h": "// ", ".rs": "// ", ".vue": "<!-- ", ".html": "<!-- ",
+# Comment (decision): this table is how the harness learns a language's comment syntax: a line marker ('// ', '# ', '-- ') or, for formats that only have block comments (HTML, XML, CSS), an opening marker plus a closing suffix; the first-line header, its repair and its placement all read it, so a new language is one more entry here
+HDR_PREFIX = {".py": "# ", ".sh": "# ", ".txt": "# ", ".yaml": "# ", ".yml": "# ", ".toml": "# ", ".ps1": "# ",
+              ".go": "// ", ".js": "// ", ".mjs": "// ", ".cjs": "// ", ".jsx": "// ", ".ts": "// ", ".tsx": "// ",
+              ".c": "// ", ".h": "// ", ".cpp": "// ", ".cc": "// ", ".cxx": "// ", ".hpp": "// ", ".hh": "// ",
+              ".cs": "// ", ".java": "// ", ".kt": "// ", ".kts": "// ", ".rs": "// ", ".swift": "// ", ".dart": "// ", ".scala": "// ", ".php": "// ",
+              ".sql": "-- ", ".lua": "-- ",
+              ".vue": "<!-- ", ".html": "<!-- ", ".htm": "<!-- ", ".xml": "<!-- ", ".css": "/* ", ".scss": "/* ",
               ".cmd": ":: # ", ".bat": ":: # "}
-HDR_SUFFIX = {".vue": " -->", ".html": " -->"}
-HDR_LIKE = re.compile(r"^(?:# |// |:: # )/\S+$|^<!-- /\S+ -->$")
+HDR_SUFFIX = {".vue": " -->", ".html": " -->", ".htm": " -->", ".xml": " -->", ".css": " */", ".scss": " */"}
+HDR_LIKE = re.compile(r"^(?:# |// |-- |:: # )/\S+$|^<!-- /\S+ -->$|^/\* /\S+ \*/$")
 CODING_RE = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
 _PROJECT = []
 
@@ -203,6 +208,11 @@ def ensure_line1_header(rel, text):
     idx = 1 if lines[0].startswith("#!") else 0
     if ext == ".py" and idx < len(lines) and CODING_RE.match(lines[idx]):
         idx += 1
+    # Comment (constraint): some formats must open with their own line, so the header goes below it: an HTML doctype (a comment above it puts old browsers into quirks mode), an XML declaration (it must be the very first thing in the file), and PHP's opening tag (a PHP file that starts with plain text is left alone, because a comment above the tag would be sent to the browser as text)
+    if idx < len(lines) and ((ext in (".html", ".htm") and lines[idx].lstrip().lower().startswith("<!doctype")) or (ext == ".xml" and lines[idx].startswith("<?xml")) or (ext == ".php" and lines[idx].startswith("<?php"))):
+        idx += 1
+    if ext == ".php" and not (idx > 0 and lines[idx - 1].startswith("<?php")):
+        return "\n".join(lines), "N/A"
     if idx < len(lines) and lines[idx] == hdr:
         return "\n".join(lines), status
     if idx < len(lines) and HDR_LIKE.match(lines[idx]):
@@ -968,7 +978,7 @@ def suggest_line_edits(ops):
         elif len(old) >= 10 and 0 < edits <= 3 and same >= 8:
             print("  [TIP] /%s | %s: this hunk resent %d unchanged lines to change %d; +++ [LINE EDITS] +++ would need %d line(s)" % (op["file"].lstrip("/"), op["label"], same, edits, edits))
 
-COMMENT_LINE_RE = re.compile(r"^\s*(#|//)\s*Comment\b")
+COMMENT_LINE_RE = re.compile(r"^\s*(#|//|/\*+|<!--|--)\s*Comment\b")
 
 def report_removed_comments(changed, pre, rolled):
     """A change that deletes a 'Comment' line (a recorded reason) is flagged, so the AI confirms the reason is really gone; nothing is refused."""
@@ -4758,7 +4768,8 @@ def brief_reason(conds):
         if git_blockers():
             return "in-progress git operation"
         _, st_out, _ = run_git(["status", "--porcelain"])
-        if st_out.strip():
+        # Comment (decision): the token counts change on every paste, so a modified tokens.json alone does not keep the rules expanded
+        if [l for l in st_out.splitlines() if l.strip() and not l[3:].strip().strip('"').endswith(WORKSPACE_NOTES_DIR + "/tokens.json")]:
             return "uncommitted changes in workspace"
         _, br, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
         if br in (git_policy().get("protected") or []):

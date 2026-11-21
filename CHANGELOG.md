@@ -4,6 +4,9 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Comment syntax is one table: the first-line `/<project>/<path>` header now uses the file's own marker for C#, Java, Kotlin, Swift, Dart, Scala, PHP, C and C++ variants, JSX and TSX (`//`), SQL and Lua (`--`), HTML, XML and Vue (`<!-- -->`), CSS and SCSS (`/* */`), TOML and PowerShell (`#`), below an HTML doctype, XML declaration or PHP opening tag; `[COMMENT REMOVED]` recognises `/* Comment`, `<!-- Comment` and `-- Comment` lines too, and `[L1-Scope]` tells the AI to write `Comment` lines in the file's own marker.
+- A modified `tokens.json` alone no longer keeps `[L1-Git Gate]` expanded, so the idle rule folding can fold.
+
 - `tokens.json` is no longer committed after every script: it is committed together with other memory changes and when a session ends, so the history is not buried in memory commits.
 
 - Token tracking ignores Credential Manager's placeholder account name "Personal Access Token" and falls back to the git user name, so usage is filed under a real login.
