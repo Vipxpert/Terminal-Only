@@ -175,7 +175,7 @@ Work on this repository through the harness itself, with this folder as the work
 ## Limitations
 
 - You are in the loop for every step: one script per turn, pasted by hand.
-- Day-to-day use is on Windows PowerShell; Linux is covered by the test suites (the included GitHub Actions workflow runs them on Linux and Windows where Actions is enabled) but exercised less by hand, and macOS is untested.
+- Day-to-day use is on Windows PowerShell; Linux is covered by the test suites (the included GitHub Actions workflow runs them on Linux and Windows where Actions is enabled) but exercised less by hand, and macOS is untested. Edits work byte for byte in any language; comment markers, first-line headers and symbol scoping are built in for Python, Go, JS, TS, Vue, C#, Java, Kotlin, Swift, Rust, C and C++ (`@HELP LANGUAGES` lists them), and only Python and Go get an automatic syntax check.
 - Graph searches pay CBM's start-up cost, a few seconds per run.
 
 ## Tools evaluated and not used

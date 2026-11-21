@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- `@HELP LANGUAGES` prints, from the harness's own tables, the comment marker per file extension, where the first-line header goes, which languages get symbol scoping and which get an automatic syntax check.
+
 - Symbol scoping, `@XREF` and the Unused probe understand C#, Java, Kotlin, Swift, Rust, C and C++: modifiers such as `internal sealed partial virtual open suspend`, methods with a return type (with a modifier, or with a closing `{` or in column 0), constructors, Kotlin `fun`, `record`, `object`, `mod`, a bare `{` line as part of its block, and C# attribute lines above a definition; calls, conditions and control-flow lines are not mistaken for definitions, and `.cs .java .kt .rs .c .h .cpp .swift` and friends are scanned.
 
 - Comment syntax is one table: the first-line `/<project>/<path>` header now uses the file's own marker for C#, Java, Kotlin, Swift, Dart, Scala, PHP, C and C++ variants, JSX and TSX (`//`), SQL and Lua (`--`), HTML, XML and Vue (`<!-- -->`), CSS and SCSS (`/* */`), TOML and PowerShell (`#`), below an HTML doctype, XML declaration or PHP opening tag; `[COMMENT REMOVED]` recognises `/* Comment`, `<!-- Comment` and `-- Comment` lines too, and `[L1-Scope]` tells the AI to write `Comment` lines in the file's own marker.

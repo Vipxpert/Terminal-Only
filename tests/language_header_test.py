@@ -47,6 +47,14 @@ def main():
     ok = all(hh.COMMENT_LINE_RE.match(s) for s in ("// Comment (decision): x", "    # Comment: y", "/* Comment: z */", "<!-- Comment (order): w -->", "-- Comment: q"))
     check("the Comment convention is recognised in every marker", ok)
     check("ordinary comments and code are not mistaken for it", not any(hh.COMMENT_LINE_RE.match(s) for s in ("// a plain comment", "# comment-like text", "int comments = 1;", "--i;")))
+    import contextlib, io
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        hh.print_languages()
+    text = buf.getvalue()
+    rows = text.split("\n")
+    check("@HELP LANGUAGES lists each marker group from the table itself", any(l.strip().startswith("//") and ".cs" in l and ".java" in l for l in rows) and any(l.strip().startswith("--") and ".sql" in l for l in rows) and any(".css" in l and "/*" in l for l in rows), text)
+    check("and says which languages get symbol scoping and which get a syntax check", ".cs" in text.split("symbols")[1] and "Python (compile) and Go (gofmt)" in text, text)
     sys.exit(0 if all(RESULTS) else 1)
 
 

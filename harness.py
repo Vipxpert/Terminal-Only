@@ -5030,6 +5030,21 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager) and, at a terminal, lets the user press a number to pin one for this project, or A to sign in another account first; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
 """
 
+def print_languages():
+    """@HELP LANGUAGES: what the harness does for each kind of file, generated from the tables the code itself uses so the two cannot disagree."""
+    marks = {}
+    for ext in sorted(HDR_PREFIX):
+        key = HDR_PREFIX[ext].strip() + ((" ... " + HDR_SUFFIX[ext].strip()) if ext in HDR_SUFFIX else "")
+        marks.setdefault(key, []).append(ext)
+    print("\n=== HELP: LANGUAGES ===")
+    print("  every file: hunks, text replacements, line edits, scopes, undo and git work byte for byte (BOM and line endings kept)")
+    print("  the marker for 'Comment' lines and the first-line header, by extension:")
+    for key in sorted(marks):
+        print("    %-12s %s" % (key, " ".join(marks[key])))
+    print("  the header goes below a shebang, a Python coding line, an HTML doctype, an XML declaration or PHP's opening tag; other file types (json, md ...) get none")
+    print("  symbols for @SCOPE file#Class.method, @XREF and @PROBE | Unused: %s" % " ".join(CODE_EXTS))
+    print("  syntax check with rollback: Python (compile) and Go (gofmt); other languages are not compiled by the harness, so build or test them with @RUN")
+
 def print_help(name, shell):
     """@HELP <directive>: the syntax-card lines for one directive, taken from the card itself so the two never disagree."""
     import io, contextlib
@@ -5045,6 +5060,9 @@ def print_help(name, shell):
             hits = []
         print("\n=== HELP: %s (full rule) ===" % key[1:])
         print("  " + (hits[0][1].strip().strip("`").strip() if hits else "no such rule in workflow_commands.txt"))
+        return
+    if key == "@LANGUAGES":
+        print_languages()
         return
     if key == "@COMMANDS":
         print("\n=== HELP: all commands ===\n  " + " ".join(DIRECTIVES.split()) + "\n  syntax of any one: @HELP <name>")
