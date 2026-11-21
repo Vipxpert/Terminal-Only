@@ -4333,6 +4333,13 @@ def estimate_tokens(text):
     """Heuristic token count (~4 chars/token) for harness output sent to the AI."""
     return max(1, (len(text) + 3) // 4) if text else 0
 
+# Comment (workaround): Git Credential Manager lists a token (PAT) sign-in under the placeholder name 'Personal Access Token', which is not a GitHub login, so it is never used as the account in a token bucket's label
+TOKEN_PLACEHOLDER_ACCOUNTS = ("personal access token",)
+
+def usable_accounts(accounts):
+    """The signed-in account names without Credential Manager's placeholder for token sign-ins."""
+    return [a for a in accounts if a.strip().lower() not in TOKEN_PLACEHOLDER_ACCOUNTS]
+
 def token_bucket_key():
     """Return '<github_account>@<machine>' so uploaded token totals stay separated per preferred GitHub account + machine pair."""
     acct = ""
@@ -4341,7 +4348,7 @@ def token_bucket_key():
         if info and info.get("scheme") and info.get("host"):
             acct = run_git(["config", "--get", "credential.%s://%s.username" % (info["scheme"], info["host"])])[1].strip()
             if not acct:
-                accts, _ = known_accounts(info["host"])
+                accts = usable_accounts(known_accounts(info["host"])[0])
                 if len(accts) == 1:
                     acct = accts[0]
         if not acct:

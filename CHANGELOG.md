@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Token tracking ignores Credential Manager's placeholder account name "Personal Access Token" and falls back to the git user name, so usage is filed under a real login.
+
 - `[L1-Sessions]` and `[L1-Git Gate]` now fold into concise `L1 Brief` summaries when the workspace is single-session and git-clean, automatically expanding in full whenever multiple sessions, waiting/delegation/brake states, uncommitted changes, unpushed commits, or protected branches are active.
 - `[COPIED]` now reports the estimated token count of the current paste, the active session's cumulative total, and the project-wide total across `<github_account>@<machine>` buckets (`~X tok this paste, ~Y tok session <name>, ~Z tok project total [<account>@<machine>]`), persisted in `.llm_harness/tokens.json` so uploaded branches keep account+machine usage cleanly separated and merge without conflicts.
 - Users can now run `harness.py --workspace <folder> --merge <from_session> <into_session>` from their terminal to absorb a dead or already-released session's write scope, user grants, uncommitted history/undo ownership, pinned notes (`[pin: ...]`), verdicts, and delegation/waiting queues into an ongoing session.
