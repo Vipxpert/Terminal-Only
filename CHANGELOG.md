@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- C# and Java methods with no modifier and the brace on the next line (Unity's `void Start()`, `void Update()`) are found: a type-shaped return type plus a `Type name` parameter list is enough, while prose lines, aligned tables and control-flow lines are not; `object`, `record` and `mod` need the shape of a declaration. On 660,000 lines of real Python the finder invents no definitions except genuine C code embedded in the files.
+
 - `@HELP LANGUAGES` prints, from the harness's own tables, the comment marker per file extension, where the first-line header goes, which languages get symbol scoping and which get an automatic syntax check.
 
 - Symbol scoping, `@XREF` and the Unused probe understand C#, Java, Kotlin, Swift, Rust, C and C++: modifiers such as `internal sealed partial virtual open suspend`, methods with a return type (with a modifier, or with a closing `{` or in column 0), constructors, Kotlin `fun`, `record`, `object`, `mod`, a bare `{` line as part of its block, and C# attribute lines above a definition; calls, conditions and control-flow lines are not mistaken for definitions, and `.cs .java .kt .rs .c .h .cpp .swift` and friends are scanned.

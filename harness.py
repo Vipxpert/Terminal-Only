@@ -247,20 +247,51 @@ IDENT = re.compile(r"^[A-Za-z_$][\w$]*(?:\(\))?$")
 DOTTED = re.compile(r"^[A-Za-z_$][\w$]*(?:(?:\.|::)[A-Za-z_$][\w$]*)+(?:\(\))?$")
 SKIPPABLE = ("#", "//", "/*", "*/", "<!--")
 CLOSERS = ("}", ")", "]", "</")
-# Comment (decision): Java, C#, Kotlin, Swift, C and C++ declare methods as '[modifiers] ReturnType name(args)', which the keyword patterns above cannot see; a line counts as such a definition only with a modifier (constructors too) or with a return type plus a closing '{' or a start in column 0, and never when it begins with a control-flow word, so calls, conditions and Python or JS statements are not mistaken for definitions
-BRACE_TYPE = re.compile(r"^\s*" + _MOD + r"(?:record|object|protocol|extension|mod|actor)\s+(?:<[^>]*>\s*)?([A-Za-z_]\w*)")
+# Comment (decision): Java, C#, Kotlin, Swift, C and C++ declare methods as '[modifiers] ReturnType name(args)', which the keyword patterns above cannot see; a line counts as such a definition only with a modifier (constructors too), or with a type-shaped return type and a parameter list shaped like 'Type name' (so Unity's 'void Start()' with the brace on the next line is found), and never when it begins with a control-flow word or reads like prose, so calls, conditions and Python or JS statements are not mistaken for definitions
+BRACE_TYPE = re.compile(r"^\s*" + _MOD + r"(?:record|object|protocol|extension|mod|actor)\s+(?:<[^>]*>\s*)?([A-Za-z_]\w*)((?:\s*<[^<>]*>)?(?:\s*\([^()]*\))?(?:\s*:[^{;]*)?(?:\s+where\s+[^{;]+)?\s*[{;]?\s*)$")
+
+def brace_type(line):
+    """(name, None) for 'object Config {', 'record Point(int x)', 'mod tests;' and similar; a lowercase name needs a '{' or ';' after it, so prose that starts with 'object' or 'record' is not a definition."""
+    m = BRACE_TYPE.match(re.sub(r"\s+//.*$", "", line))
+    if m and (m.group(1)[0].isupper() or re.search(r"[{;]", m.group(2))):
+        return m.group(1), None
+    return None
 KOTLIN_FUN = re.compile(r"^\s*" + _MOD + r"fun\s+(?:<[^>]*>\s*)?(?:[\w<>?,]+\.)*([A-Za-z_]\w*)\s*\(")
-_NOT_WORD = r"(?!(?:return|new|await|throw|yield|else|case|using|lock|foreach|for|while|if|switch|catch|do|assert|print|del|raise|elif|import|from|with|global|nonlocal|goto|delete|typeof|sizeof|var|let|const|in|is|as|not|and|or|go|defer|select|func|type|chan|range|package|map|def|class|fn|fun|struct|enum|interface|try|finally|except|lambda|pass|break|continue|extends|implements|where)\b)"
-BRACE_METHOD = re.compile(r"^(\s*)(" + _MOD + r")((?:" + _NOT_WORD + r"[\w<>\[\],.?*&:]+\s+)*)(?:[\w$]+::)*" + _NOT_WORD + r"([A-Za-z_]\w*)\s*(?:<[^>()]*>)?\s*\(((?:[^;{}()]|\([^()]*\))*)\)(?:\s+(?:const|noexcept|override|final|volatile))*(?:\s+throws\s+[\w.,\s]+)?(?:\s+where\s+[^{;=]+)?(?:\s*:[^;{=]*)?\s*(?:=>[^;]*;?|\{\s*)?$")
+_NOT_WORD = r"(?!(?:return|new|await|throw|yield|else|case|using|lock|foreach|for|while|if|switch|catch|do|assert|print|del|raise|elif|import|from|with|global|nonlocal|goto|delete|typeof|sizeof|var|let|const|in|is|as|not|and|or|go|defer|select|func|type|chan|range|package|map|def|class|fn|fun|struct|enum|interface|try|finally|except|lambda|pass|break|continue|extends|implements|where|match|loop|when|unless|until|elsif|None|True|False|null|nil|true|false|this|self|super|base)\b)"
+BRACE_METHOD = re.compile(r"^(\s*)(" + _MOD + r")((?:" + _NOT_WORD + r"(?=\S*\w)[\w<>\[\],.?*&:]+\s+)*)(?:[\w$]+::)*" + _NOT_WORD + r"([A-Za-z_]\w*)\s*(?:<[^>()]*>)?\s*\(((?:[^;{}()]|\([^()]*\))*)\)(?:\s+(?:const|noexcept|override|final|volatile))*(?:\s+throws\s+[\w.,\s]+)?(?:\s+where\s+[^{;=]+)?(?:\s*:[^;{=]*)?\s*(?:=>[^;]*;?|\{\s*)?$")
 ATTR_LINE = re.compile(r"^\[[A-Za-z_][\w.]*(?:\(.*\))?(?:\s*,\s*[A-Za-z_][\w.]*(?:\(.*\))?)*\]$")
+
+_TYPE_SHAPE = re.compile(r"^(?:void|int|long|short|byte|char|float|double|bool|boolean|string|decimal|object|var|auto|unsigned|signed|\w+_t|[A-Z][\w.]*(?:<[^<>]*>)?(?:\[\])*\??\*?|\w+<[^<>]*>\??|\w+\*+|\w+\[\])$")
+_PARAM_ITEM = re.compile(r"^\s*(?:\[[^\]]*\]\s*|@\w+(?:\([^)]*\))?\s+)*(?:(?:ref|out|in|params|final|const|this)\s+)*[\w.?*&:]+(?:<[^<>]*>)?(?:\[\])*\??\*?\s+[A-Za-z_]\w*\s*(?:=\s*.*)?$")
+
+def params_ok(args):
+    """True for an empty parameter list or one whose items all read 'Type name' (with optional attributes, ref/out and a default value)."""
+    if not args.strip():
+        return True
+    items, depth, cur = [], 0, ""
+    for ch in args:
+        depth += (ch in "<([") - (ch in ">)]")
+        if ch == "," and depth <= 0:
+            items.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    items.append(cur)
+    return all(_PARAM_ITEM.match(i) for i in items)
 
 def brace_def(line):
     """(name, None) for a Java/C#/Kotlin/C/C++ style method or constructor line, else None."""
-    m = BRACE_METHOD.match(re.sub(r"\s+//.*$", "", line))
+    code = re.sub(r"\s+//.*$", "", line)
+    m = BRACE_METHOD.match(code)
     if not m:
         return None
-    indent, mods, types, name = m.group(1), m.group(2), m.group(3), m.group(4)
-    if mods.strip() or (types.strip() and (line.rstrip().endswith("{") or not indent)):
+    mods, types, name, args = m.group(2), m.group(3), m.group(4), m.group(5)
+    if not params_ok(args):
+        return None
+    if re.sub(r"\b(?:export|default)\b", "", mods).strip():
+        return name, None
+    toks = types.split()
+    if 1 <= len(toks) <= 2 and len(code.strip()) <= 140 and "  " not in code.strip() and _TYPE_SHAPE.match(toks[-1]):
         return name, None
     return None
 
@@ -278,11 +309,11 @@ def def_info(line):
             ids = re.findall(r"[A-Za-z_]\w*", re.sub(r"\[.*?\]", "", m.group(2)))
             recv = ids[-1] if ids else None
         return m.group(3), recv
-    for rx in (JS_METHOD, JS_ASSIGN, JS_PROP, VUE_OPT, BRACE_TYPE, KOTLIN_FUN):
+    for rx in (JS_METHOD, JS_ASSIGN, JS_PROP, VUE_OPT, KOTLIN_FUN):
         m = rx.match(line)
         if m:
             return m.group(1), None
-    return brace_def(line)
+    return brace_type(line) or brace_def(line)
 
 def is_toc_line(line):
     return bool(def_info(line) or ANCHOR_RE.match(line) or TOC_EXTRA.search(line))

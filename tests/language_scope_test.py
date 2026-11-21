@@ -90,6 +90,16 @@ def main():
     lo, hi = hh.block_bounds(CSHARP, cls, False)
     check("a class block starts at its attribute and ends at its closing brace", CSHARP[lo].strip() == "[Serializable]" and CSHARP[hi - 1].strip() == "}" and any("Log(" in l for l in CSHARP[lo:hi]), CSHARP[lo:hi][:3])
     check("the source files of these languages are scanned for @XREF and the Unused probe", all(e in hh.CODE_EXTS for e in (".cs", ".java", ".kt", ".rs", ".cpp", ".h", ".swift")))
+    unity = (("    void Start()", "Start"), ("    void Update()", "Update"), ("    void OnTriggerEnter2D(Collider2D collision)", "OnTriggerEnter2D"), ("    private void Awake()", "Awake"), ("    IEnumerator Fade(float t)", "Fade"), ("    List<int> Items()", "Items"), ("    public IActionResult Get([FromQuery] int id)", "Get"), ("    public void Run(Dictionary<string, int> map, int n = 3)", "Run"), ("object Config {", "Config"), ("record Point(int x, int y) {", "Point"), ("mod tests;", "tests"))
+    missed = [(l, name(l), w) for l, w in unity if name(l) != w]
+    check("Unity-style methods with no modifier and the brace on the next line are found", not missed, missed)
+    prose = ("headers: module headers install location (posix_local is /local/ prefixed)", "    Return a tuple (low, high) where low and high are", "    WARNING: It would be disastrous to call run_until_complete()", "    year, month, day (required, base 1)", "    Returns None (see below)", "object is then obtained by calling opener with (*name*, *flags*).", "record to it.", "extension module development.", "STAT                    stat()", "float constructor (for example, '-2.3' or '1e10')", "object types: modules, functions, classes,")
+    wrong = [(s, name(s)) for s in prose if name(s)]
+    check("prose lines in docstrings and comments are not mistaken for definitions", not wrong, wrong)
+    snippet = "class A : MonoBehaviour\n{\n    void Start()\n    {\n        x = 1;\n    }\n\n    void Update()\n    {\n        y = 2;\n    }\n}".split("\n")
+    start = next(i for i, l in enumerate(snippet) if "void Start()" in l)
+    lo, hi = hh.block_bounds(snippet, start, False)
+    check("a modifier-less Allman method's block ends at its own closing brace", any("x = 1" in l for l in snippet[lo:hi]) and not any("y = 2" in l for l in snippet[lo:hi]), snippet[lo:hi])
     sys.exit(0 if all(RESULTS) else 1)
 
 
