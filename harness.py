@@ -682,6 +682,7 @@ def check_files(changed, pre):
             for gf in go_files:
                 status[gf] = "BUILD_PENDING (%s)" % (err_txt.splitlines() or ["error"])[0][:160]
             print("\n=== COMPILER DIAGNOSTICS ===\n" + err_txt)
+    run_project_checks(changed, status, rolled)
     return status, rolled
 
 # ---------------------------------------------------------------- Stage: Payload parser
@@ -2417,8 +2418,8 @@ def run_command(cmd, timeout, shell):
     if GIT_WRITE_RE.search(cmd):
         print("  [REFUSED] git commands that change history or the working tree go through @GIT_COMMIT / @GIT_FOLD; publishing goes through @GIT_PUSH.")
         return
-    if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake|merge)\b", cmd, re.I):
-        print("  [REFUSED] --grant, --revoke, --release, --unbrake and --merge are the user's own commands, typed in their terminal; a script never runs them.")
+    if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake|merge|check)\b", cmd, re.I):
+        print("  [REFUSED] --grant, --revoke, --release, --unbrake, --merge and --check are the user's own commands, typed in their terminal; a script never runs them.")
         return
     if shell == "powershell":
         prefix = "$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
@@ -3262,6 +3263,87 @@ def set_chat_link(name, address):
         return
     store_chat_link(name, address)
     print("  [CHAT LINK] %s -> %s%s" % (name, address.strip(), "  (was %s)" % old if old and old != address.strip() else ""))
+
+def checks_path():
+    """Where the user's check commands live: a file in the harness's own folder, never in the project, so a project that came from somewhere else cannot make the harness run its commands (LLM_HARNESS_CHECKS overrides it for tests)."""
+    return os.environ.get("LLM_HARNESS_CHECKS") or os.path.join(os.path.dirname(os.path.abspath(SELF_PATH)), "checks.json")
+
+def project_checks():
+    """{'.ext': 'command'} the user set for the current project on this machine with --check."""
+    data = (load_json(checks_path(), {}) or {}).get(os.path.normcase(os.path.abspath(".")))
+    return {k: v for k, v in (data or {}).items() if isinstance(k, str) and k.startswith(".") and isinstance(v, str) and v.strip()}
+
+def run_check_command(cmd):
+    """(exit code, output) of one check command run from the workspace folder in the harness's shell; the code is 'timeout' after five minutes and None when the command could not start."""
+    if os.name == "nt":
+        args = [shutil.which("powershell") or shutil.which("pwsh") or "powershell", "-NoProfile", "-NonInteractive", "-Command", cmd]
+    else:
+        args = [shutil.which("bash") or "/bin/sh", "-c", cmd]
+    try:
+        r = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except subprocess.TimeoutExpired:
+        return "timeout", ""
+    except OSError as exc:
+        return None, str(exc)
+
+def run_project_checks(changed, status, rolled):
+    """After a change, run the user's own check command once per command for the file types that changed. It only reports (PASS, CHECK FAILED with the command's output, CHECK UNCHECKED when it cannot start) and never rolls anything back: a build of C#, Java or Rust needs the whole project, so a failure may belong to another file."""
+    checks = project_checks()
+    done = {}
+    for rel in changed:
+        cmd = checks.get(os.path.splitext(rel)[1].lower())
+        if not cmd or rel in rolled or not os.path.isfile(rel):
+            continue
+        if cmd not in done:
+            done[cmd] = run_check_command(cmd)
+            rc, out = done[cmd]
+            if rc not in (0, None, "timeout"):
+                print("\n=== PROJECT CHECK: %s (exit %s) ===\n%s" % (cmd, rc, "\n".join(out.splitlines()[-40:])))
+        rc, out = done[cmd]
+        if rc == 0:
+            status[rel] = "PASS (project check: %s)" % cmd
+        elif rc == "timeout":
+            status[rel] = "CHECK TIMED OUT (%s, 300 s)" % cmd
+        elif rc is None:
+            status[rel] = "CHECK UNCHECKED (%s could not start: %s)" % (cmd, out[:100])
+        else:
+            status[rel] = "CHECK FAILED (%s exit %s: %s)" % (cmd, rc, ((out.splitlines() or ["see the output above"])[-1])[:120])
+
+def check_cli():
+    """User-only command: harness.py --workspace <folder> --check [<.ext> <command...> | <.ext> --clear]. Without arguments it lists this project's check commands. They are kept on this machine for this project only."""
+    after = sys.argv[1:][sys.argv[1:].index("--check") + 1:]
+    rest, k = [], 0
+    while k < len(after):
+        if after[k] == "--workspace":
+            k += 2
+            continue
+        rest.append(after[k])
+        k += 1
+    err = enter_workspace(arg_value("--workspace"))
+    if err:
+        print("usage: harness.py --workspace <project folder> --check [<.ext> <command> | <.ext> --clear] | " + err)
+        return
+    key, path = os.path.normcase(os.path.abspath(".")), checks_path()
+    with state_lock():
+        data = load_json(path, {}) or {}
+        mine = dict(data.get(key) or {})
+        if not rest:
+            print("check commands for %s on this machine: %s" % (os.path.abspath("."), "; ".join("%s -> %s" % kv for kv in sorted(mine.items())) or "none"))
+            return
+        ext = rest[0].lower()
+        if not re.fullmatch(r"\.[a-z0-9]+", ext) or len(rest) < 2:
+            print("usage: harness.py --workspace <project folder> --check <.ext> <command> | <.ext> --clear")
+            return
+        if rest[1:] == ["--clear"]:
+            mine.pop(ext, None)
+            print("CHECK CLEARED: %s files have no check command in this project" % ext)
+        else:
+            mine[ext] = " ".join(rest[1:])
+            print("CHECK SET: after a change to a %s file the harness runs: %s" % (ext, mine[ext]))
+        data[key] = mine
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        save_json(path, data)
 
 def link_cli():
     """User-only command: harness.py --workspace <folder> --link <session> <chat address>."""
@@ -5074,7 +5156,7 @@ def print_languages():
         print("    %-12s %s" % (key, " ".join(marks[key])))
     print("  the header goes below a shebang, a Python coding line, an HTML doctype, an XML declaration or PHP's opening tag; other file types (json, md ...) get none")
     print("  symbols for @SCOPE file#Class.method, @XREF and @PROBE | Unused: %s" % " ".join(CODE_EXTS))
-    print("  syntax check with rollback: Python (compile) and Go (gofmt); other languages are not compiled by the harness, so build or test them with @RUN")
+    print("  syntax check with rollback: Python (compile) and Go (gofmt); other languages are not compiled unless you set your own check command (the user's terminal command --check <.ext> <command>); otherwise build or test them with @RUN")
 
 def print_help(name, shell):
     """@HELP <directive>: the syntax-card lines for one directive, taken from the card itself so the two never disagree."""
@@ -5412,6 +5494,8 @@ def main():
         return
     if "--merge-memory" in sys.argv[1:]:
         return merge_memory_cli(sys.argv[sys.argv.index("--merge-memory") + 1:])
+    if "--check" in sys.argv[1:]:
+        return check_cli()
     if "--link" in sys.argv[1:]:
         return link_cli()
     if "--merge" in sys.argv[1:]:
