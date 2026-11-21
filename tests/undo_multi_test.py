@@ -32,7 +32,7 @@ def exists(rel):
 
 
 def delete_all():
-    out = run("@DELETE_FILE /y1.sql", "@DELETE_FILE /y2.sql", "@DELETE_FILE /y3.sql", "@DELETE_FILE /y4.txt")
+    out = run("@DELETE_FILE /y1.csv", "@DELETE_FILE /y2.csv", "@DELETE_FILE /y3.csv", "@DELETE_FILE /y4.txt")
     return STEP[0], out
 
 
@@ -44,35 +44,35 @@ def check(name, ok, out=""):
 
 
 def main():
-    data = dict((n, ("content of %s\n" % n).encode()) for n in ("y1.sql", "y2.sql", "y3.sql", "y4.txt"))
+    data = dict((n, ("content of %s\n" % n).encode()) for n in ("y1.csv", "y2.csv", "y3.csv", "y4.txt"))
     for n, d in data.items():
         put(n, d)
     num, _ = delete_all()
-    out = run("@UNDO %d | /y1.sql" % num, "@UNDO %d | /y2.sql" % num)
-    check("two @UNDO lines in one script both run", get("y1.sql") == data["y1.sql"] and get("y2.sql") == data["y2.sql"] and not exists("y3.sql"), out)
-    out = run("@UNDO %d | /y3.sql, /y4.txt" % num)
-    check("comma-separated paths restore several files", exists("y3.sql") and exists("y4.txt"), out)
+    out = run("@UNDO %d | /y1.csv" % num, "@UNDO %d | /y2.csv" % num)
+    check("two @UNDO lines in one script both run", get("y1.csv") == data["y1.csv"] and get("y2.csv") == data["y2.csv"] and not exists("y3.csv"), out)
+    out = run("@UNDO %d | /y3.csv, /y4.txt" % num)
+    check("comma-separated paths restore several files", exists("y3.csv") and exists("y4.txt"), out)
     for n in data:
         os.remove(os.path.join(WS, n))
     for n, d in data.items():
         put(n, d)
     num2, _ = delete_all()
-    out = run("@UNDO %d | /y*.sql" % num2)
-    check("a glob restores every match and nothing else", exists("y1.sql") and exists("y2.sql") and exists("y3.sql") and not exists("y4.txt"), out)
+    out = run("@UNDO %d | /y*.csv" % num2)
+    check("a glob restores every match and nothing else", exists("y1.csv") and exists("y2.csv") and exists("y3.csv") and not exists("y4.txt"), out)
     for n in data:
         if exists(n):
             os.remove(os.path.join(WS, n))
     for n, d in data.items():
         put(n, d)
     num3, _ = delete_all()
-    out = run("@UNDO %d | /y1.sql -> /docs/personal/mine.sql" % num3)
-    check("'/old -> /new' copies the file as it was to another path and leaves the old path alone", get("docs/personal/mine.sql") == data["y1.sql"] and not exists("y1.sql") and "[RECOVERED]" in out, out)
-    out = run("@UNDO %d | /y*.sql -> /docs/archive/" % num3)
-    check("a destination folder takes each file's own name", get("docs/archive/y2.sql") == data["y2.sql"] and get("docs/archive/y3.sql") == data["y3.sql"] and get("docs/archive/y1.sql") == data["y1.sql"], out)
-    out = run("@UNDO %d | /y2.sql -> /docs/archive/y2.sql" % num3)
+    out = run("@UNDO %d | /y1.csv -> /docs/personal/mine.csv" % num3)
+    check("'/old -> /new' copies the file as it was to another path and leaves the old path alone", get("docs/personal/mine.csv") == data["y1.csv"] and not exists("y1.csv") and "[RECOVERED]" in out, out)
+    out = run("@UNDO %d | /y*.csv -> /docs/archive/" % num3)
+    check("a destination folder takes each file's own name", get("docs/archive/y2.csv") == data["y2.csv"] and get("docs/archive/y3.csv") == data["y3.csv"] and get("docs/archive/y1.csv") == data["y1.csv"], out)
+    out = run("@UNDO %d | /y2.csv -> /docs/archive/y2.csv" % num3)
     check("recovery never overwrites an existing file", "[RECOVER SKIPPED]" in out and "already exists" in out, out)
-    out = run("@UNDO %d | /nothing_here.sql" % num3)
-    check("a path that was not in the script says so", "no journaled scripts in range" in out and "/nothing_here.sql" in out, out)
+    out = run("@UNDO %d | /nothing_here.csv" % num3)
+    check("a path that was not in the script says so", "no journaled scripts in range" in out and "/nothing_here.csv" in out, out)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 
