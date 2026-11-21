@@ -4,7 +4,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
-- Planning procedures: `@PLAYBOOK` prints `plan-first` (one feature with a few decisions) and `plan-project` (a new project or a big redesign) from the `playbooks` folder on demand; they install next to the harness, while `docs/plan.md` stays in the project as a decision record. `[L1-Notes]` tells the AI to propose them only when a request forces several consequential decisions across systems, never for small work or one open question. A backlog: anything deferred, skipped, unverified or noticed is written to docs/backlog.md in the same script, and the review playbook reads it (with the Todo notes, stale verdicts, open debug ledgers and the Unreleased changelog) before work is called complete.
+- Planning procedures: `@PLAYBOOK` prints `plan-first` (one feature with a few decisions) and `plan-project` (a new project or a big redesign) from the `playbooks` folder on demand; they install next to the harness, while `docs/plan.md` stays in the project as a decision record. `[L1-Notes]` tells the AI to propose them only when a request forces several consequential decisions across systems, never for small work or one open question. A backlog: anything deferred, skipped, unverified or noticed is written to docs/backlog.md in the same script, and the review playbook reads it (with the Todo notes, stale verdicts, open debug ledgers and the Unreleased changelog) before work is called complete and at the end of a milestone or session; the review also records repeated friction and proposes improvements only from evidence, labelling the rest as speculative.
 
 ## 3.13
 

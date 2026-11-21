@@ -1,6 +1,6 @@
 # Backlog
 
-What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), deferred (decided to do later), idea (not decided).
+What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), friction (the same manual step, workaround or reminder more than once), deferred (decided to do later), idea (speculative: no evidence yet).
 
 ## Unverified
 - setup.cmd copying knowledge/ and playbooks/ has never run on Windows; they were copied by hand. Run setup.cmd once and look in ~/.llm_harness. (2026-11-22)
@@ -18,6 +18,10 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - halagames-tools' own docs/knowledge.txt still holds the contradictory Split-Brain and headless-API entries that the shared library merged into one. (2026-11-22)
 - [L1-Notes] is printed in full on every footer and keeps growing; give it a short form once the planning and backlog clauses have proven themselves. (2026-11-22)
 
+## Friction
+- Checks in a second project need a second pasted script: the Unity @KB check was skipped three times in one session. A read-only probe of another workspace from the same script would remove the second paste. (2026-11-22)
+- @TEXT_REPLACE refuses old text under 12 characters, so renaming .sql to .csv in one test took 15 whole-line replacements; a short token with a stated count could be allowed. (2026-11-22)
+
 ## Deferred
 - Releases: push tag v3.13.0 when the owner says so; cut 3.14 for the playbooks, backlog and review work. (2026-11-22)
 - Desktop: run setup.cmd (many commits behind), end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
@@ -26,5 +30,6 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - Unity project Big&Small: no goal pinned, and the checkout is 9 commits behind its remote. (2026-11-22)
 
 ## Ideas
+- Speculative: the harness could count its own repeated refusals, mismatches and failed commands from saved runs and hand them to the review, so friction is measured rather than remembered. (2026-11-22)
 - When an @RUN command fails, search the knowledge library with its error text and print the matching entries automatically. (2026-11-22)
 - Parked earlier: campaign progress counts, a [MALFORMED] hint, --grant with several paths, a [GONE] notice, ready-to-paste user commands in refusals, a switch for automatic delegation, relaxed claims for a solo session, shared claims through a git ref, a warning when a stored account disappears. (2026-11-22)
