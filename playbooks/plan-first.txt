@@ -2,7 +2,7 @@
 # use when: one feature or change with a few decisions to agree on; the owner says "pause, discuss, add it to the Todo note and pin it"
 Plan first. Change no code until the owner answers.
 1. Read what the change touches: the tree nodes (@PROBE | Tree) and what uses the code you would change (@XREF <name> | impact). For the technology involved, search @KB first.
-2. Reply with, in this order:
+2. Sort what the owner wrote: asked for (requirements), decided (keep it), only suggested (start from it, and say why if you depart from it), and anything you add yourself (say so). Then reply with, in this order:
    - What you found (each point tagged seen or inferred).
    - Your recommended approach, and at least one alternative you rejected, with the reason.
    - The tree nodes that would change.
