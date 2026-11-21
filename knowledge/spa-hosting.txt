@@ -1,0 +1,12 @@
+# /llm_harness/knowledge/spa-hosting.txt
+# tech: spa-hosting
+# detect: vite, webpack, react-scripts, vue-cli-service
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## spa-stale-index-html
+tags: spa, index.html, cache, cache-control, vite, chunk, white screen, deploy, hard refresh, stale
+symptom: After a deploy users see a white screen or console errors for JavaScript chunks that no longer exist; a hard refresh fixes it, or a fix looks like it failed.
+trap: Hashed asset names change on every build, but the browser or an edge proxy keeps serving an old index.html that points at deleted chunks. Console errors naming raw .vue files, not minified .js chunks, mean the page is not the fresh build.
+fix: serve index.html with Cache-Control: no-store, no-cache, must-revalidate, max-age=0 (the hashed assets stay cacheable); after a change, rebuild and hard-refresh or use a private window before judging a fix.
+verified: reported from production use, 2026-11
+versions: all

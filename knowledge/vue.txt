@@ -1,0 +1,12 @@
+# /llm_harness/knowledge/vue.txt
+# tech: vue
+# detect: *.vue, vue
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## vue-router-circular-composable
+tags: vue, vue-router, router, circular, composable, import, injection, route location, boot, undefined
+symptom: The app crashes at boot with an injection "Symbol(route location)" not found error, or router is undefined inside a utility.
+trap: A shared composable imports the router module while a view that the router maps imports that composable; the ES-module cycle makes the bundler evaluate router as undefined.
+fix: break the cycle: do not import the router in utility modules (use useRouter() inside components, pass the router in as an argument, or use window.history.replaceState for URL-only changes).
+verified: reported from production use, Vue 3, 2026-11
+versions: Vue 3 with Vue Router 4

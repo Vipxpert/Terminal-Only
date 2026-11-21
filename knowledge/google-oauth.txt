@@ -1,0 +1,12 @@
+# /llm_harness/knowledge/google-oauth.txt
+# tech: google-oauth
+# detect: authlib, google-auth-oauthlib, oauthlib, passport-google-oauth20, next-auth, flask-dance
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## oauth-https-redirect-behind-proxy
+tags: oauth, google, redirect_uri, https, http, proxy, tls, scheme, localhost, mismatch, callback
+symptom: Google sign-in works locally but fails in production with a redirect URI error, or fails locally after a fix for production.
+trap: Behind a TLS-terminating proxy the app builds an http:// callback URL, which Google rejects for non-local hosts; forcing https:// unconditionally then breaks localhost, where Google requires http.
+fix: replace the scheme with https only when the host is not a loopback address (localhost, 127.0.0.1), or make the server trust the proxy's forwarded scheme so the request already says https.
+verified: reported from production use, 2026-11
+versions: all

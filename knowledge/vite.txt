@@ -1,0 +1,20 @@
+# /llm_harness/knowledge/vite.txt
+# tech: vite
+# detect: vite
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## vite-hmr-proxy-localhost
+tags: vite, hmr, websocket, proxy, reverse proxy, cloudflare, wss, localhost, reload, loop
+symptom: Behind a TLS reverse proxy the dev page reloads endlessly, or the console shows failed WebSocket connections to localhost.
+trap: Setting server.hmr.host to "localhost" makes the browser look for the HMR socket on its own machine instead of on the proxied host.
+fix: leave the host out so it follows the page, and tell Vite the public port and scheme: server: { hmr: { clientPort: 443, protocol: "wss" } }.
+verified: reported from production use, Vite 4 to 6, 2026-11
+versions: Vite 4 to 6
+
+## vite-absolute-api-urls-cookies
+tags: vite, proxy, cors, cookie, session, 401, unauthorized, axios, fetch, cross-origin, absolute url
+symptom: Requests from the dev server to the backend fail with 401 although login worked; the session cookie seems lost.
+trap: Calling the backend with an absolute URL (http://localhost:8080/api/...) from a page served on another port is cross-origin, and browsers drop the session cookie.
+fix: call relative paths (/api/...) and let the dev server's proxy forward them, which keeps the requests same-origin and the cookie intact.
+verified: reported from production use, 2026-11
+versions: all

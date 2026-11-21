@@ -1,0 +1,28 @@
+# /llm_harness/knowledge/nicegui.txt
+# tech: nicegui
+# detect: nicegui
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## nicegui-page-timeout-connected
+tags: nicegui, ui.page, timeout, client, connected, blank, slow, render, disconnect
+symptom: A page whose handler does slow work before building its first element shows a connection error or a blank page instead of the content.
+trap: NiceGUI waits only a few seconds (about 3 by default) for a @ui.page handler to return its first content; slow work before that point exceeds it and the client is dropped.
+fix: await ui.context.client.connected() on the first line of the handler, so the client gets an empty shell at once, then build the slow parts afterwards over the open WebSocket.
+verified: reported from production use, NiceGUI 1.x and 2.x, 2026-11
+versions: NiceGUI 1.x to 2.x
+
+## nicegui-storage-multiprocess
+tags: nicegui, app.storage.user, session, worker, process, login, logout, authentication, fastapi, headless
+symptom: A user is logged in on one request and anonymous on the next, or authentication works in page code but fails on a second worker process.
+trap: app.storage.user lives in the memory of one process, keyed by the session cookie id, so another worker process does not have it. Inside the same process it is also readable from plain FastAPI route handlers, so no cookie decoding is needed there.
+fix: with several processes, put the identity into the signed session cookie (request.session["authenticated"] = True, request.session["email"] = email, using the shared storage_secret) and validate it from request.session on any worker; within one process read app.storage.user directly in the API dependencies.
+verified: reported from production use, 2026-11
+versions: NiceGUI 1.x to 2.x
+
+## nicegui-double-session-middleware
+tags: nicegui, session, middleware, SessionMiddleware, storage_secret, logout, cookie, starlette, fastapi
+symptom: Users are sent back to the login page at random ("ghost logouts") although their login was valid.
+trap: ui.run(storage_secret=...) already installs Starlette's SessionMiddleware; adding your own SessionMiddleware with another key makes two keys fight over the same cookie.
+fix: use exactly one session middleware: the one NiceGUI installs from storage_secret (read request.session with it), or none of your own.
+verified: reported from production use, 2026-11
+versions: NiceGUI with a parent FastAPI app
