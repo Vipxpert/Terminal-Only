@@ -234,9 +234,9 @@ def sanitize_tree(rel, text):
 
 # ---------------------------------------------------------------- Stage: Scope resolution
 
-_MOD = r"(?:(?:export|default|public|private|protected|static|abstract|async|final|override|unsafe|pub(?:\([^)]*\))?)\s+)*"
+_MOD = r"(?:(?:export|default|public|private|protected|internal|static|abstract|async|final|sealed|partial|virtual|readonly|extern|override|unsafe|open|data|inline|suspend|inner|companion|mutating|synchronized|native|constexpr|operator|infix|tailrec|external|lateinit|pub(?:\([^)]*\))?)\s+)*"
 DEF_KW = re.compile(r"^\s*" + _MOD + r"(class|def|func|function|fn|type|interface|struct|enum|trait|impl|namespace)\b\*?\s*(?:\(([^)]*)\)\s*)?([A-Za-z_$][\w$]*)?")
-JS_METHOD = re.compile(r"^\s*" + _MOD + r"(?:get\s+|set\s+)?(?!(?:if|for|while|switch|catch|return|else|do|try|with|function|await|new|throw|typeof)\b)([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*(?::\s*[^={;]+)?\{\s*$")
+JS_METHOD = re.compile(r"^\s*" + _MOD + r"(?:get\s+|set\s+)?(?!(?:if|for|while|switch|catch|return|else|do|try|with|function|await|new|throw|typeof)\b)(?!(?:synchronized|using|lock|foreach|fixed|checked|unchecked)\s+\()([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*(?::\s*[^={;]+)?\{\s*$")
 JS_ASSIGN = re.compile(r"^\s*" + _MOD + r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*(?::[^=]+)?=>|[A-Za-z_$][\w$]*\s*=>)")
 JS_PROP = re.compile(r"^\s*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)")
 VUE_OPT = re.compile(r"^\s*(methods|computed|watch|props|emits|components)\s*:\s*[\{\[]")
@@ -247,6 +247,22 @@ IDENT = re.compile(r"^[A-Za-z_$][\w$]*(?:\(\))?$")
 DOTTED = re.compile(r"^[A-Za-z_$][\w$]*(?:(?:\.|::)[A-Za-z_$][\w$]*)+(?:\(\))?$")
 SKIPPABLE = ("#", "//", "/*", "*/", "<!--")
 CLOSERS = ("}", ")", "]", "</")
+# Comment (decision): Java, C#, Kotlin, Swift, C and C++ declare methods as '[modifiers] ReturnType name(args)', which the keyword patterns above cannot see; a line counts as such a definition only with a modifier (constructors too) or with a return type plus a closing '{' or a start in column 0, and never when it begins with a control-flow word, so calls, conditions and Python or JS statements are not mistaken for definitions
+BRACE_TYPE = re.compile(r"^\s*" + _MOD + r"(?:record|object|protocol|extension|mod|actor)\s+(?:<[^>]*>\s*)?([A-Za-z_]\w*)")
+KOTLIN_FUN = re.compile(r"^\s*" + _MOD + r"fun\s+(?:<[^>]*>\s*)?(?:[\w<>?,]+\.)*([A-Za-z_]\w*)\s*\(")
+_NOT_WORD = r"(?!(?:return|new|await|throw|yield|else|case|using|lock|foreach|for|while|if|switch|catch|do|assert|print|del|raise|elif|import|from|with|global|nonlocal|goto|delete|typeof|sizeof|var|let|const|in|is|as|not|and|or|go|defer|select|func|type|chan|range|package|map|def|class|fn|fun|struct|enum|interface|try|finally|except|lambda|pass|break|continue|extends|implements|where)\b)"
+BRACE_METHOD = re.compile(r"^(\s*)(" + _MOD + r")((?:" + _NOT_WORD + r"[\w<>\[\],.?*&:]+\s+)*)(?:[\w$]+::)*" + _NOT_WORD + r"([A-Za-z_]\w*)\s*(?:<[^>()]*>)?\s*\(((?:[^;{}()]|\([^()]*\))*)\)(?:\s+(?:const|noexcept|override|final|volatile))*(?:\s+throws\s+[\w.,\s]+)?(?:\s+where\s+[^{;=]+)?(?:\s*:[^;{=]*)?\s*(?:=>[^;]*;?|\{\s*)?$")
+ATTR_LINE = re.compile(r"^\[[A-Za-z_][\w.]*(?:\(.*\))?(?:\s*,\s*[A-Za-z_][\w.]*(?:\(.*\))?)*\]$")
+
+def brace_def(line):
+    """(name, None) for a Java/C#/Kotlin/C/C++ style method or constructor line, else None."""
+    m = BRACE_METHOD.match(re.sub(r"\s+//.*$", "", line))
+    if not m:
+        return None
+    indent, mods, types, name = m.group(1), m.group(2), m.group(3), m.group(4)
+    if mods.strip() or (types.strip() and (line.rstrip().endswith("{") or not indent)):
+        return name, None
+    return None
 
 def def_info(line):
     """(defined_name, receiver_type) when the line opens a class/function/method/SFC block, else None."""
@@ -262,11 +278,11 @@ def def_info(line):
             ids = re.findall(r"[A-Za-z_]\w*", re.sub(r"\[.*?\]", "", m.group(2)))
             recv = ids[-1] if ids else None
         return m.group(3), recv
-    for rx in (JS_METHOD, JS_ASSIGN, JS_PROP, VUE_OPT):
+    for rx in (JS_METHOD, JS_ASSIGN, JS_PROP, VUE_OPT, BRACE_TYPE, KOTLIN_FUN):
         m = rx.match(line)
         if m:
             return m.group(1), None
-    return None
+    return brace_def(line)
 
 def is_toc_line(line):
     return bool(def_info(line) or ANCHOR_RE.match(line) or TOC_EXTRA.search(line))
@@ -296,14 +312,14 @@ def block_bounds(lines, i, anchor):
             if (ind <= base and ANCHOR_RE.match(lines[j])) or (ind < base and not s.startswith(SKIPPABLE)):
                 end = j
                 break
-        elif not s.startswith(SKIPPABLE) and (ind < base or (ind == base and not s.startswith(CLOSERS))):
+        elif not s.startswith(SKIPPABLE) and (ind < base or (ind == base and not (s.startswith(CLOSERS) or s == "{"))):
             end = j
             break
     start = i
     if not anchor:
-        while end - 1 > i and (not lines[end - 1].strip() or (indent_of(lines[end - 1]) <= base and lines[end - 1].strip().startswith(SKIPPABLE + ("@",)))):
+        while end - 1 > i and (not lines[end - 1].strip() or (indent_of(lines[end - 1]) <= base and (lines[end - 1].strip().startswith(SKIPPABLE + ("@",)) or ATTR_LINE.match(lines[end - 1].strip())))):
             end -= 1
-        while start > 0 and lines[start - 1].strip().startswith(SKIPPABLE + ("@", "*")) and 0 <= indent_of(lines[start - 1]) - base <= 1:
+        while start > 0 and (lines[start - 1].strip().startswith(SKIPPABLE + ("@", "*")) or ATTR_LINE.match(lines[start - 1].strip())) and 0 <= indent_of(lines[start - 1]) - base <= 1:
             start -= 1
     else:
         while end - 1 > i and not lines[end - 1].strip():
@@ -2705,7 +2721,7 @@ def check_unused(rel, lines):
     if found:
         print("  -> candidates only: confirm each in source (routes, decorators, getattr or string names, other languages over HTTP) before deleting.")
 
-CODE_EXTS = (".py", ".go", ".js", ".mjs", ".ts", ".jsx", ".tsx", ".vue")
+CODE_EXTS = (".py", ".go", ".js", ".mjs", ".ts", ".jsx", ".tsx", ".vue", ".cs", ".java", ".kt", ".kts", ".rs", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".swift", ".dart", ".scala", ".php")
 IDENT_RE = re.compile(r"[A-Za-z_$][\w$]*")
 CONST_RE = re.compile(r"^(?:(?:export\s+)?(?:const|let|var)\s+)?([A-Z][A-Z0-9_]{2,})\s*(?::[^=]+)?=(?!=)")
 _REPO_LINES = []
