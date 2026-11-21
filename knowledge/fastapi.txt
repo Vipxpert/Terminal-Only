@@ -1,0 +1,44 @@
+# /llm_harness/knowledge/fastapi.txt
+# tech: fastapi
+# detect: fastapi, starlette
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## fastapi-json-blocks-loop
+tags: fastapi, jsonable_encoder, json, serialization, event loop, large response, freeze, gil, thread
+symptom: Returning a very large list or matrix makes every other request stall for a while.
+trap: FastAPI encodes the return value (jsonable_encoder, json.dumps) on the event loop, and a multi-megabyte payload holds the loop for hundreds of milliseconds or more.
+fix: serialize in a worker thread (json_str = await asyncio.to_thread(json.dumps, result, default=str)) and return Response(content=json_str, media_type="application/json").
+verified: reported from production use (about 100 to 300 ms for a multi-megabyte matrix), 2026-11
+versions: all
+
+## fastapi-staticfiles-fixed-directory
+tags: fastapi, starlette, staticfiles, mount, directory, startup, stale, reboot, dynamic
+symptom: Files served under a mounted path keep coming from an old or empty directory after the storage location changed at runtime.
+trap: app.mount("/p", StaticFiles(directory=d)) captures d once, at startup.
+fix: when the root can change, serve with a route (@app.get("/p/{rel_path:path}") returning FileResponse) and normalise the path (os.path.normpath, then check that it stays under the root) to block traversal.
+verified: reported from production use, 2026-11
+versions: all
+
+## fastapi-spa-catchall-dotted-paths
+tags: fastapi, spa, catch-all, 404, favicon, logo, dist, static, dotted path
+symptom: A single-page app served by FastAPI returns 404 for /favicon.ico or /logo.png although the file is in dist.
+trap: A catch-all route that answers every path containing "." with 404 (to avoid serving index.html for missing assets) also blocks real files copied from public/ into dist/.
+fix: before returning 404 for a dotted path, check os.path.isfile(os.path.join(dist_dir, safe_rel)) and serve that file; only then answer 404.
+verified: reported from production use, 2026-11
+versions: all
+
+## fastapi-proxy-for-dev-server
+tags: fastapi, reverse proxy, httpx, vite, webpack, dev server, event loop, connection pool, starvation, unresponsive
+symptom: The Python server becomes unresponsive while the browser loads dozens of JavaScript modules from a frontend dev server through it.
+trap: One single-threaded event loop acting as a reverse proxy (httpx) for every module request exhausts its connection pool.
+fix: invert it: make the frontend dev server (Vite or Webpack) the public port and proxy only /api and /auth back to the Python server.
+verified: reported from production use, 2026-11
+versions: all
+
+## webhook-long-job-ack
+tags: webhook, timeout, retrigger, 200, create_task, scheduler, deadline exceeded, ack, long job
+symptom: A scheduler or orchestrator runs the same job again and again, and its client logs "context deadline exceeded".
+trap: Awaiting a multi-minute job inside the webhook handler means the caller never receives HTTP 200, so it never records completion and calls again on every tick.
+fix: acknowledge first: deduplicate in-flight work by its slot key, start the job as a background task (keep a reference, see py-create-task-reference) and return 200 at once.
+verified: reported from production use, 2026-11
+versions: all

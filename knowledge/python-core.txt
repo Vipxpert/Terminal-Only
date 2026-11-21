@@ -10,3 +10,27 @@ trap: getattr(obj, "attr", Default()) builds Default() on every call even when a
 fix: initialise lazily and store the instance: if getattr(obj, "attr", None) is None: obj.attr = Default(), then always use obj.attr.
 verified: tested on Python 3.12 (the default is built on every call), 2026-11
 versions: all
+
+## py-process-time-all-threads
+tags: process_time, thread_time, cpu, profiling, telemetry, threads, false positive, spike
+symptom: CPU measurements meant for one thread (an event-loop freeze detector, a per-request profiler) report spikes that come from other threads.
+trap: time.process_time() adds up the CPU time of every thread in the process.
+fix: use time.thread_time() to measure only the calling thread.
+verified: tested on Python 3.12 (process_time grew 0.49 s while the calling thread only slept; thread_time grew 0.00 s), 2026-11
+versions: Python 3.7+
+
+## py-spawn-reimport
+tags: multiprocessing, spawn, windows, macos, import, main module, circular, memory, ProcessPoolExecutor
+symptom: Workers start slowly, use far more memory than expected, or fail with circular ImportErrors on Windows or macOS but not on Linux.
+trap: With the spawn start method (the default on Windows and macOS) each child re-imports the main module, so its top-level code and heavy imports run again in every worker.
+fix: keep entry code under if __name__ == "__main__": and import heavy libraries inside the worker function.
+verified: tested on Python 3.12 (top-level code ran twice with spawn), 2026-11
+versions: all
+
+## py-windows-rename-overwrite
+tags: os.rename, os.replace, windows, overwrite, FileExistsError, WinError 183, atomic, file, temp file
+symptom: Saving a file by writing a temp file and renaming it fails on Windows with WinError 183 (FileExistsError) but works on Linux.
+trap: os.rename raises on Windows when the destination exists, while on POSIX it silently replaces it.
+fix: use os.replace(tmp, dest), which overwrites on every platform and is atomic where the filesystem allows.
+verified: recalled from the Python documentation (os.rename and os.replace) and reported from production use, 2026-11
+versions: all

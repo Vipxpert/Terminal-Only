@@ -1,0 +1,28 @@
+# /llm_harness/knowledge/docker.txt
+# tech: docker
+# detect: dockerfile, docker-compose.yml, docker-compose.yaml, compose.yml, compose.yaml
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## docker-cgroup-memory-psutil
+tags: docker, container, cgroup, memory, psutil, limit, oom, ecs, cpu, sched_getaffinity
+symptom: A process in a memory-limited container sizes its caches or workers for the host's RAM and is killed by the kernel OOM killer.
+trap: psutil.virtual_memory().total reads the host's /proc/meminfo, so it reports the host, not the container limit.
+fix: read the cgroup limit first: /sys/fs/cgroup/memory.max (cgroup v2) or /sys/fs/cgroup/memory/memory.limit_in_bytes (v1; a huge number such as 9223372036854771712 means unlimited), and use os.sched_getaffinity(0) rather than os.cpu_count() for the usable CPUs.
+verified: the v1 unlimited value and sched_getaffinity read in a sandbox container; the host-memory behaviour reported from production use (Docker, AWS ECS), 2026-11
+versions: all
+
+## docker-pid1-sigterm
+tags: docker, pid 1, sigterm, stop, signal, python, grace period, sigkill, shutdown, slow
+symptom: docker stop or docker compose up --build waits for the full stop grace period before the container exits.
+trap: A process running as PID 1 gets no default signal actions, so a Python program that only handles KeyboardInterrupt (SIGINT) ignores Docker's SIGTERM until it is killed.
+fix: register signal.signal(signal.SIGTERM, handler) that stops child processes and calls sys.exit(0), or run the container with an init process (docker run --init, or init: true in Compose).
+verified: reported from production use; the init option recalled from the Docker documentation, 2026-11
+versions: all
+
+## docker-buildkit-cache-backtracking
+tags: docker, build, cache, buildkit, pip, backtracking, requirements, apt, npm, slow, layer
+symptom: Image builds re-download every package, and pip spends minutes resolving versions, after a base image update.
+trap: A floating base tag (python:3.13-slim) changes its digest and invalidates every layer; with --no-cache-dir and loosely pinned requirements pip then backtracks through many historical versions.
+fix: mount persistent caches in the build (RUN --mount=type=cache,target=/root/.cache/pip, and likewise /var/cache/apt with sharing=locked and /root/.npm), and pin every top-level dependency so the resolver has nothing to search.
+verified: reported from production use, BuildKit, 2026-11
+versions: all

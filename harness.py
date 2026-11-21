@@ -5232,7 +5232,7 @@ KB_MANIFESTS = {"package.json", "go.mod", "cargo.toml", "pom.xml", "pyproject.to
 KB_CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".vue", ".go", ".rs", ".cs", ".java", ".kt", ".php", ".c", ".h", ".cpp", ".hpp")
 
 def kb_project_facts(root="."):
-    """What the project itself says it uses: (extensions, file names, manifest text, import lines). A bounded walk: dependency, build and hidden folders are skipped, at most 3000 files, 300 code files (their first 120 lines) and manifests up to 200 KB."""
+    """What the project itself says it uses: (extensions, file names, manifests, imports); manifests are (path, lower-case text) pairs and imports (path, line) pairs, so a reason can name the file. A bounded walk: dependency, build and hidden folders are skipped, at most 3000 files, 300 code files (their first 120 lines) and manifests up to 200 KB; in a .csproj or .fsproj only the PackageReference lines count."""
     exts, names, manifests, imports, seen, code = set(), set(), [], [], 0, 0
     for dirpath, dirs, files in os.walk(root):
         rel = os.path.relpath(dirpath, root)
@@ -5242,7 +5242,7 @@ def kb_project_facts(root="."):
             if seen > 3000:
                 break
             low, path = fn.lower(), os.path.join(dirpath, fn)
-            ext = os.path.splitext(low)[1]
+            ext, shown = os.path.splitext(low)[1], os.path.relpath(path, root).replace(os.sep, "/")
             names.add(low)
             if ext:
                 exts.add(ext)
@@ -5250,22 +5250,26 @@ def kb_project_facts(root="."):
                 if low.startswith("requirements") or low in KB_MANIFESTS or ext in (".csproj", ".fsproj"):
                     if os.path.getsize(path) <= 200000:
                         with open(path, "r", encoding="utf-8", errors="replace") as f:
-                            manifests.append(f.read().lower())
+                            body = f.read().lower()
+                        if ext in (".csproj", ".fsproj"):
+                            # Comment (constraint): a generated project file (Unity's lists the engine's assemblies) can name libraries the project never uses; only its PackageReference lines declare what it depends on
+                            body = "\n".join(line for line in body.split("\n") if "packagereference" in line)
+                        manifests.append((shown, body))
                 elif ext in KB_CODE_EXTS and code < 300:
                     code += 1
                     with open(path, "r", encoding="utf-8", errors="replace") as f:
                         for _, line in zip(range(120), f):
                             s = line.strip().lower()
                             if s.startswith(("import ", "from ", "using ", "use ", "#include", "require", "const ", "package ", "@import")) or "require(" in s:
-                                imports.append(s)
+                                imports.append((shown, s))
             except OSError:
                 continue
         if seen > 3000:
             break
-    return exts, names, "\n".join(manifests), "\n".join(imports)
+    return exts, names, manifests, imports
 
 def kb_active(entries, facts=None):
-    """{technology: why} for the technologies this project seems to use. The words of a file's '# detect:' line mean: '*' always; '*.ext' a file with that extension; a file name, that file is present; any other word, a dependency name found in a manifest or an import line."""
+    """{technology: why} for the technologies this project seems to use. The words of a file's '# detect:' line mean: '*' always; '*.ext' a file with that extension; a file name, that file is present; any other word, a dependency name found in a manifest or an import line (the reason names that file)."""
     exts, names, manifests, imports = facts or kb_project_facts()
     words, active = {}, {}
     for e in entries:
@@ -5280,11 +5284,14 @@ def kb_active(entries, facts=None):
             elif w in names:
                 why = "file %s" % w
             else:
-                pat = r"(?<![\w-])" + re.escape(w) + r"(?![\w-])"
-                if re.search(pat, manifests):
-                    why = "'%s' in a manifest" % w
-                elif re.search(pat, imports):
-                    why = "'%s' in an import" % w
+                pat = re.compile(r"(?<![\w-])" + re.escape(w) + r"(?![\w-])")
+                hit = next((p for p, body in manifests if pat.search(body)), None)
+                if hit:
+                    why = "'%s' in %s" % (w, hit)
+                else:
+                    hit = next((p for p, line in imports if pat.search(line)), None)
+                    if hit:
+                        why = "'%s' imported in %s" % (w, hit)
             if why:
                 active[tech] = why
                 break
@@ -5316,7 +5323,7 @@ def kb_stems(word):
 KB_STOP = {"a", "an", "the", "of", "in", "on", "at", "to", "from", "for", "with", "and", "or", "is", "are", "it", "my", "when", "how", "why", "what", "after", "before", "every", "each", "by", "as", "be", "not", "do", "does", "i", "out", "into", "this", "that"}
 
 def kb_rank(words, entries, active):
-    """([entries], hidden): the entries that match the words, best first. A word is a strong match when it names the entry's technology, is one of its tags or is part of its id, and a weak one when it appears in a tag phrase or in its symptom, trap or fix. An entry qualifies with one strong match or two matched words, and only when it covers at least 60% as much of the question as the best entry does, so one common word never pulls in unrelated entries. A technology the project does not seem to use is shown only when the words name it or include 'all'; hidden counts the matches left out for that reason. Retired entries need the word 'obsolete'."""
+    """([entries], hidden): the entries that match the words, best first. A word is a strong match when it names the entry's technology, is one of its tags or is part of its id, and a weak one when it appears in a tag phrase or in its symptom, trap or fix. An entry qualifies with one strong match or two matched words, and only when it covers at least 70% as much of the question as the best entry does, so one common word never pulls in unrelated entries. A technology the project does not seem to use is shown only when the words name it or include 'all'; hidden counts the matches left out for that reason. Retired entries need the word 'obsolete'."""
     toks = [w for w in re.split(r"[^\w.+#-]+", words.lower()) if w and w not in KB_STOP]
     old, every = "obsolete" in toks, "all" in toks
     toks = [t for t in toks if t not in ("obsolete", "all")]
@@ -5325,7 +5332,7 @@ def kb_rank(words, entries, active):
         if e.get("obsolete") and not old:
             continue
         tech = e["tech"].lower()
-        tech_words = {tech} | {w for w in re.split(r"[-_ ]+", tech) if len(w) >= 3}
+        tech_words = {tech} | {w for w in re.split(r"[-_ ]+", tech) if len(w) >= 3 and w not in ("python", "core", "api", "lang", "client", "sdk")}
         full, sub = set(), set()
         for tag in (e.get("tags") or "").lower().split(","):
             tag = tag.strip()
@@ -5352,7 +5359,7 @@ def kb_rank(words, entries, active):
     top = max(cover(x) for x in found)
     scored, hidden = [], 0
     for e, strong, weak, named in found:
-        if cover((e, strong, weak)) * 10 < top * 6:
+        if cover((e, strong, weak)) * 10 < top * 7:
             continue
         if not every and e["tech"] not in active and not named:
             hidden += 1

@@ -72,7 +72,7 @@ def main():
     hits, hidden = hh.kb_rank("freeze thread memory", real, hh.kb_active(real, hh.kb_project_facts(go)))
     check("in a Go project the same kind of question shows no Python, SQL or grid entries", hits == [] and hidden >= 1, ([e["id"] for e in hits], hidden))
     why = hh.kb_active(E, hh.kb_project_facts(proj))
-    check("each technology says why it counts as used", why["one-lang"] == "'one-lib' in a manifest" and why["two-ext"] == "a .two file" and why["three-file"] == "file three.config" and why["four-import"] == "'fourlib' in an import" and why["five-all"] == "every project" and "[used here: 'one-lib' in a manifest]" in ask(""), why)
+    check("each technology says why it counts as used", why["one-lang"] == "'one-lib' in requirements.txt" and why["two-ext"] == "a .two file" and why["three-file"] == "file three.config" and why["four-import"] == "'fourlib' imported in main.py" and why["five-all"] == "every project" and "[used here: 'one-lib' in requirements.txt]" in ask(""), why)
     text = "@SCRIPT [C: kb]\n@WORKSPACE %s\n@KB freeze\n" % proj
     p = subprocess.run([sys.executable, HARNESS], input=text.encode(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=60)
     out = p.stdout.decode("utf-8", "replace").replace("\r", "")
@@ -87,6 +87,19 @@ def main():
     put(proj, "requirements.txt", "one-lib==1.0\nsix-lib==2.0\n")
     third = run_script()
     check("the footer names the technologies on file once, and again only when they change", "[KNOWLEDGE] pitfalls on file for what this project uses:" in first and "[KNOWLEDGE]" not in second and "six-unused" in third, (first[-400:], second[-400:], third[-400:]))
+    put(lib, "seven.txt", "# tech: seven-nuget\n# detect: sevenlib\n\n" + entry("seven-a", "seventag", "S.", "T.", "F."))
+    nug = tempfile.mkdtemp(prefix="harness-kbnuget-")
+    put(nug, "app.csproj", '<Project><ItemGroup><Reference Include="sevenlib" /></ItemGroup></Project>\n')
+    E2 = hh.kb_entries(lib)
+    before = hh.kb_active(E2, hh.kb_project_facts(nug))
+    put(nug, "app.csproj", '<Project><ItemGroup><PackageReference Include="sevenlib" Version="1.0" /></ItemGroup></Project>\n')
+    after = hh.kb_active(E2, hh.kb_project_facts(nug))
+    check("in a .csproj only PackageReference lines count, and the reason names the file", "seven-nuget" not in before and after.get("seven-nuget") == "'sevenlib' in app.csproj", (before, after))
+    put(lib, "eight.txt", "# tech: eight-python\n# detect: eightlib\n\n" + entry("eight-a", "eighttag, freeze", "The tool freezes.", "T.", "F."))
+    E3 = hh.kb_entries(lib)
+    act3 = hh.kb_active(E3, hh.kb_project_facts(proj))
+    generic = [e["id"] for e in hh.kb_rank("python freeze", E3, act3)[0]]
+    check("a common word such as python does not name a technology, but its full name does", "eight-a" not in generic and "eight-a" in [e["id"] for e in hh.kb_rank("eight-python freeze", E3, act3)[0]], generic)
     sys.exit(0 if all(RESULTS) else 1)
 
 

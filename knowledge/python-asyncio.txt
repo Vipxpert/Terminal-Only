@@ -18,3 +18,19 @@ trap: Cancelling a task that awaits loop.run_in_executor only detaches it; the w
 fix: catch asyncio.CancelledError where the executor call is awaited, terminate the child in a finally block (if proc.poll() is None: proc.terminate()), and shut the pool down with pool.shutdown(wait=False, cancel_futures=True). On Windows terminate() reports exit code 1 (not -15), so remember intentional aborts separately instead of reading the code as a failure.
 verified: CancelledError and cancel_futures tested on Python 3.12; the hang and the Windows exit code reported from production use, 2026-11
 versions: Python 3.9+ (cancel_futures)
+
+## py-run-in-executor-kwargs
+tags: run_in_executor, kwargs, keyword, partial, to_thread, TypeError, executor
+symptom: A call to loop.run_in_executor with a keyword argument raises a TypeError, or a wrapper silently loses its keyword arguments.
+trap: loop.run_in_executor(pool, func, *args) accepts positional arguments only.
+fix: bind them first: loop.run_in_executor(pool, functools.partial(func, *args, **kwargs)); asyncio.to_thread(func, *args, **kwargs) does accept keywords.
+verified: tested on Python 3.12 (TypeError with a keyword; partial and to_thread both work), 2026-11
+versions: all
+
+## py-create-task-reference
+tags: create_task, fire and forget, garbage collected, weak reference, background task, disappears, stops midway
+symptom: A background task started with asyncio.create_task sometimes stops midway or never finishes, without any error.
+trap: The event loop keeps only a weak reference to its tasks, so a task that nothing else references can be garbage collected while it runs.
+fix: keep a reference until it is done: tasks = set(); t = asyncio.create_task(coro()); tasks.add(t); t.add_done_callback(tasks.discard).
+verified: recalled from the Python documentation for asyncio.create_task, not reproduced here, 2026-11
+versions: all
