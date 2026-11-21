@@ -1,0 +1,9 @@
+# /llm_harness/playbooks/review.txt
+# use when: before saying a piece of work or a project is complete or done, and whenever the owner asks what is left or what was missed
+Review before calling anything done. Read first, then report.
+1. Read docs/backlog.md, the Unreleased part of CHANGELOG.md, the Todo notes (@NOTE_LIST), stale verdicts (see @HELP VERDICTS), open debug ledgers and the pinned goal.
+2. Check every claim of "done" against evidence: which test ran, on which OS, on real data or a sample. Anything built but never proven where it matters is unverified.
+3. Look for what nobody wrote down: questions waiting on someone, findings mentioned in a chat but never fixed, rules the code does not enforce, documentation that no longer matches the code.
+4. Add every new item to docs/backlog.md (kind, what, why it matters, date) in this same script; remove items that are really finished.
+5. Report at most 7 items, the most valuable or riskiest first, each with one line of why and the smallest next step, and say plainly which ones need the owner (a decision, a test on their machine, an account).
+6. Never call the work complete while unverified items remain: say "complete except: ..." instead.
