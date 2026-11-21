@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.12
+
 - Optional per-project check command for any file type: the user's terminal command `--check <.ext> <command>` (kept in a file in the harness's own folder, keyed by the project path, never in the project; `--check` alone lists, `--check <.ext> --clear` removes) makes the harness run that command once after a script changes a file of that type and report `PASS`, `CHECK FAILED` with the command's output, `CHECK UNCHECKED` or `CHECK TIMED OUT`; it never rolls anything back, and a script cannot set it.
 
 - C# and Java methods with no modifier and the brace on the next line (Unity's `void Start()`, `void Update()`) are found: a type-shaped return type plus a `Type name` parameter list is enough, while prose lines, aligned tables and control-flow lines are not; `object`, `record` and `mod` need the shape of a declaration. On 660,000 lines of real Python the finder invents no definitions except genuine C code embedded in the files.
