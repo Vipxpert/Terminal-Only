@@ -42,7 +42,7 @@ def main():
     put(proj, "main.py", "import os\nimport fourlib\n")
     E = hh.kb_entries(lib)
     active = hh.kb_active(E, hh.kb_project_facts(proj))
-    check("a technology is detected from a manifest word, a file extension, a file name, an import line, or always", active == {"one-lang", "two-ext", "three-file", "four-import", "five-all"}, sorted(active))
+    check("a technology is detected from a manifest word, a file extension, a file name, an import line, or always", set(active) == {"one-lang", "two-ext", "three-file", "four-import", "five-all"}, sorted(active))
     ids = lambda words, act=active: [e["id"] for e in hh.kb_rank(words, E, act)[0]]
     hits, hidden = hh.kb_rank("freeze hang", E, active)
     check("a technology the project does not use stays out, and is counted", "six-a" not in [e["id"] for e in hits] and hidden == 1, (ids("freeze hang"), hidden))
@@ -61,7 +61,7 @@ def main():
     out = ask("freeze")
     check("@HELP KB shows the project's technologies and says how many matches it left out", "[one-lang] one-a" in out and "six-a" not in out and "1 more match in technologies this project does not seem to use" in out, out)
     out = ask("")
-    check("@HELP KB without words marks the technologies used here", "one-lang" in out and "[used here]" in out and out.count("[used here]") == 5, out)
+    check("@HELP KB without words marks the technologies used here", "one-lang" in out and "[used here" in out and out.count("[used here") == 5, out)
     real = hh.kb_entries(LIB)
     py, go = tempfile.mkdtemp(prefix="harness-kbpy-"), tempfile.mkdtemp(prefix="harness-kbgo-")
     put(py, "requirements.txt", "fastapi==0.115\n")
@@ -71,6 +71,22 @@ def main():
     check("in a Python project a question about to_thread finds the matching entry first", top and top[0]["id"] == "py-thread-handoff-eager", [e["id"] for e in top])
     hits, hidden = hh.kb_rank("freeze thread memory", real, hh.kb_active(real, hh.kb_project_facts(go)))
     check("in a Go project the same kind of question shows no Python, SQL or grid entries", hits == [] and hidden >= 1, ([e["id"] for e in hits], hidden))
+    why = hh.kb_active(E, hh.kb_project_facts(proj))
+    check("each technology says why it counts as used", why["one-lang"] == "'one-lib' in a manifest" and why["two-ext"] == "a .two file" and why["three-file"] == "file three.config" and why["four-import"] == "'fourlib' in an import" and why["five-all"] == "every project" and "[used here: 'one-lib' in a manifest]" in ask(""), why)
+    text = "@SCRIPT [C: kb]\n@WORKSPACE %s\n@KB freeze\n" % proj
+    p = subprocess.run([sys.executable, HARNESS], input=text.encode(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=60)
+    out = p.stdout.decode("utf-8", "replace").replace("\r", "")
+    check("@KB <words> works like @HELP KB <words> and is a known directive", "[one-lang] one-a" in out and "unknown directive" not in out, out)
+
+    def run_script():
+        head = "@SCRIPT [C: hint]\n@WORKSPACE %s\n@SESSION kbhint | hint aim\n" % proj
+        q = subprocess.run([sys.executable, HARNESS], input=head.encode(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=60)
+        return q.stdout.decode("utf-8", "replace").replace("\r", "")
+
+    first, second = run_script(), run_script()
+    put(proj, "requirements.txt", "one-lib==1.0\nsix-lib==2.0\n")
+    third = run_script()
+    check("the footer names the technologies on file once, and again only when they change", "[KNOWLEDGE] pitfalls on file for what this project uses:" in first and "[KNOWLEDGE]" not in second and "six-unused" in third, (first[-400:], second[-400:], third[-400:]))
     sys.exit(0 if all(RESULTS) else 1)
 
 

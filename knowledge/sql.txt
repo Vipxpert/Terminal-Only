@@ -1,6 +1,6 @@
 # /llm_harness/knowledge/sql.txt
 # tech: sql
-# detect: *.sql, sql, duckdb, postgres, sqlite3, clickhouse, bigquery
+# detect: *.sql, duckdb, sqlite3, sqlalchemy, psycopg2, psycopg, pymysql, asyncpg, postgres, clickhouse, bigquery
 # Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
 
 ## sql-left-join-lookup-bounds

@@ -688,7 +688,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @CHAT_LINK @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @CHAT_LINK @KB @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -897,6 +897,8 @@ def parse_payload(txt):
             P["probes"].append(arg)
         elif d == "HELP":
             P["helps"].append(arg)
+        elif d == "KB":
+            P["helps"].append("KB " + arg)
         elif d == "XREF":
             P["xrefs"].append(arg)
         elif d == "LIST_DIR":
@@ -4960,6 +4962,11 @@ def print_footer(state):
                 print("%s%s (expanded: %s) %s" % (mark, tag, why, body.strip().strip("`").strip()))
                 continue
             print("%s%s %s" % (mark, tag, body.strip().strip("`").strip()))
+    if state is not None:
+        try:
+            kb_hint()
+        except Exception:
+            pass
     used = set((load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("used", [])) if CURRENT_SESSION and state is not None else set()
     if used:
         rest = [d for d in DIRECTIVES.split() if d not in used]
@@ -5258,17 +5265,44 @@ def kb_project_facts(root="."):
     return exts, names, "\n".join(manifests), "\n".join(imports)
 
 def kb_active(entries, facts=None):
-    """The technologies this project seems to use. The words of a file's '# detect:' line mean: '*' always; '*.ext' a file with that extension; a file name, that file is present; any other word, a dependency name found in a manifest or an import line."""
+    """{technology: why} for the technologies this project seems to use. The words of a file's '# detect:' line mean: '*' always; '*.ext' a file with that extension; a file name, that file is present; any other word, a dependency name found in a manifest or an import line."""
     exts, names, manifests, imports = facts or kb_project_facts()
-    text, words, active = manifests + "\n" + imports, {}, set()
+    words, active = {}, {}
     for e in entries:
         words.setdefault(e["tech"], set()).update(e.get("detect") or [])
     for tech, ws in words.items():
-        for w in ws:
-            if w == "*" or (w.startswith("*.") and w[1:] in exts) or (not w.startswith("*") and w in names) or (not w.startswith("*") and re.search(r"(?<![\w-])" + re.escape(w) + r"(?![\w-])", text)):
-                active.add(tech)
+        for w in sorted(ws):
+            why = None
+            if w == "*":
+                why = "every project"
+            elif w.startswith("*."):
+                why = ("a %s file" % w[1:]) if w[1:] in exts else None
+            elif w in names:
+                why = "file %s" % w
+            else:
+                pat = r"(?<![\w-])" + re.escape(w) + r"(?![\w-])"
+                if re.search(pat, manifests):
+                    why = "'%s' in a manifest" % w
+                elif re.search(pat, imports):
+                    why = "'%s' in an import" % w
+            if why:
+                active[tech] = why
                 break
     return active
+
+def kb_hint():
+    """One footer line naming the library's technologies this project seems to use: printed the first time in a chat and again only when that list changes (remembered per chat in a small machine-local file), so the AI knows what is on file without a search."""
+    entries = kb_entries()
+    active = sorted(kb_active(entries)) if entries else []
+    if not active:
+        return
+    path = os.path.join(SHARED_DIR, "kb_hint.json")
+    seen, key = load_json(path, {}) or {}, CURRENT_SESSION or "-"
+    if seen.get(key) == active:
+        return
+    seen[key] = active
+    save_json(path, seen)
+    print("[KNOWLEDGE] pitfalls on file for what this project uses: %s | search: @KB <technology or symptom words>" % ", ".join(active))
 
 def kb_stems(word):
     """The word and what it may be the plural of (freezes -> freeze, freez), so a plural finds its singular."""
@@ -5340,7 +5374,7 @@ def print_kb(words):
     if not words.strip():
         print("  pitfalls that AIs keep falling into, by technology; search with @HELP KB <technology or symptom words> (add the word all to include technologies this project does not use, obsolete for retired entries):")
         for t in sorted(techs):
-            print("    %-22s %d entr%s%s" % (t, len(techs[t]), "y" if len(techs[t]) == 1 else "ies", "   [used here]" if t in active else ""))
+            print("    %-22s %d entr%s%s" % (t, len(techs[t]), "y" if len(techs[t]) == 1 else "ies", ("   [used here: %s]" % active[t]) if t in active else ""))
         return
     hits, hidden = kb_rank(words, entries, active)
     other = ("  (%d more match%s in technologies this project does not seem to use; add the word all to include %s)" % (hidden, "" if hidden == 1 else "es", "it" if hidden == 1 else "them")) if hidden else ""
