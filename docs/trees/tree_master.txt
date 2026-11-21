@@ -5,7 +5,7 @@
 ├── CHANGELOG.md (Notable changes per version, newest first; feat, fix and perf commits add their line under Unreleased)
 ├── harness.py (Declarative patch / probe / search / run / undo / git CLI; reads one payload from stdin per run; git and no-git workspaces)
     ├── # Stage: IO helpers (Byte-exact file IO keeping EOL style, BOM and undecodable bytes; payload decoding with UI-safe sentinels; workspace path guard)
-    ├── # Stage: Line-1 header and tree glyphs (Inserts the /<project>/<path> first-line comment below shebangs; turns ASCII tree connectors into box glyphs)
+    ├── # Stage: Line-1 header and tree glyphs (Inserts the /<project>/<path> first-line comment with each language's own marker (// # -- <!-- --> /* */), below a shebang, Python coding line, HTML doctype, XML declaration or PHP opening tag; turns ASCII tree connectors into box glyphs)
     ├── # Stage: Scope resolution (Finds Python/Go/JS/TS/Vue definitions and block bounds; resolves Class.method, Parent > # Stage and tree node paths)
     ├── # Stage: Matching (Applies a hunk only where OLD CODE matches exactly once, scope first then file, with indentation-tolerant fallback; prints on-disk excerpts on failure and says when a one-line OLD CODE is only part of a line; a last pass ignores whitespace inside lines, and NEW CODE counts as already applied only when OLD CODE is found nowhere)
     ├── # Stage: Syntax checks and rollback (Compiles Python and formats Go with gofmt -w (spaces pasted from the chat become tabs; only syntax errors roll back), restoring the pre-script file on errors; runs go build and prunes unused imports)
