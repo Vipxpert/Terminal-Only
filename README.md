@@ -45,7 +45,7 @@ Several chats can work in the same project at once, each with its own aim:
 
 ## Install (once per machine)
 
-The harness is two files, `harness.py` and `workflow_commands.txt`, installed into `.llm_harness` in your home folder. The setup scripts first pull the latest changes when their folder is a git clone, then copy them there from the folder they sit in, keep a backup of the previous version, offer to install or update the optional code graph (CBM, which needs internet), and pause at the end so you can read the result.
+The harness is `harness.py` and `workflow_commands.txt`, plus the `knowledge` and `playbooks` folders, installed into `.llm_harness` in your home folder. The setup scripts first pull the latest changes when their folder is a git clone, then copy them there from the folder they sit in, keep a backup of the previous version, offer to install or update the optional code graph (CBM, which needs internet), and pause at the end so you can read the result.
 
 **Windows (PowerShell)**
 
@@ -120,7 +120,8 @@ Script numbering, undo history, saved run outputs, the session list and the rere
 | Dead code | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence) |
 | Run anything else | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once |
 | Project memory | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG` |
-| History | `@UNDO` (whole scripts, or only some files with `| /path, /other, /ye*`; `/old -> /new` recovers a file to another path), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG` |
+| History | `@UNDO` (whole scripts, or only some files with `| /path, /other, /ye*`; `/old -> /new` recovers a file to another path), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG`, `@GIT_PUSH`, `@GIT_PULL`, `@GIT_ACCOUNT` |
+| Knowledge and planning | `@KB <words>` (pitfalls for the technologies the project uses), `@PLAYBOOK [name]` (`plan-first`, `plan-project`, `review`) |
 
 The syntax card printed by the handshake is the authoritative reference.
 
@@ -147,7 +148,21 @@ The syntax card printed by the handshake is the authoritative reference.
 
 - `.llm_harness/goal.md` and `.llm_harness/notes.md` are project memory: they travel with the project, and in a git project the harness commits them for you (see the Safety model). Notes are yours: the AI writes, edits or removes one only when you ask, and may suggest one in its reply otherwise. A note can be pinned to particular chats with `@NOTE_ADD pin <session or pattern> | <text>` (for example `pin migration-* | ...`): only those chats get it printed in their footers, while any chat can still read it with `@NOTE_LIST`. `@NOTE_LIST <words>` finds notes by category (a leading `Bug:`, `Decision:`, `Env:` ...) or by content. `.llm_harness/verdicts.json` keeps the AIs' recorded conclusions about folders, files and definitions (`@VERDICT`), so they travel too; a later change in a verdict's area marks it stale. For a sweep that needs a verdict on every area, you can start a `@CAMPAIGN` with its own verdict words: its rule and progress show in every footer while it runs, Tree probes mark finished nodes, and `@CAMPAIGN_END` removes its verdicts.
 - Script numbering, the undo journal, saved run outputs and the graph stamp are machine-local: in `.git/llm_harness/` for git projects, in `.llm_harness/` otherwise, and ignored by git.
+- The copy line estimates how many tokens each paste, each chat and the whole project have sent (an estimate of harness output only, at about four characters per token). The counts are kept per GitHub account and machine in `.llm_harness/tokens.json`, which is committed together with other memory changes and when a session ends.
 - `docs/trees/tree_master.txt` is the curated architecture tree. It is read level by level, updated in the same script as the code it describes, and `| Check` reports nodes that no longer match the code.
+
+## Languages
+
+Edits work byte for byte in any language. Comment markers (for the `Comment` convention) and the first-line header are built in for Python, Go, JS, TS, Vue, C#, Java, Kotlin, Swift, Rust, C, C++ and several more (`@HELP LANGUAGES` lists every one), and `@SCOPE` can own a single class or method in the brace languages. Only Python and Go get an automatic syntax check. For any other file type you can give your own check command with `harness.py --workspace <folder> --check <.ext> <command>`: it is kept on your machine for that project only (never inside the project, so a cloned repository cannot make the harness run its commands), runs after a script changes a file of that type, and only reports PASS or CHECK FAILED, never rolling anything back.
+
+## Knowledge library
+
+`knowledge/<technology>.txt` holds pitfalls that AIs keep falling into, one entry each: the symptom, the wrong default, the fix, and how and when it was verified. An AI searches it with `@KB <technology or symptom words>` (the same as `@HELP KB ...`); `@KB` alone lists the technologies. Only the technologies your project seems to use are searched (judged from its manifests, file types and imports, and shown as `[used here: ...]` with the reason), unless the words name another one or include `all`, so unrelated entries never reach the AI. The footer names the technologies on file for the project when a chat starts and whenever they change. Setup installs the folder next to `harness.py`.
+
+## Planning and the backlog
+
+- `@PLAYBOOK` prints a short procedure on demand: `plan-first` for one feature with a few decisions to agree on, `plan-project` for a new project or a big redesign (it ends in a living `docs/plan.md`, a decision record, and Todo notes for the first milestone only), and `review`, the check before anything is called complete. The playbooks install next to `harness.py`; `docs/plan.md` and the backlog belong to your project. The AI is told to propose a playbook only when a request would force several consequential decisions, never for small work, and to treat your "we could" ideas as proposals, not decisions.
+- Anything the AI defers, skips, leaves unverified or notices on the way goes into `docs/backlog.md` in the same script, grouped as unverified, question, gap, friction, deferred or idea, so nothing lives only in a chat. The review reads it before work is called complete and at the end of a milestone or session, and proposes improvements only from evidence, labelling the rest speculative.
 
 ## Optional: the code graph (CBM)
 
@@ -161,8 +176,11 @@ Install codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp) to enable 
 
 - `harness.py`: the harness.
 - `workflow_commands.txt`: the workflow and rules the AI follows.
+- `knowledge/`: the shared library of pitfalls, one file per technology, searched with `@KB`.
+- `playbooks/`: the planning and review procedures printed by `@PLAYBOOK`.
 - `setup.cmd`, `setup.sh`: installers.
 - `docs/trees/tree_master.txt`: this project's architecture tree.
+- `docs/backlog.md`: what is known to be missing, deferred, unverified or worth doing.
 - `.llm_harness/goal.md`, `.llm_harness/notes.md`: this project's memory.
 - `tests/`: the test suites; `python tests/run_all.py` runs them all.
 - `.github/workflows/tests.yml`: runs the suites on Windows and Linux for every push and pull request, where GitHub Actions is enabled.
@@ -170,12 +188,12 @@ Install codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp) to enable 
 
 ## Developing the harness
 
-Work on this repository through the harness itself, with this folder as the workspace, then copy `harness.py` and `workflow_commands.txt` into `~/.llm_harness` (or rerun setup). Keep the tree in sync in the same script as each change. After changing the harness, run `python tests/run_all.py` through `@RUN`: it runs every suite in tests/, prints PASS or FAIL per check and one summary, and tests the installed copy (give it the path of a `harness.py` to test that file instead). The workflow in `.github/workflows/tests.yml` runs it on Windows and Linux for every push and pull request wherever GitHub Actions is enabled.
+Work on this repository through the harness itself, with this folder as the workspace, then copy `harness.py`, `workflow_commands.txt` and the `knowledge` and `playbooks` folders into `~/.llm_harness` (or rerun setup). Keep the tree in sync in the same script as each change. After changing the harness, run `python tests/run_all.py` through `@RUN`: it runs every suite in tests/, prints PASS or FAIL per check and one summary, and tests the installed copy (give it the path of a `harness.py` to test that file instead). The workflow in `.github/workflows/tests.yml` runs it on Windows and Linux for every push and pull request wherever GitHub Actions is enabled.
 
 ## Limitations
 
 - You are in the loop for every step: one script per turn, pasted by hand.
-- Day-to-day use is on Windows PowerShell; Linux is covered by the test suites (the included GitHub Actions workflow runs them on Linux and Windows where Actions is enabled) but exercised less by hand, and macOS is untested. Edits work byte for byte in any language; comment markers, first-line headers and symbol scoping are built in for Python, Go, JS, TS, Vue, C#, Java, Kotlin, Swift, Rust, C and C++ (`@HELP LANGUAGES` lists them), and only Python and Go get an automatic syntax check, unless you give another file type your own check command with the terminal command `--check` (kept on your machine for that project only; it reports PASS or CHECK FAILED and never rolls anything back). The copy line also estimates how many tokens each paste, each chat and the whole project have sent (an estimate of harness output only, at about four characters per token), kept per GitHub account and machine in `.llm_harness/tokens.json`, which is committed together with other memory changes and when a session ends. A shared library of pitfalls that AIs keep falling into lives in the `knowledge/` folder, one file per technology; an AI searches it with `@KB <technology or symptom words>` (the same as `@HELP KB ...`) (setup installs it next to `harness.py`). Only the technologies the project seems to use (judged from its manifests, file types and imports) are searched, unless the words name another one or include `all`. For planning, `@PLAYBOOK plan-first` (one feature with a few decisions) and `@PLAYBOOK plan-project` (a new project or a big redesign) print a short procedure on demand; the AI is told to propose them when a request leaves major decisions open, never for small work. Anything left undone goes to `docs/backlog.md` as it happens, and `@PLAYBOOK review` checks it before work is called complete.
+- Day-to-day use is on Windows PowerShell; Linux is covered by the test suites (the included GitHub Actions workflow runs them on Linux and Windows where Actions is enabled) but exercised less by hand, and macOS is untested.
 - Graph searches pay CBM's start-up cost, a few seconds per run.
 
 ## Tools evaluated and not used

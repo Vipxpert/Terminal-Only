@@ -13,6 +13,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)
 
 ## Gaps
+- The tree drift check (@PROBE tree | Check) reports 41 stale nodes, seen after the README script: 14 harness.py "# Stage:" anchors and 8 workflow_commands.txt anchors read as not found, and the 19 knowledge/ and playbooks/ file nodes read as files at the repository root (their parent nodes are probably not recognised as folders). Find out which were already stale before this session, then fix the nodes. (2026-11-22)
 - --link is a user-only command per [L1-Sessions], but the @RUN refusal list (run_command) does not include it. (2026-11-22)
 - A pitfall proven in another project has no path into the shared knowledge library: the AI there cannot write to the harness repository. Needs a proposal file or a ready-to-paste entry. (2026-11-22)
 - halagames-tools' own docs/knowledge.txt still holds the contradictory Split-Brain and headless-API entries that the shared library merged into one. (2026-11-22)
@@ -23,6 +24,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - @TEXT_REPLACE refuses old text under 12 characters, so renaming .sql to .csv in one test took 15 whole-line replacements; a short token with a stated count could be allowed. (2026-11-22)
 
 ## Deferred
+- Stewardship opt-in: a --steward on|off switch per project (machine-local by default), with the backlog and review clauses moved out of [L1-Notes] into their own rule that is printed only when it is on, and a short form for the planning trigger. Waiting for the owner to choose machine-local or committed. (2026-11-22)
 - Releases: push tag v3.13.0 when the owner says so; cut 3.14 for the playbooks, backlog and review work. (2026-11-22)
 - Desktop: run setup.cmd (many commits behind), end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
 - halagames-tools: pin the HalaGames account with @GIT_ACCOUNT; add !.llm_harness/git.json to .gitignore with the git.json branch policy; add the .gitattributes merge lines. (2026-11-22)
