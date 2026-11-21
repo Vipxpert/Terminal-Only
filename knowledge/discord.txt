@@ -1,0 +1,28 @@
+# /llm_harness/knowledge/discord.txt
+# tech: discord
+# detect: discord.py, discord, py-cord, nextcord, discord.js
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## discord-interaction-3s
+tags: discord, interaction, timeout, defer, 3 seconds, slash command, button, interaction failed, acknowledge
+symptom: Users see "This interaction failed" after clicking a button or running a slash command that does slow work.
+trap: Discord requires an interaction to be acknowledged within 3 seconds; slow work before the first response misses that window.
+fix: respond first: await interaction.response.defer() (or send_message), then do the slow work in a background task and finish with interaction.followup.send(...) (the followup call recalled from the library docs).
+verified: reported from production use; defer exists in discord.py 2.7.1 (name checked, behaviour not tested here), 2026-11
+versions: discord.py 2.x
+
+## discord-delete-original-response
+tags: discord, view, buttons, delete_original_response, edit_message, message, disable, double click
+symptom: After a button click is handled, the whole message (text and buttons) disappears although only the buttons were meant to go.
+trap: interaction.delete_original_response() deletes the entire message.
+fix: to stop further clicks but keep the text, remove the view: await interaction.response.edit_message(view=None), or await message.edit(view=None).
+verified: reported from production use; both method names exist in discord.py 2.7.1, 2026-11
+versions: discord.py 2.x
+
+## discord-persistent-views
+tags: discord, view, persistent, timeout, custom_id, add_view, restart, on_ready, setup_hook, interaction failed
+symptom: Buttons on old messages stop working after the bot restarts, or after a few minutes ("This interaction failed").
+trap: A view is only alive inside the running process, and with the default timeout (180 seconds) it also expires.
+fix: make it persistent: timeout=None, a fixed custom_id on every item (put the state you need in it, for example f"retry_{job_id}"), and register the view again at startup with bot.add_view(...) (in setup_hook or on_ready).
+verified: tested on discord.py 2.7.1 (add_view raises ValueError "View is not persistent. Items need to have a custom_id set and View must have no timeout"; the default timeout is 180 s), 2026-11
+versions: discord.py 2.x

@@ -8,13 +8,29 @@ tags: polars, n_unique, count, len, UInt32, underflow, subtraction, aggregation
 symptom: A difference of two counts shows a huge number such as 4294967295 instead of a negative one.
 trap: count(), len() and n_unique() return unsigned integers (UInt32 in the default build, UInt64 in the 64-bit index build), so subtracting them wraps below zero.
 fix: cast before the arithmetic: pl.col("a").n_unique().cast(pl.Int64) - pl.col("b").n_unique().cast(pl.Int64).
-verified: reported from production use, Polars 1.x, 2026-11
-versions: Polars 0.20 to 1.x
+verified: tested on Polars 2.1.0 (n_unique, len and count return UInt32; 2 - 3 gives 4294967295; after a cast to Int64 it gives -1), also reported from production use on 1.x, 2026-11
+versions: Polars 0.20 to 2.x
 
 ## polars-to-python-objects
 tags: polars, to_dicts, to_pandas, memory, oom, killed, slow, pickling, ipc, parquet, json
 symptom: Out-of-memory kills, or a very slow handoff, when a large DataFrame is returned from a worker or a function.
 trap: df.to_dicts() and df.to_pandas() copy every row into Python objects (or a second in-memory frame), far larger than Polars' own columnar memory.
 fix: keep the data columnar: write df.write_parquet(path) and return the path (or sink lazily with sink_parquet), and let the receiver read it natively; for a small result use json.loads(df.write_json()). In Polars 1.0+ write_json has no row_oriented keyword.
-verified: reported from production use, Polars 1.x, 2026-11
-versions: Polars 1.x
+verified: the missing row_oriented keyword tested on Polars 2.1.0 (TypeError); the memory behaviour reported from production use on 1.x, 2026-11
+versions: Polars 1.x and 2.x
+
+## polars-ndjson-tapeerror
+tags: polars, scan_ndjson, ndjson, TapeError, ComputeError, empty file, plain text, no data, preflight
+symptom: Reading a folder of NDJSON files with scan_ndjson fails with a ComputeError that mentions TapeError at character 0.
+trap: A file that holds plain text instead of JSON (for example a "No data" message written by an upstream job) cannot be parsed, and one bad file fails the whole scan.
+fix: pre-check each file before scanning: read its first non-space byte and skip files that are empty or do not start with { or [.
+verified: tested on Polars 2.1.0 (a text file raised ComputeError with TapeError at character 0); the upstream "No data" files reported from production use, 2026-11
+versions: Polars 0.20 to 2.x
+
+## polars-pivot-fill-null
+tags: polars, pivot, fill_null, null, zero, average, ratio, mean, sparse, backfill, cohort
+symptom: Averages or ratios computed over a pivoted table come out too low after the missing cells were filled.
+trap: Filling the missing combinations of a pivot with 0 turns "no data" into a real value, which drags means and ratios down.
+fix: leave missing cells null (null-aware aggregations such as mean_horizontal skip them) and fill with 0 only for counts and sums.
+verified: tested on Polars 2.1.0 (a row mean is 0.9 with a null cell and 0.45 with the cell filled with 0), 2026-11
+versions: all

@@ -34,3 +34,11 @@ trap: The event loop keeps only a weak reference to its tasks, so a task that no
 fix: keep a reference until it is done: tasks = set(); t = asyncio.create_task(coro()); tasks.add(t); t.add_done_callback(tasks.discard).
 verified: recalled from the Python documentation for asyncio.create_task, not reproduced here, 2026-11
 versions: all
+
+## asyncio-polling-double-dispatch
+tags: polling, in-flight, duplicate, dispatch, tick, background loop, workers, double, database
+symptom: A background loop that polls a database and starts tasks launches the same work several times, and the number of workers keeps growing.
+trap: The next poll runs before the previous tasks have marked their rows as taken, so the query returns the same targets again.
+fix: exclude in-flight states in the query, and mark rows as claimed (an atomic update to a "running" state) before starting the task.
+verified: reported from production use, 2026-11
+versions: all
