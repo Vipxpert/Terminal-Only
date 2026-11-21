@@ -3,6 +3,7 @@
 What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), friction (the same manual step, workaround or reminder more than once), deferred (decided to do later), idea (speculative: no evidence yet).
 
 ## Unverified
+- Reported by Gemini's audit of a copy it called harness_2.py (2,670 lines; this harness is about 6,000, so its line numbers do not match), not yet checked against this code: save_run's pruning may delete numbered run files before side_*.json files because the names sort alphabetically, breaking @REDO and replay once enough @SIDE runs exist; a locally modified tokens.json may stop git's own fast-forward pull or branch switch when incoming commits touch it; merge_session_cli may write verdict records with target= instead of path=. (2026-11-22)
 - setup.cmd copying knowledge/ and playbooks/ has never run on Windows; they were copied by hand. Run setup.cmd once and look in ~/.llm_harness. (2026-11-22)
 - The planning trigger and the three playbooks have never met a real request; the first big task is the trial. (2026-11-22)
 - The Unity sql false positive fix (a .csproj counts only PackageReference lines) is proven only on a Unity-like sample; run @KB in Big&Small to confirm. (2026-11-22)
@@ -13,6 +14,8 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)
 
 ## Gaps
+- Tree checker: ANCHOR_RE requires the word Stage or Step right after the comment marker, so harness.py's dash-decorated stage comments ("# ---- Stage: IO helpers") and the "#*" sections of workflow_commands.txt are never recognised, and 22 tree nodes report stale although their anchors exist (seen). The same pattern drives the table-of-contents probe and block bounds, so change it with a test. (2026-11-22)
+- The tree's /tests node lists brief_rules_test.py twice, with two different descriptions. (2026-11-22)
 - The tree drift check (@PROBE tree | Check) reports 41 stale nodes, seen after the README script: 14 harness.py "# Stage:" anchors and 8 workflow_commands.txt anchors read as not found, and the 19 knowledge/ and playbooks/ file nodes read as files at the repository root (their parent nodes are probably not recognised as folders). Find out which were already stale before this session, then fix the nodes. (2026-11-22)
 - --link is a user-only command per [L1-Sessions], but the @RUN refusal list (run_command) does not include it. (2026-11-22)
 - A pitfall proven in another project has no path into the shared knowledge library: the AI there cannot write to the harness repository. Needs a proposal file or a ready-to-paste entry. (2026-11-22)
