@@ -26,3 +26,27 @@ trap: ui.run(storage_secret=...) already installs Starlette's SessionMiddleware;
 fix: use exactly one session middleware: the one NiceGUI installs from storage_secret (read request.session with it), or none of your own.
 verified: reported from production use, 2026-11
 versions: NiceGUI with a parent FastAPI app
+
+## nicegui-select-invalid-value
+tags: nicegui, ui.select, options, value, ValueError, truncate, slice, invalid, cap
+symptom: ui.select raises a ValueError (invalid value) after its options list was shortened.
+trap: Capping the options (for example options[:300]) can drop the currently selected value, which must be one of the options.
+fix: keep the current value in the shortened list (options.insert(0, current) when it is missing).
+verified: reported from production use, NiceGUI 1.x and 2.x, 2026-11
+versions: NiceGUI 1.x to 2.x
+
+## nicegui-spinner-paint
+tags: nicegui, loading, spinner, websocket, update, sleep, paint, blocking, event loop, never shows
+symptom: A loading spinner that is set just before slow work never appears.
+trap: Synchronous work right after the property change blocks the event loop before the update is sent over the WebSocket.
+fix: let the update go out first: await asyncio.sleep(0.05) after element.update(), or move the slow work off the event loop.
+verified: reported from production use, NiceGUI 1.x and 2.x, 2026-11
+versions: NiceGUI 1.x to 2.x
+
+## nicegui-bound-list-reassign
+tags: nicegui, binding, list, reassign, mutate, bind, closure, clear, extend, stops updating
+symptom: A table or list stops updating after code assigns a new list to the variable the UI uses.
+trap: my_list = new_list only rebinds the name; the UI still holds the old list object.
+fix: mutate in place: my_list.clear(); my_list.extend(new_list), or my_list[:] = new_list.
+verified: reported from production use, NiceGUI 1.x and 2.x, 2026-11
+versions: NiceGUI 1.x to 2.x

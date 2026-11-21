@@ -10,3 +10,43 @@ trap: Binding :loading to a value that is undefined instead of a real boolean le
 fix: cast the bound value (:loading="!!isFetching") and initialise the flag to false.
 verified: reported from production use, Quasar 2.x, 2026-11
 versions: Quasar 2.x
+
+## quasar-select-webkit-blur
+tags: quasar, q-select, use-input, webkit, safari, ios, blur, input, cleared, fill-input, hide-selected
+symptom: In Safari and on iOS a searchable q-select loses the typed text or its selection when an option is tapped.
+trap: WebKit can fire the input's blur before the click on an option resolves, which clears the model.
+fix: add the props fill-input and hide-selected to the searchable select.
+verified: reported from production use, Quasar 2.x, 2026-11
+versions: Quasar 2.x
+
+## quasar-select-popup-collapse
+tags: quasar, q-select, options, menu, collapse, popup, showPopup, async, update
+symptom: A q-select menu closes by itself when its options or value are updated while the user is interacting with it.
+trap: Changing the value or the options programmatically collapses the open menu.
+fix: reopen it after the update: ref.showPopup() (in NiceGUI: element.run_method("showPopup")).
+verified: reported from production use, Quasar 2.x, 2026-11
+versions: Quasar 2.x
+
+## quasar-select-filter-autofill
+tags: quasar, q-select, use-input, filter, input-value, on_change, loop, updateInputValue, autofill
+symptom: Picking an option in a searchable q-select triggers extra change events that loop.
+trap: Clicking an option copies its label into the internal search filter, which fires the filter and change handlers again.
+fix: clear the filter after the selection: ref.updateInputValue("") (in NiceGUI: element.run_method("updateInputValue", "")).
+verified: reported from production use, Quasar 2.x, 2026-11
+versions: Quasar 2.x
+
+## quasar-dialog-unmount-emits
+tags: quasar, dialog, useDialogPluginComponent, defineEmits, unmount, emits, vue3, TypeError, close
+symptom: Closing a dialog opened through Quasar's Dialog plugin throws "Cannot read properties of null (reading 'unmount')".
+trap: A component used with useDialogPluginComponent that does not declare the plugin's emits is not unmounted properly on close.
+fix: declare them in the component: defineEmits([...useDialogPluginComponent.emits]).
+verified: reported from production use, Quasar 2.x with Vue 3, 2026-11
+versions: Quasar 2.x with Vue 3
+
+## quasar-flex-full-height
+tags: quasar, flex, full-height, col-grow, layout, overflow, splitter, viewport, height, header
+symptom: A flex child (such as a q-splitter) below a fixed header overflows the viewport by the header's height.
+trap: full-height gives the child height: 100%, which claims the parent's whole height in addition to its siblings' space.
+fix: use col-grow alone (without full-height) so the child fills only the remaining space.
+verified: reported from production use, Quasar 2.x, 2026-11
+versions: Quasar 2.x

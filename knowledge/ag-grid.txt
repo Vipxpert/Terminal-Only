@@ -10,3 +10,51 @@ trap: Calling autoSizeColumns() from displayedColumnsChanged or gridSizeChanged 
 fix: never size columns inside those events; drop autoSizeStrategy, give the grid's flex parent min-width: 0; width: 100%; overflow: hidden, and call autoSizeColumns once, debounced (about 150 ms plus two requestAnimationFrame), only when row data or column visibility changes.
 verified: reported from production use, 2026-11
 versions: AG Grid v32+
+
+## aggrid-autosize-after-coldefs
+tags: ag-grid, autoSizeColumns, columnDefs, width, 0px, requestAnimationFrame, debounce, paint, race
+symptom: Columns end up 0 px wide, or the wrong width, right after the column definitions are updated.
+trap: autoSizeColumns() run immediately after updating the column definitions measures before the DOM has painted the new columns.
+fix: debounce (setTimeout, about 150 ms) and then wait two frames: requestAnimationFrame(() => requestAnimationFrame(() => api.autoSizeColumns(ids))).
+verified: reported from production use, 2026-11
+versions: AG Grid v32+
+
+## aggrid-column-virtualisation-squish
+tags: ag-grid, column virtualisation, suppressColumnVirtualisation, autoSizeColumns, squish, offscreen, minWidth, zero
+symptom: Columns that were off screen when autoSizeColumns ran end up squeezed to 0 px.
+trap: AG Grid does not render off-screen columns, so programmatic sizing cannot measure them.
+fix: for grids with a moderate number of columns (under about 100) set suppressColumnVirtualisation to true, or give defaultColDef a minWidth floor.
+verified: reported from production use, 2026-11
+versions: AG Grid v32+
+
+## aggrid-destroyed-api
+tags: ag-grid, vue, v-if, destroyed, api, isDestroyed, setGridOption, lifecycle, exception
+symptom: Console errors about a destroyed grid appear when the grid is toggled with v-if (for example to show a loading spinner).
+trap: v-if destroys the grid and its API; code that still holds the old API and calls setGridOption afterwards fails.
+fix: guard every programmatic call: if (api.value && !api.value.isDestroyed()) { ... }, or hide the grid with v-show instead.
+verified: reported from production use, AG Grid v32+ with Vue 3, 2026-11
+versions: AG Grid v32+
+
+## aggrid-flex-parent-scrollbar
+tags: ag-grid, flex, scrollbar, horizontal, min-width, overflow, container, stretch, unreachable
+symptom: Inside a flex container the grid's parent stretches wider than the page and the horizontal scrollbar is out of reach.
+trap: A flex item's default min-width is auto, so wide grid content makes the container grow.
+fix: give the flex parent min-width: 0 (class min-w-0 in Tailwind or Quasar), and overflow: hidden if needed.
+verified: reported from production use, 2026-11
+versions: all
+
+## aggrid-canvas-collapse
+tags: ag-grid, blank, empty, height, mount, flex, 0px, v-if, viewport, collapse
+symptom: The grid mounts blank (0 px or a few px tall) although its data arrives.
+trap: The grid measures its container once, when it mounts; inside a fluid flex parent that has not settled yet it computes a broken height.
+fix: wrap the grid in an element with an explicit height (for example height: 600px), and mount it only after the layout has settled.
+verified: reported from production use, AG Grid v32+, 2026-11
+versions: AG Grid v32+
+
+## aggrid-js-functions-from-python
+tags: ag-grid, nicegui, python, json, serialization, function, cellClassRules, javascript, heatmap, callback
+symptom: Cell styling or callbacks written as JavaScript functions in Python-side grid options do nothing.
+trap: Options sent from Python are JSON; a function arrives as text and is never called.
+fix: express the rule as a string expression the grid evaluates (cellClassRules: {"heat-1": "x >= 0 && x < 5"}) with the CSS classes defined in the page; NiceGUI can also mark an option as JavaScript with a colon-prefixed key (recalled from its docs, not tested here).
+verified: string-expression fix reported from production use, colon prefix recalled, 2026-11
+versions: AG Grid v32+ with NiceGUI
