@@ -1,0 +1,12 @@
+# /llm_harness/knowledge/quasar.txt
+# tech: quasar
+# detect: quasar, nicegui
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## quasar-select-loading-undefined
+tags: quasar, q-select, loading, spinner, undefined, boolean, vue
+symptom: A q-select shows a spinner forever.
+trap: Binding :loading to a value that is undefined instead of a real boolean leaves the loading animation running.
+fix: cast the bound value (:loading="!!isFetching") and initialise the flag to false.
+verified: reported from production use, Quasar 2.x, 2026-11
+versions: Quasar 2.x

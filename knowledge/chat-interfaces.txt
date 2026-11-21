@@ -1,0 +1,20 @@
+# /llm_harness/knowledge/chat-interfaces.txt
+# tech: chat-interfaces
+# detect: (any project: a chat interface is how the AI's output reaches the user)
+# Pitfalls of the chat window itself, which rewrites what an AI writes. One entry per pitfall.
+
+## chatui-triple-backticks
+tags: markdown, code block, backticks, fence, truncated, regex, rendering
+symptom: A reply is cut off in the middle, or renders as broken blocks, when its code mentions Markdown fences.
+trap: Three literal backticks inside a code block (in a regex or a string) end that block early in the chat's Markdown renderer.
+fix: never output three consecutive backticks inside a code block: use a quantifier (`{3}), concatenation, or chr(96) * 3.
+verified: reported from production use, 2026-11
+versions: all
+
+## chatui-url-autolink
+tags: markdown, url, https, autolink, code block, syntax error, brackets
+symptom: Pasted code fails with a syntax error around a URL that looks fine in the chat.
+trap: Some chat renderers turn a bare https:// URL, even inside a code block, into a Markdown link, so brackets and parentheses end up in the copied code.
+fix: build the string from parts so no complete URL appears: host and path in variables, f"https://{host}{path}", or "https" + "://" + rest.
+verified: reported from production use, 2026-11
+versions: all

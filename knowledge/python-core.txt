@@ -1,0 +1,12 @@
+# /llm_harness/knowledge/python-core.txt
+# tech: python-core
+# detect: python, pyproject.toml, requirements.txt
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## py-getattr-default-eager
+tags: getattr, default, singleton, cache, lazy, rebuild
+symptom: A cache or singleton is rebuilt, or its setup work repeats, on every call.
+trap: getattr(obj, "attr", Default()) builds Default() on every call even when attr exists, and when attr was never assigned it returns a fresh throwaway instance each time that nothing keeps.
+fix: initialise lazily and store the instance: if getattr(obj, "attr", None) is None: obj.attr = Default(), then always use obj.attr.
+verified: tested on Python 3.12 (the default is built on every call), 2026-11
+versions: all

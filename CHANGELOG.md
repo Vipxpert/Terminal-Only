@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- A shared knowledge library of pitfalls that AIs keep falling into: `knowledge/<technology>.txt` (one entry per pitfall with id, tags, symptom, trap, fix, verified and optionally versions, replaces, obsolete), searched with `@HELP KB <technology or symptom words>` (or `@HELP KB` for the list), with a lint that catches missing fields, repeated ids and notes naming unknown entries; twelve seed entries; `[L1-Knowledge]` now tells the AI to search before using a library and after a failure.
+
 ## 3.12
 
 - Optional per-project check command for any file type: the user's terminal command `--check <.ext> <command>` (kept in a file in the harness's own folder, keyed by the project path, never in the project; `--check` alone lists, `--check <.ext> --clear` removes) makes the harness run that command once after a script changes a file of that type and report `PASS`, `CHECK FAILED` with the command's output, `CHECK UNCHECKED` or `CHECK TIMED OUT`; it never rolls anything back, and a script cannot set it.

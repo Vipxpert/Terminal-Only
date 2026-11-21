@@ -5158,6 +5158,117 @@ def print_languages():
     print("  symbols for @SCOPE file#Class.method, @XREF and @PROBE | Unused: %s" % " ".join(CODE_EXTS))
     print("  syntax check with rollback: Python (compile) and Go (gofmt); other languages are not compiled unless you set your own check command (the user's terminal command --check <.ext> <command>); otherwise build or test them with @RUN")
 
+KB_FIELDS = ("tags", "symptom", "trap", "fix", "verified", "versions", "replaces", "obsolete")
+
+def knowledge_dir():
+    """The knowledge library: the 'knowledge' folder next to the running harness.py (LLM_HARNESS_KNOWLEDGE overrides it for tests)."""
+    return os.environ.get("LLM_HARNESS_KNOWLEDGE") or os.path.join(os.path.dirname(os.path.abspath(SELF_PATH)), "knowledge")
+
+def kb_entries(folder=None):
+    """[{tech, id, file, <fields>}] from the knowledge files. A file may start with '# tech: <name>' (default: the file name) and '# detect: <words>'; an entry starts with '## <id>' and continues with 'key: value' lines (keys in KB_FIELDS); a line indented by two spaces continues the previous value."""
+    folder, out = folder or knowledge_dir(), []
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".txt"))
+    except OSError:
+        return out
+    for name in names:
+        try:
+            with open(os.path.join(folder, name), "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        tech, cur, key = os.path.splitext(name)[0], None, None
+        for line in text.split("\n"):
+            line = line.rstrip("\r")
+            m = re.match(r"^#\s*tech:\s*(\S.*)$", line)
+            if m:
+                tech = m.group(1).strip()
+                continue
+            m = re.match(r"^##\s+(\S+)\s*$", line)
+            if m:
+                cur, key = {"tech": tech, "id": m.group(1), "file": name}, None
+                out.append(cur)
+                continue
+            if cur is None:
+                continue
+            m = re.match(r"^([a-z-]+):\s*(.*)$", line)
+            if m and m.group(1) in KB_FIELDS:
+                key = m.group(1)
+                cur[key] = m.group(2).strip()
+            elif key and line.startswith("  ") and line.strip():
+                cur[key] += " " + line.strip()
+    return out
+
+def kb_lint(entries):
+    """Problems in a library: an entry without symptom, trap, fix or verified, a repeated id, a replaces or obsolete note that names an id that does not exist."""
+    ids, bad = {}, []
+    for e in entries:
+        ids[e["id"]] = ids.get(e["id"], 0) + 1
+    for e in entries:
+        miss = [k for k in ("tags", "symptom", "trap", "fix", "verified") if not e.get(k)]
+        if miss:
+            bad.append("%s: missing %s" % (e["id"], ", ".join(miss)))
+        if ids[e["id"]] > 1:
+            bad.append("%s: id used %d times" % (e["id"], ids[e["id"]]))
+        for k in ("replaces", "obsolete"):
+            for ref in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)+", e.get(k) or ""):
+                if ref not in ids:
+                    bad.append("%s: %s names an unknown entry %s" % (e["id"], k, ref))
+    return bad
+
+def kb_search(words, entries):
+    """Entries that match the words, best first: the technology or a tag counts 3, the id 2, the symptom, trap or fix 1 per word; retired entries only when the word 'obsolete' is among the words."""
+    toks = [w for w in re.split(r"[^\w.+#-]+", words.lower()) if w]
+    old = "obsolete" in toks
+    toks = [t for t in toks if t != "obsolete"]
+    scored = []
+    for e in entries:
+        if e.get("obsolete") and not old:
+            continue
+        tags = [t.strip().lower() for t in (e.get("tags") or "").split(",")]
+        score = 0
+        for t in toks:
+            if t == e["tech"].lower() or t in tags:
+                score += 3
+            elif t in e["id"].lower() or t in e["tech"].lower():
+                score += 2
+            elif any(t in (e.get(k) or "").lower() for k in ("symptom", "trap", "fix")) or any(t in x for x in tags):
+                score += 1
+        if score:
+            scored.append((-score, e["tech"], e["id"], e))
+    return [s[3] for s in sorted(scored, key=lambda s: s[:3])]
+
+def print_kb(words):
+    """@HELP KB [<technology or symptom words>]: without words, the technologies in the library; with words, the best matching entries (at most 6, about 5000 characters), the rest as ids."""
+    entries = kb_entries()
+    print("\n=== KNOWLEDGE ===")
+    if not entries:
+        print("  no knowledge library is installed here (the knowledge folder next to harness.py is missing or empty); run setup again from an up-to-date copy of the harness")
+        return
+    techs = {}
+    for e in entries:
+        techs.setdefault(e["tech"], []).append(e)
+    if not words.strip():
+        print("  pitfalls that AIs keep falling into, by technology; search with @HELP KB <technology or symptom words> (add the word obsolete to include retired entries):")
+        for t in sorted(techs):
+            print("    %-22s %d entr%s" % (t, len(techs[t]), "y" if len(techs[t]) == 1 else "ies"))
+        return
+    hits = kb_search(words, entries)
+    if not hits:
+        print("  nothing matches '%s'. technologies: %s" % (words.strip(), ", ".join(sorted(techs))))
+        return
+    used, shown = 0, 0
+    for e in hits:
+        lines = ["  [%s] %s%s" % (e["tech"], e["id"], "   (OBSOLETE: %s)" % e["obsolete"] if e.get("obsolete") else "")]
+        lines += ["    %s: %s" % (k, e[k]) for k in ("symptom", "trap", "fix", "versions", "verified") if e.get(k)]
+        block = "\n".join(lines)
+        if shown >= 6 or (shown and used + len(block) > 5000):
+            break
+        print(block)
+        used, shown = used + len(block), shown + 1
+    if len(hits) > shown:
+        print("  (%d more match: %s; narrow the words to see them)" % (len(hits) - shown, ", ".join(e["id"] for e in hits[shown:shown + 12])))
+
 def print_help(name, shell):
     """@HELP <directive>: the syntax-card lines for one directive, taken from the card itself so the two never disagree."""
     import io, contextlib
@@ -5165,6 +5276,10 @@ def print_help(name, shell):
     with contextlib.redirect_stdout(buf):
         print_card(shell, os.path.abspath("."))
     key = "@" + name.strip().lstrip("@").upper()
+    kb = re.match(r"(?is)^@?kb(?:\s+(.*))?$", name.strip())
+    if kb:
+        print_kb(kb.group(1) or "")
+        return
     if key.startswith("@L1-"):
         try:
             with open(RULES_PATH, "r", encoding="utf-8") as f:

@@ -1,0 +1,20 @@
+# /llm_harness/knowledge/google-api-python.txt
+# tech: google-api-python
+# detect: google-api-python-client, googleapiclient, httplib2
+# Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
+
+## gapi-httplib2-threads
+tags: httplib2, thread, thread pool, timeout, socket, google-api-python-client
+symptom: Google API calls made from a thread pool hit unexplained socket read timeouts (often 60 seconds).
+trap: The httplib2.Http object behind google-api-python-client is not thread-safe; a service built on one thread and used from worker threads collides on its connection pool.
+fix: build the httplib2.Http object and the service inside the worker thread that makes the call (one per thread).
+verified: reported from production use, 2026-11
+versions: google-api-python-client with httplib2
+
+## gapi-chunked-308
+tags: httplib2, upload, resumable, next_chunk, 308, redirect, RedirectMissingLocation
+symptom: A resumable upload that uses next_chunk() crashes with RedirectMissingLocation.
+trap: The server answers 308 Resume Incomplete for each accepted chunk, and httplib2 treats every 3xx as a redirect, searches for a Location header and fails.
+fix: set follow_redirects = False on the httplib2.Http instance used to build the service, so the 308 reaches the client library unchanged.
+verified: reported from production use, 2026-11
+versions: google-api-python-client with httplib2

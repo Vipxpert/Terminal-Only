@@ -1,0 +1,20 @@
+# /llm_harness/knowledge/python-asyncio.txt
+# tech: python-asyncio
+# detect: asyncio, aiohttp, fastapi, starlette, nicegui, uvicorn
+# Pitfalls an AI keeps repeating. One entry per pitfall: id, tags, symptom, trap, fix, verified (+ versions, replaces, obsolete). Generic, no project names.
+
+## py-thread-handoff-eager
+tags: to_thread, run_in_executor, executor, freeze, blocking, event loop
+symptom: The event loop freezes during work that was supposedly moved to a thread.
+trap: await asyncio.to_thread(heavy()) calls heavy() on the loop thread first and only hands its result to the pool.
+fix: pass the callable, not its result: asyncio.to_thread(heavy) or asyncio.to_thread(lambda: heavy(a, b=1)); the same applies to loop.run_in_executor.
+verified: tested on Python 3.12 (the call runs on MainThread), 2026-11
+versions: all
+
+## py-executor-cancel-hang
+tags: run_in_executor, cancel, CancelledError, subprocess, shutdown, atexit, hang, reload
+symptom: A server hangs on reload or shutdown (event loop closed, process and port still alive) after tasks waiting on a thread pool were cancelled.
+trap: Cancelling a task that awaits loop.run_in_executor only detaches it; the worker thread and any subprocess it started keep running, and ThreadPoolExecutor joins its threads at interpreter exit. CancelledError is a BaseException, so except Exception does not catch it.
+fix: catch asyncio.CancelledError where the executor call is awaited, terminate the child in a finally block (if proc.poll() is None: proc.terminate()), and shut the pool down with pool.shutdown(wait=False, cancel_futures=True). On Windows terminate() reports exit code 1 (not -15), so remember intentional aborts separately instead of reading the code as a failure.
+verified: CancelledError and cancel_futures tested on Python 3.12; the hang and the Windows exit code reported from production use, 2026-11
+versions: Python 3.9+ (cancel_futures)
