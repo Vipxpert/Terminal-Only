@@ -46,6 +46,11 @@ mkdir -p "$TARGET_DIR" "$TEMP_DIR"
 # Stage harness files before replacing the current installation.
 cp "$SOURCE_DIR/harness.py" "$TEMP_DIR/harness.py"
 cp "$SOURCE_DIR/workflow_commands.txt" "$TEMP_DIR/workflow_commands.txt"
+if [ -d "$SOURCE_DIR/knowledge" ]; then
+    cp -R "$SOURCE_DIR/knowledge" "$TEMP_DIR/knowledge"
+else
+    echo "WARNING: the knowledge folder is missing next to this setup file; the knowledge library will not be installed."
+fi
 
 install_cbm() {
     INSTALLER="$TEMP_DIR/cbm-install.sh"
@@ -147,6 +152,14 @@ fi
 
 mv "$TEMP_DIR/harness.py" "$TARGET_DIR/harness.py"
 mv "$TEMP_DIR/workflow_commands.txt" "$TARGET_DIR/workflow_commands.txt"
+if [ -d "$TEMP_DIR/knowledge" ]; then
+    if [ -d "$TARGET_DIR/knowledge" ]; then
+        mkdir -p "$BACKUP_DIR"
+        cp -R "$TARGET_DIR/knowledge" "$BACKUP_DIR/knowledge"
+        rm -rf "$TARGET_DIR/knowledge"
+    fi
+    mv "$TEMP_DIR/knowledge" "$TARGET_DIR/knowledge"
+fi
 chmod 644 "$TARGET_DIR/harness.py" "$TARGET_DIR/workflow_commands.txt"
 
 # Comment (workaround): Linux terminal output copy needs wl-copy, xclip, or xsel; install one best-effort without aborting setup under set -eu

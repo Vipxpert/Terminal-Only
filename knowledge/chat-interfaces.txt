@@ -1,6 +1,6 @@
 # /llm_harness/knowledge/chat-interfaces.txt
 # tech: chat-interfaces
-# detect: (any project: a chat interface is how the AI's output reaches the user)
+# detect: *
 # Pitfalls of the chat window itself, which rewrites what an AI writes. One entry per pitfall.
 
 ## chatui-triple-backticks

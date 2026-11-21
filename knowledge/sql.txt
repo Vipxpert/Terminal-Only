@@ -1,10 +1,10 @@
 # /llm_harness/knowledge/sql.txt
 # tech: sql
-# detect: sql, duckdb, postgres, sqlite, clickhouse, bigquery
+# detect: *.sql, sql, duckdb, postgres, sqlite3, clickhouse, bigquery
 # Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
 
 ## sql-left-join-lookup-bounds
-tags: sql, join, left join, cartesian, duckdb, enrichment, timeout, memory, explosion
+tags: sql, join, left join, cartesian, duckdb, enrichment, timeout, slow, memory, explosion
 symptom: A query that should return one row per event times out or exhausts memory right after a join was added.
 trap: Joining a per-day lookup table (one row per user per day) to an event table on the user key alone matches every event with every day of that user inside the queried range, multiplying the rows.
 fix: put the day in the ON clause (AND CAST(e.ts AS DATE) = l.day), or first reduce the lookup to one row per key (GROUP BY or SELECT DISTINCT) before joining; aggregate or filter large inputs in a CTE before any join.

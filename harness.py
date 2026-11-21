@@ -5165,7 +5165,7 @@ def knowledge_dir():
     return os.environ.get("LLM_HARNESS_KNOWLEDGE") or os.path.join(os.path.dirname(os.path.abspath(SELF_PATH)), "knowledge")
 
 def kb_entries(folder=None):
-    """[{tech, id, file, <fields>}] from the knowledge files. A file may start with '# tech: <name>' (default: the file name) and '# detect: <words>'; an entry starts with '## <id>' and continues with 'key: value' lines (keys in KB_FIELDS); a line indented by two spaces continues the previous value."""
+    """[{tech, id, file, detect, <fields>}] from the knowledge files. A file may start with '# tech: <name>' (default: the file name) and '# detect: <words>' (how to tell that a project uses the technology, see kb_active); an entry starts with '## <id>' and continues with 'key: value' lines (keys in KB_FIELDS); a line indented by two spaces continues the previous value."""
     folder, out = folder or knowledge_dir(), []
     try:
         names = sorted(n for n in os.listdir(folder) if n.endswith(".txt"))
@@ -5177,16 +5177,20 @@ def kb_entries(folder=None):
                 text = f.read()
         except OSError:
             continue
-        tech, cur, key = os.path.splitext(name)[0], None, None
+        tech, detect, cur, key = os.path.splitext(name)[0], [], None, None
         for line in text.split("\n"):
             line = line.rstrip("\r")
             m = re.match(r"^#\s*tech:\s*(\S.*)$", line)
             if m:
                 tech = m.group(1).strip()
                 continue
+            m = re.match(r"^#\s*detect:\s*(\S.*)$", line)
+            if m:
+                detect = [w.strip().lower() for w in m.group(1).split(",") if w.strip()]
+                continue
             m = re.match(r"^##\s+(\S+)\s*$", line)
             if m:
-                cur, key = {"tech": tech, "id": m.group(1), "file": name}, None
+                cur, key = {"tech": tech, "id": m.group(1), "file": name, "detect": detect}, None
                 out.append(cur)
                 continue
             if cur is None:
@@ -5216,30 +5220,114 @@ def kb_lint(entries):
                     bad.append("%s: %s names an unknown entry %s" % (e["id"], k, ref))
     return bad
 
-def kb_search(words, entries):
-    """Entries that match the words, best first: the technology or a tag counts 3, the id 2, the symptom, trap or fix 1 per word; retired entries only when the word 'obsolete' is among the words."""
-    toks = [w for w in re.split(r"[^\w.+#-]+", words.lower()) if w]
-    old = "obsolete" in toks
-    toks = [t for t in toks if t != "obsolete"]
-    scored = []
+KB_SKIP_DIRS = {"node_modules", "venv", "__pycache__", "dist", "build", "target", "bin", "obj", "Library", "Temp", "Packages"}
+KB_MANIFESTS = {"package.json", "go.mod", "cargo.toml", "pom.xml", "pyproject.toml", "pipfile", "setup.py", "setup.cfg", "composer.json", "gemfile", "build.gradle", "build.gradle.kts", "environment.yml"}
+KB_CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".vue", ".go", ".rs", ".cs", ".java", ".kt", ".php", ".c", ".h", ".cpp", ".hpp")
+
+def kb_project_facts(root="."):
+    """What the project itself says it uses: (extensions, file names, manifest text, import lines). A bounded walk: dependency, build and hidden folders are skipped, at most 3000 files, 300 code files (their first 120 lines) and manifests up to 200 KB."""
+    exts, names, manifests, imports, seen, code = set(), set(), [], [], 0, 0
+    for dirpath, dirs, files in os.walk(root):
+        rel = os.path.relpath(dirpath, root)
+        dirs[:] = [d for d in dirs if d not in KB_SKIP_DIRS and not d.startswith(".")] if rel.count(os.sep) < 3 else []
+        for fn in files:
+            seen += 1
+            if seen > 3000:
+                break
+            low, path = fn.lower(), os.path.join(dirpath, fn)
+            ext = os.path.splitext(low)[1]
+            names.add(low)
+            if ext:
+                exts.add(ext)
+            try:
+                if low.startswith("requirements") or low in KB_MANIFESTS or ext in (".csproj", ".fsproj"):
+                    if os.path.getsize(path) <= 200000:
+                        with open(path, "r", encoding="utf-8", errors="replace") as f:
+                            manifests.append(f.read().lower())
+                elif ext in KB_CODE_EXTS and code < 300:
+                    code += 1
+                    with open(path, "r", encoding="utf-8", errors="replace") as f:
+                        for _, line in zip(range(120), f):
+                            s = line.strip().lower()
+                            if s.startswith(("import ", "from ", "using ", "use ", "#include", "require", "const ", "package ", "@import")) or "require(" in s:
+                                imports.append(s)
+            except OSError:
+                continue
+        if seen > 3000:
+            break
+    return exts, names, "\n".join(manifests), "\n".join(imports)
+
+def kb_active(entries, facts=None):
+    """The technologies this project seems to use. The words of a file's '# detect:' line mean: '*' always; '*.ext' a file with that extension; a file name, that file is present; any other word, a dependency name found in a manifest or an import line."""
+    exts, names, manifests, imports = facts or kb_project_facts()
+    text, words, active = manifests + "\n" + imports, {}, set()
+    for e in entries:
+        words.setdefault(e["tech"], set()).update(e.get("detect") or [])
+    for tech, ws in words.items():
+        for w in ws:
+            if w == "*" or (w.startswith("*.") and w[1:] in exts) or (not w.startswith("*") and w in names) or (not w.startswith("*") and re.search(r"(?<![\w-])" + re.escape(w) + r"(?![\w-])", text)):
+                active.add(tech)
+                break
+    return active
+
+def kb_stems(word):
+    """The word and what it may be the plural of (freezes -> freeze, freez), so a plural finds its singular."""
+    out = {word}
+    if len(word) > 3 and word.endswith("s"):
+        out.add(word[:-1])
+    if len(word) > 4 and word.endswith("es"):
+        out.add(word[:-2])
+    return out
+
+KB_STOP = {"a", "an", "the", "of", "in", "on", "at", "to", "from", "for", "with", "and", "or", "is", "are", "it", "my", "when", "how", "why", "what", "after", "before", "every", "each", "by", "as", "be", "not", "do", "does", "i", "out", "into", "this", "that"}
+
+def kb_rank(words, entries, active):
+    """([entries], hidden): the entries that match the words, best first. A word is a strong match when it names the entry's technology, is one of its tags or is part of its id, and a weak one when it appears in a tag phrase or in its symptom, trap or fix. An entry qualifies with one strong match or two matched words, and only when it covers at least 60% as much of the question as the best entry does, so one common word never pulls in unrelated entries. A technology the project does not seem to use is shown only when the words name it or include 'all'; hidden counts the matches left out for that reason. Retired entries need the word 'obsolete'."""
+    toks = [w for w in re.split(r"[^\w.+#-]+", words.lower()) if w and w not in KB_STOP]
+    old, every = "obsolete" in toks, "all" in toks
+    toks = [t for t in toks if t not in ("obsolete", "all")]
+    found = []
     for e in entries:
         if e.get("obsolete") and not old:
             continue
-        tags = [t.strip().lower() for t in (e.get("tags") or "").split(",")]
-        score = 0
+        tech = e["tech"].lower()
+        tech_words = {tech} | {w for w in re.split(r"[-_ ]+", tech) if len(w) >= 3}
+        full, sub = set(), set()
+        for tag in (e.get("tags") or "").lower().split(","):
+            tag = tag.strip()
+            if tag:
+                full.update(kb_stems(tag))
+                for w in re.split(r"[-_ ]+", tag):
+                    if len(w) >= 3:
+                        sub.update(kb_stems(w))
+        text = set()
+        for w in re.findall(r"[\w.+#-]+", " ".join(e.get(k) or "" for k in ("symptom", "trap", "fix")).lower()):
+            text.update(kb_stems(w))
+        ident, strong, weak = e["id"].lower(), set(), set()
         for t in toks:
-            if t == e["tech"].lower() or t in tags:
-                score += 3
-            elif t in e["id"].lower() or t in e["tech"].lower():
-                score += 2
-            elif any(t in (e.get(k) or "").lower() for k in ("symptom", "trap", "fix")) or any(t in x for x in tags):
-                score += 1
-        if score:
-            scored.append((-score, e["tech"], e["id"], e))
-    return [s[3] for s in sorted(scored, key=lambda s: s[:3])]
+            ts = kb_stems(t)
+            if t in tech_words or ts & full or (len(t) >= 4 and t in ident):
+                strong.add(t)
+            elif len(t) >= 4 and (ts & sub or ts & text):
+                weak.add(t)
+        if strong or len(weak) >= 2:
+            found.append((e, strong, weak, any(t in tech_words for t in strong)))
+    if not found:
+        return [], 0
+    cover = lambda x: len(x[1]) + len(x[2])
+    top = max(cover(x) for x in found)
+    scored, hidden = [], 0
+    for e, strong, weak, named in found:
+        if cover((e, strong, weak)) * 10 < top * 6:
+            continue
+        if not every and e["tech"] not in active and not named:
+            hidden += 1
+            continue
+        scored.append((-(3 * len(strong) + len(weak) + (1 if e["tech"] in active else 0)), e["tech"], e["id"], e))
+    return [s[3] for s in sorted(scored, key=lambda s: s[:3])], hidden
 
 def print_kb(words):
-    """@HELP KB [<technology or symptom words>]: without words, the technologies in the library; with words, the best matching entries (at most 6, about 5000 characters), the rest as ids."""
+    """@HELP KB [<technology or symptom words>]: without words, the technologies in the library and which of them this project seems to use; with words, the best matching entries of those technologies (at most 6, about 5000 characters), the rest as ids."""
     entries = kb_entries()
     print("\n=== KNOWLEDGE ===")
     if not entries:
@@ -5248,14 +5336,18 @@ def print_kb(words):
     techs = {}
     for e in entries:
         techs.setdefault(e["tech"], []).append(e)
+    active = kb_active(entries)
     if not words.strip():
-        print("  pitfalls that AIs keep falling into, by technology; search with @HELP KB <technology or symptom words> (add the word obsolete to include retired entries):")
+        print("  pitfalls that AIs keep falling into, by technology; search with @HELP KB <technology or symptom words> (add the word all to include technologies this project does not use, obsolete for retired entries):")
         for t in sorted(techs):
-            print("    %-22s %d entr%s" % (t, len(techs[t]), "y" if len(techs[t]) == 1 else "ies"))
+            print("    %-22s %d entr%s%s" % (t, len(techs[t]), "y" if len(techs[t]) == 1 else "ies", "   [used here]" if t in active else ""))
         return
-    hits = kb_search(words, entries)
+    hits, hidden = kb_rank(words, entries, active)
+    other = ("  (%d more match%s in technologies this project does not seem to use; add the word all to include %s)" % (hidden, "" if hidden == 1 else "es", "it" if hidden == 1 else "them")) if hidden else ""
     if not hits:
         print("  nothing matches '%s'. technologies: %s" % (words.strip(), ", ".join(sorted(techs))))
+        if other:
+            print(other)
         return
     used, shown = 0, 0
     for e in hits:
@@ -5268,6 +5360,8 @@ def print_kb(words):
         used, shown = used + len(block), shown + 1
     if len(hits) > shown:
         print("  (%d more match: %s; narrow the words to see them)" % (len(hits) - shown, ", ".join(e["id"] for e in hits[shown:shown + 12])))
+    if other:
+        print(other)
 
 def print_help(name, shell):
     """@HELP <directive>: the syntax-card lines for one directive, taken from the card itself so the two never disagree."""

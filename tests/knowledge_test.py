@@ -30,17 +30,20 @@ def main():
     with open(os.path.join(fx, "alpha.txt"), "w", newline="\n") as f:
         f.write(alpha)
     with open(os.path.join(fx, "beta.txt"), "w", newline="\n") as f:
-        f.write("# tech: beta-db\n\n" + "".join(entry("beta-%d" % i, "join, memory", "Memory blows up after a join %d." % i, "trap %d" % i, "fix %d" % i) for i in range(1, 9)))
+        f.write("# tech: beta-db\n# detect: *\n\n" + "".join(entry("beta-%d" % i, "join, memory", "Memory blows up after a join %d." % i, "trap %d" % i, "fix %d" % i) for i in range(1, 9)))
+    with open(os.path.join(fx, "requirements.txt"), "w", newline="\n") as f:
+        f.write("alpha\n")
     entries = hh.kb_entries(fx)
+    ALL = {e["tech"] for e in entries}
     first = entries[0]
     check("entries are read with their technology, id and fields", len(entries) == 11 and first["tech"] == "alpha-lang" and first["id"] == "alpha-eager-call" and first["fix"] == "Pass the function itself.", entries[:1])
     wrapped = next(e for e in entries if e["id"] == "alpha-wrapped")
     check("a value continues on an indented line", wrapped["trap"] == "first part continued on the next line" and wrapped["fix"] == "the fix", wrapped)
-    hits = [e["id"] for e in hh.kb_search("alpha-lang", entries)]
+    hits = [e["id"] for e in hh.kb_rank("alpha-lang", entries, ALL)[0]]
     check("a technology name finds its entries, retired ones left out", hits == ["alpha-eager-call", "alpha-wrapped"], hits)
-    check("a symptom word finds the entry", [e["id"] for e in hh.kb_search("freezes callback", entries)][:1] == ["alpha-eager-call"])
-    check("a tag finds the entries that carry it", [e["id"] for e in hh.kb_search("wrap", entries)] == ["alpha-wrapped"])
-    check("retired entries appear when asked for", "alpha-old-way" in [e["id"] for e in hh.kb_search("eager obsolete", entries)])
+    check("a symptom word finds the entry", [e["id"] for e in hh.kb_rank("freezes callback", entries, ALL)[0]][:1] == ["alpha-eager-call"])
+    check("a tag finds the entries that carry it", [e["id"] for e in hh.kb_rank("wrap", entries, ALL)[0]] == ["alpha-wrapped"])
+    check("retired entries appear when asked for", "alpha-old-way" in [e["id"] for e in hh.kb_rank("eager obsolete", entries, ALL)[0]])
     env = dict(os.environ, LLM_HARNESS_KNOWLEDGE=fx)
 
     def ask(words):

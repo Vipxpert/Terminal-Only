@@ -56,6 +56,12 @@ copy /y "%SOURCE_DIR%harness.py" "%TEMP_DIR%\harness.py" >nul
 if errorlevel 1 goto :failed
 copy /y "%SOURCE_DIR%workflow_commands.txt" "%TEMP_DIR%\workflow_commands.txt" >nul
 if errorlevel 1 goto :failed
+if exist "%SOURCE_DIR%knowledge\" (
+    xcopy "%SOURCE_DIR%knowledge" "%TEMP_DIR%\knowledge\" /e /i /y /q >nul
+    if errorlevel 1 goto :failed
+) else (
+    echo WARNING: the knowledge folder is missing next to this setup file; the knowledge library will not be installed.
+)
 
 set "EXISTING=0"
 if exist "%TARGET_DIR%\harness.py" set "EXISTING=1"
@@ -82,6 +88,14 @@ move /y "%TEMP_DIR%\harness.py" "%TARGET_DIR%\harness.py" >nul
 if errorlevel 1 goto :failed
 move /y "%TEMP_DIR%\workflow_commands.txt" "%TARGET_DIR%\workflow_commands.txt" >nul
 if errorlevel 1 goto :failed
+if exist "%TEMP_DIR%\knowledge\" (
+    if exist "%TARGET_DIR%\knowledge\" (
+        xcopy "%TARGET_DIR%\knowledge" "%BACKUP_DIR%\knowledge\" /e /i /y /q >nul
+        rd /s /q "%TARGET_DIR%\knowledge"
+    )
+    xcopy "%TEMP_DIR%\knowledge" "%TARGET_DIR%\knowledge\" /e /i /y /q >nul
+    if errorlevel 1 goto :failed
+)
 rd /s /q "%TEMP_DIR%" 2>nul
 
 echo.

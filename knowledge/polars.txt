@@ -12,7 +12,7 @@ verified: reported from production use, Polars 1.x, 2026-11
 versions: Polars 0.20 to 1.x
 
 ## polars-to-python-objects
-tags: polars, to_dicts, to_pandas, memory, oom, pickling, ipc, parquet, json
+tags: polars, to_dicts, to_pandas, memory, oom, killed, slow, pickling, ipc, parquet, json
 symptom: Out-of-memory kills, or a very slow handoff, when a large DataFrame is returned from a worker or a function.
 trap: df.to_dicts() and df.to_pandas() copy every row into Python objects (or a second in-memory frame), far larger than Polars' own columnar memory.
 fix: keep the data columnar: write df.write_parquet(path) and return the path (or sink lazily with sink_parquet), and let the receiver read it natively; for a small result use json.loads(df.write_json()). In Polars 1.0+ write_json has no row_oriented keyword.

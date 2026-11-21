@@ -1,6 +1,6 @@
 # /llm_harness/knowledge/python-core.txt
 # tech: python-core
-# detect: python, pyproject.toml, requirements.txt
+# detect: *.py
 # Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
 
 ## py-getattr-default-eager

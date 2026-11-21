@@ -4,7 +4,7 @@
 # Pitfalls an AI keeps repeating. One entry per pitfall. Generic, no project names.
 
 ## aggrid-autosize-resize-loop
-tags: ag-grid, autoSizeColumns, autoSizeStrategy, displayedColumnsChanged, gridSizeChanged, ResizeObserver, freeze, flex, cpu
+tags: ag-grid, autoSizeColumns, autoSizeStrategy, displayedColumnsChanged, gridSizeChanged, ResizeObserver, freeze, hang, unresponsive, flex, cpu
 symptom: The browser tab freezes at 100% CPU when the window is resized or a cached table is shown.
 trap: Calling autoSizeColumns() from displayedColumnsChanged or gridSizeChanged (or combining a reactive autoSizeStrategy with manual autoSizeColumns) changes column widths, which resizes a flex container, which fires the ResizeObserver and the event again.
 fix: never size columns inside those events; drop autoSizeStrategy, give the grid's flex parent min-width: 0; width: 100%; overflow: hidden, and call autoSizeColumns once, debounced (about 150 ms plus two requestAnimationFrame), only when row data or column visibility changes.
