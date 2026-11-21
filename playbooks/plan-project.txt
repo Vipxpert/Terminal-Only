@@ -1,0 +1,11 @@
+# /llm_harness/playbooks/plan-project.txt
+# use when: a new project, a big redesign, or a request that leaves major decisions open (platforms, data, scale, integrations)
+Plan the project before any code. The result is one living file, docs/plan.md, plus a Todo note for the first milestone only.
+1. Interview. Ask at most 7 questions in one message, each with your recommended answer: who uses it, what it must do first, platforms, data and where it lives, scale, integrations, constraints, and what is out of scope.
+2. Vision. Write it in the owner's words: one paragraph, a list of non-goals, and a one-line goal to pin with @GOAL (ask first).
+3. Options. Existing project: read the tree nodes and run @XREF <name> | impact on what would change; search @KB for each technology. New project: propose 2 or 3 architectures; for each give its shape, when it fits, what it costs and its biggest risk.
+4. Decide. The owner picks. Record every decision with the alternatives rejected and what would make us revisit it.
+5. Milestones. 3 to 7, ordered so the riskiest unknown comes first. Each ends in something the owner can run or see and has 2 to 4 "done when" lines (outcomes, not steps).
+6. Write docs/plan.md with: Vision, Non-goals, Decisions, Milestones, Open questions. Propose the tree nodes for the chosen architecture; the owner approves them before any code.
+7. Hand-off. Propose Todo notes for milestone 1 only, one per chat, each carrying its "done when" lines. Add and pin them only when the owner approves. Later milestones stay in docs/plan.md until reached.
+8. While building: update docs/plan.md after each milestone (what was done, gaps with workarounds, decisions that changed), not every turn. A change that contradicts a decision means stop and ask.

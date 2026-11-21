@@ -51,6 +51,11 @@ if [ -d "$SOURCE_DIR/knowledge" ]; then
 else
     echo "WARNING: the knowledge folder is missing next to this setup file; the knowledge library will not be installed."
 fi
+if [ -d "$SOURCE_DIR/playbooks" ]; then
+    cp -R "$SOURCE_DIR/playbooks" "$TEMP_DIR/playbooks"
+else
+    echo "WARNING: the playbooks folder is missing next to this setup file; the playbooks will not be installed."
+fi
 
 install_cbm() {
     INSTALLER="$TEMP_DIR/cbm-install.sh"
@@ -159,6 +164,14 @@ if [ -d "$TEMP_DIR/knowledge" ]; then
         rm -rf "$TARGET_DIR/knowledge"
     fi
     mv "$TEMP_DIR/knowledge" "$TARGET_DIR/knowledge"
+fi
+if [ -d "$TEMP_DIR/playbooks" ]; then
+    if [ -d "$TARGET_DIR/playbooks" ]; then
+        mkdir -p "$BACKUP_DIR"
+        cp -R "$TARGET_DIR/playbooks" "$BACKUP_DIR/playbooks"
+        rm -rf "$TARGET_DIR/playbooks"
+    fi
+    mv "$TEMP_DIR/playbooks" "$TARGET_DIR/playbooks"
 fi
 chmod 644 "$TARGET_DIR/harness.py" "$TARGET_DIR/workflow_commands.txt"
 

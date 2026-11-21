@@ -688,7 +688,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @CHAT_LINK @KB @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @CHAT_LINK @KB @PLAYBOOK @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -899,6 +899,8 @@ def parse_payload(txt):
             P["helps"].append(arg)
         elif d == "KB":
             P["helps"].append("KB " + arg)
+        elif d == "PLAYBOOK":
+            P["helps"].append("PLAYBOOK " + arg)
         elif d == "XREF":
             P["xrefs"].append(arg)
         elif d == "LIST_DIR":
@@ -5404,6 +5406,46 @@ def print_kb(words):
     if other:
         print(other)
 
+def playbooks_dir():
+    """The playbooks: the 'playbooks' folder next to the running harness.py (LLM_HARNESS_PLAYBOOKS overrides it for tests)."""
+    return os.environ.get("LLM_HARNESS_PLAYBOOKS") or os.path.join(os.path.dirname(os.path.abspath(SELF_PATH)), "playbooks")
+
+def playbook_files():
+    """{name: text} for every playbooks/<name>.txt, without the automatic first-line header."""
+    out, folder = {}, playbooks_dir()
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".txt"))
+    except OSError:
+        return out
+    for n in names:
+        try:
+            with open(os.path.join(folder, n), "r", encoding="utf-8", errors="replace") as f:
+                lines = f.read().replace("\r", "").split("\n")
+        except OSError:
+            continue
+        if lines and re.match(r"^#\s*/\S+", lines[0]):
+            lines = lines[1:]
+        out[os.path.splitext(n)[0]] = "\n".join(lines).strip("\n")
+    return out
+
+def print_playbook(name):
+    """@PLAYBOOK [<name>]: without a name, the playbooks and when to use each; with a name, its steps."""
+    books = playbook_files()
+    print("\n=== PLAYBOOK ===")
+    if not books:
+        print("  no playbooks are installed here (the playbooks folder next to harness.py is missing or empty); run setup again from an up-to-date copy of the harness")
+        return
+    key = name.strip().lower()
+    if key in books:
+        print(books[key])
+        return
+    if key:
+        print("  no playbook named '%s'." % key)
+    print("  playbooks (open one with @PLAYBOOK <name>):")
+    for n, text in books.items():
+        m = re.search(r"(?m)^#\s*use when:\s*(.*)$", text)
+        print("    %-14s %s" % (n, m.group(1).strip() if m else ""))
+
 def print_help(name, shell):
     """@HELP <directive>: the syntax-card lines for one directive, taken from the card itself so the two never disagree."""
     import io, contextlib
@@ -5414,6 +5456,10 @@ def print_help(name, shell):
     kb = re.match(r"(?is)^@?kb(?:\s+(.*))?$", name.strip())
     if kb:
         print_kb(kb.group(1) or "")
+        return
+    pb = re.match(r"(?is)^@?playbook(?:\s+(.*))?$", name.strip())
+    if pb:
+        print_playbook(pb.group(1) or "")
         return
     if key.startswith("@L1-"):
         try:

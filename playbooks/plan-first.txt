@@ -1,0 +1,13 @@
+# /llm_harness/playbooks/plan-first.txt
+# use when: one feature or change with a few decisions to agree on; the owner says "pause, discuss, add it to the Todo note and pin it"
+Plan first. Change no code until the owner answers.
+1. Read what the change touches: the tree nodes (@PROBE | Tree) and what uses the code you would change (@XREF <name> | impact). For the technology involved, search @KB first.
+2. Reply with, in this order:
+   - What you found (each point tagged seen or inferred).
+   - Your recommended approach, and at least one alternative you rejected, with the reason.
+   - The tree nodes that would change.
+   - Questions that change the design, each with your recommended answer (at most 5).
+   - 3 to 5 "done when" lines: what the owner can see or run, not implementation steps.
+3. After the owner answers, propose the Todo note: one task if it fits one chat, otherwise one task per chat, each with its own "done when" lines. Add it and pin it to the session only when the owner approves.
+4. Implement as the fewest coherent changes, never one per "done when" line. Test against "done when".
+5. Anything short of "done when" is a known gap: say so with its workaround and suggest a note or a verdict for it. Never leave it silent.

@@ -62,6 +62,12 @@ if exist "%SOURCE_DIR%knowledge\" (
 ) else (
     echo WARNING: the knowledge folder is missing next to this setup file; the knowledge library will not be installed.
 )
+if exist "%SOURCE_DIR%playbooks\" (
+    xcopy "%SOURCE_DIR%playbooks" "%TEMP_DIR%\playbooks\" /e /i /y /q >nul
+    if errorlevel 1 goto :failed
+) else (
+    echo WARNING: the playbooks folder is missing next to this setup file; the playbooks will not be installed.
+)
 
 set "EXISTING=0"
 if exist "%TARGET_DIR%\harness.py" set "EXISTING=1"
@@ -94,6 +100,14 @@ if exist "%TEMP_DIR%\knowledge\" (
         rd /s /q "%TARGET_DIR%\knowledge"
     )
     xcopy "%TEMP_DIR%\knowledge" "%TARGET_DIR%\knowledge\" /e /i /y /q >nul
+    if errorlevel 1 goto :failed
+)
+if exist "%TEMP_DIR%\playbooks\" (
+    if exist "%TARGET_DIR%\playbooks\" (
+        xcopy "%TARGET_DIR%\playbooks" "%BACKUP_DIR%\playbooks\" /e /i /y /q >nul
+        rd /s /q "%TARGET_DIR%\playbooks"
+    )
+    xcopy "%TEMP_DIR%\playbooks" "%TARGET_DIR%\playbooks\" /e /i /y /q >nul
     if errorlevel 1 goto :failed
 )
 rd /s /q "%TEMP_DIR%" 2>nul
