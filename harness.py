@@ -4900,8 +4900,8 @@ def brief_reason(conds):
     if "dirty" in conds and MODE == "git":
         if git_blockers():
             return "in-progress git operation"
-        _, st_out, _ = run_git(["status", "--porcelain"])
-        # Comment (decision): the token counts change on every paste, so a modified tokens.json alone does not keep the rules expanded
+        _, st_out, _ = run_git(["status", "--porcelain", "-uall"])
+        # Comment (decision): the token counts change on every paste, so a modified tokens.json alone does not keep the rules expanded; -uall lists an untracked .llm_harness folder file by file, otherwise it shows as one folder line and a lone tokens.json inside it would keep the rules expanded for good
         if [l for l in st_out.splitlines() if l.strip() and not l[3:].strip().strip('"').endswith(WORKSPACE_NOTES_DIR + "/tokens.json")]:
             return "uncommitted changes in workspace"
         _, br, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
