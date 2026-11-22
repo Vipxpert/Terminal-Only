@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @NOTE_ADD own | <text> keeps a to-do as the running chat's own: it is pinned to that chat, stored as [own: <session>], and footers print it as "this chat's own to-do, written by the AI, not the user's" (every other note still prints as the user's), so a chat that takes over another with @TAKEOVER no longer reads the AI's plan as the owner's instruction. @NOTE_EDIT <id> own | <text> marks an existing note, a plain edit keeps the mark, and an edit with pin makes it a pinned user note again.
+
 - Before planning or coding a request that names its own solution, the AI separates the outcome wanted from that solution and its examples, and when another framing (reuse an existing tool or project, a host platform or adapter, another place in the architecture) would change the architecture, avoid large rework or fit the pinned goal better, it names it with a recommendation and asks first; both planning playbooks open with this "Frame first" step. The README's list of tools evaluated and not used now explains what was kept from Spec Kit and what was left out.
 
 - Fix: @GIT_BRANCH no longer refuses to switch to an existing branch whose committed tokens.json differs while the local one is modified (git said the local changes would be overwritten by checkout): the local token counts are set aside and merged back with the branch's, as @GIT_PULL does.

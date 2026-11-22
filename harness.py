@@ -882,15 +882,15 @@ def parse_payload(txt):
             if not arg:
                 P["warnings"].append("@NOTE_ADD needs non-empty text")
             else:
-                who, text = note_audience(arg)
-                P["notes"].append({"action": "add", "text": text, "for": who})
+                who, text, own = note_audience(arg)
+                P["notes"].append({"action": "add", "text": text, "for": who, "own": own})
         elif d == "NOTE_EDIT":
             nm = re.match(r"^(N\d+)\s+(.+)$", arg)
             if not nm:
                 P["warnings"].append("expected '@NOTE_EDIT <note-id> <text>'")
             else:
-                who, text = note_audience(nm.group(2))
-                P["notes"].append({"action": "edit", "id": nm.group(1).upper(), "text": text, "for": who})
+                who, text, own = note_audience(nm.group(2))
+                P["notes"].append({"action": "edit", "id": nm.group(1).upper(), "text": text, "for": who, "own": own})
         elif d == "NOTE_REMOVE":
             if not re.fullmatch(r"N\d+", arg, re.IGNORECASE):
                 P["warnings"].append("expected '@NOTE_REMOVE <note-id>'")
@@ -5077,7 +5077,11 @@ def print_footer_notes():
         return
     for note in notes:
         if note_for(note, CURRENT_SESSION):
-            print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", pinned to this chat" if note.get("for") else "", note["text"]))
+            # Comment (decision): the AI writes every note, so only the [own] mark it sets on its own to-do says who it belongs to; without it a chat that takes this one over would read the AI's plan as the owner's instruction
+            if note.get("own"):
+                print("=== NOTE %s (this chat's own to-do, written by the AI, not the user's): %s ===" % (note["id"], note["text"]))
+            else:
+                print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", pinned to this chat" if note.get("for") else "", note["text"]))
 
 def rule_hash(body):
     return hashlib.sha1(body.strip().strip("`").strip().encode("utf-8")).hexdigest()[:12]
@@ -5248,11 +5252,20 @@ NOTE_ENTRY_RE = re.compile(r"^- \[(N\d+)\] (.+)$")
 
 
 def note_audience(arg):
-    """'for <session>, <pattern> | <text>' -> ([sessions or patterns], text); plain text -> (None, text), a note for every chat."""
+    """'pin <session>, <pattern> | <text>' -> ([sessions or patterns], text, False); 'own | <text>' -> (None, text, True), the running chat's own to-do, pinned to it when the note is written; plain text -> (None, text, False), a note for every chat."""
+    own = re.match(r"^own\s*\|\s*(.+)$", arg.strip(), re.IGNORECASE)
+    if own:
+        return None, own.group(1).strip(), True
     m = re.match(r"^(?:pin|for)\s+([^|]+)\|\s*(.+)$", arg.strip(), re.IGNORECASE)
     if not m:
-        return None, arg.strip()
-    return [x.strip() for x in m.group(1).split(",") if x.strip()], m.group(2).strip()
+        return None, arg.strip(), False
+    return [x.strip() for x in m.group(1).split(",") if x.strip()], m.group(2).strip(), False
+
+def note_mark(note):
+    """The tag written before a note's text: [own: <session>] for a chat's own to-do, [pin: <names>] for a note pinned to chats, nothing for a note for every chat."""
+    if not note.get("for"):
+        return ""
+    return "[%s: %s] " % ("own" if note.get("own") else "pin", ", ".join(note["for"]))
 
 def note_for(note, session):
     """True when a note is for every chat, or names this chat (patterns like migration-* allowed)."""
@@ -5282,8 +5295,8 @@ def load_workspace_notes():
         if note_id in seen:
             raise ValueError("duplicate note ID in notes.md: %s" % note_id)
         seen.add(note_id)
-        fm = re.match(r"^\[(?:pin|for): ([^\]]+)\] (.+)$", text)
-        notes.append({"id": note_id, "text": fm.group(2) if fm else text, "for": [x.strip() for x in fm.group(1).split(",") if x.strip()] if fm else None})
+        fm = re.match(r"^\[(pin|for|own): ([^\]]+)\] (.+)$", text)
+        notes.append({"id": note_id, "text": fm.group(3) if fm else text, "for": [x.strip() for x in fm.group(2).split(",") if x.strip()] if fm else None, "own": bool(fm) and fm.group(1) == "own"})
         next_id = max(next_id, int(note_id[1:]) + 1)
     return notes, next_id
 
@@ -5296,7 +5309,7 @@ def write_workspace_notes(notes, next_id):
         with open(tmp, "w", encoding="utf-8", newline="\n") as f:
             f.write("<!-- llm_harness_notes_next_id: %d -->\n" % next_id)
             for note in notes:
-                f.write("- [%s] %s%s\n" % (note["id"], "[pin: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
+                f.write("- [%s] %s%s\n" % (note["id"], note_mark(note), note["text"]))
         os.replace(tmp, WORKSPACE_NOTES_PATH)
     finally:
         if os.path.exists(tmp):
@@ -5319,7 +5332,7 @@ def print_workspace_notes(query=None):
         print("(none)")
         return
     for note in notes:
-        print("  [%s] %s%s" % (note["id"], "[pin: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
+        print("  [%s] %s%s" % (note["id"], note_mark(note), note["text"]))
 
 
 def execute_note_ops(ops):
@@ -5334,8 +5347,14 @@ def execute_note_ops(ops):
                 continue
 
             if action == "add":
+                who = op.get("for")
+                if op.get("own"):
+                    if not CURRENT_SESSION:
+                        print("  [NOTE ERROR] @NOTE_ADD own needs the script's @SESSION line: the note belongs to that chat")
+                        continue
+                    who = [CURRENT_SESSION]
                 note_id = "N%03d" % next_id
-                notes.append({"id": note_id, "text": op["text"], "for": op.get("for")})
+                notes.append({"id": note_id, "text": op["text"], "for": who, "own": bool(op.get("own"))})
                 write_workspace_notes(notes, next_id + 1)
                 print("  [NOTE ADDED] %s" % note_id)
 
@@ -5345,8 +5364,13 @@ def execute_note_ops(ops):
                     print("  [NOTE ERROR] note ID not found: %s" % op["id"])
                     continue
                 found["text"] = op["text"]
-                if op.get("for") is not None:
-                    found["for"] = op["for"]
+                if op.get("own"):
+                    if not CURRENT_SESSION:
+                        print("  [NOTE ERROR] @NOTE_EDIT ... own needs the script's @SESSION line: the note belongs to that chat")
+                        continue
+                    found["for"], found["own"] = [CURRENT_SESSION], True
+                elif op.get("for") is not None:
+                    found["for"], found["own"] = op["for"], False
                 write_workspace_notes(notes, next_id)
                 print("  [NOTE EDITED] %s" % op["id"])
 
@@ -5883,7 +5907,7 @@ def merge_notes_text(base, ours, theirs):
         next_id += 1
     lines = ["<!-- llm_harness_notes_next_id: %d -->" % next_id]
     for note in sorted(merged.values(), key=lambda n: int(n["id"][1:])):
-        lines.append("- [%s] %s%s" % (note["id"], "[pin: %s] " % ", ".join(note["for"]) if note.get("for") else "", note["text"]))
+        lines.append("- [%s] %s%s" % (note["id"], note_mark(note), note["text"]))
     return "\n".join(lines) + "\n"
 
 def merge_verdicts_text(base, ours, theirs):
