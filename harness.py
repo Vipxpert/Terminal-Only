@@ -689,7 +689,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -906,6 +906,8 @@ def parse_payload(txt):
             P["helps"].append("KB " + arg)
         elif d == "PLAYBOOK":
             P["helps"].append("PLAYBOOK " + arg)
+        elif d == "SESSIONS":
+            P["helps"].append("SESSIONS")
         elif d == "XREF":
             P["xrefs"].append(arg)
         elif d == "LIST_DIR":
@@ -3509,7 +3511,7 @@ def find_deadlocks(reg):
         walk(start, start, [start])
     return [(names, [(a, names[(i + 1) % len(names)], edges[a][names[(i + 1) % len(names)]]) for i, a in enumerate(names)]) for names in found]
 
-def print_sessions(current):
+def print_sessions(current, full=False):
     SESSIONS_SHOWN[0] = True
     reg = load_json(sessions_path(), {})
     if not reg:
@@ -3537,9 +3539,16 @@ def print_sessions(current):
         print("=== DELEGATED (handed to other chats; each hands the files back with @RETURN, then claim them again to continue): %s ===" % "; ".join("%s%s has %s (%s)" % (d["to"], chat_link(d["to"]), ", ".join("/" + p for p in d["paths"][:4]), d["task"]) for d in mine["delegated"]))
     others = sorted(((n, r) for n, r in reg.items() if n != current), key=lambda kv: -kv[1].get("last_active", 0))
     if others:
-        print("=== OTHER SESSIONS (newest first) ===")
-        for n, r in others:
-            print("  %s: %s" % (n, describe(r)))
+        # Comment (decision): every footer used to list every registered session with its scope and address, a cost that grows with the number of chats and never shrinks (idle ones stayed); now a count and the names, and the full list only on request (@SESSIONS) or when this chat waits, holds delegated or inherited work, or is braked
+        if full or mine.get("waiting") or mine.get("inherited") or mine.get("delegated") or mine.get("brake"):
+            print("=== OTHER SESSIONS (newest first) ===")
+            for n, r in others:
+                print("  %s: %s" % (n, describe(r)))
+        else:
+            now = time.time()
+            active = sum(1 for _, r in others if now - r.get("last_active", 0) < ACTIVE_S)
+            names = ", ".join(n for n, _ in others[:8]) + (", ..." if len(others) > 8 else "")
+            print("=== OTHER SESSIONS: %d (%d active): %s | @SESSIONS lists each one's aim, write scope and chat address ===" % (len(others), active, names))
 
 CURRENT_SESSION = None
 SESSIONS_SHOWN = [False]
@@ -5724,6 +5733,14 @@ def print_playbook(name):
         m = re.search(r"(?m)^#\s*use when:\s*(.*)$", text)
         print("    %-14s %s" % (n, m.group(1).strip() if m else ""))
 
+def sessions_listing():
+    """@SESSIONS: every session of this project with its aim, write scope, last script and chat address (the footer shows only a count of the others)."""
+    print("\n=== SESSIONS ===")
+    if not load_json(sessions_path(), {}):
+        print("  no sessions yet in this project")
+        return
+    print_sessions(CURRENT_SESSION, full=True)
+
 def print_help(name, shell):
     """@HELP <directive>: the syntax-card lines for one directive, taken from the card itself so the two never disagree."""
     import io, contextlib
@@ -5738,6 +5755,9 @@ def print_help(name, shell):
     pb = re.match(r"(?is)^@?playbook(?:\s+(.*))?$", name.strip())
     if pb:
         print_playbook(pb.group(1) or "")
+        return
+    if re.match(r"(?is)^@?sessions\s*$", name.strip()):
+        sessions_listing()
         return
     if key.startswith("@L1-"):
         try:
@@ -5798,7 +5818,8 @@ def print_card(shell, workspace):
   @SCOPE <aim> | <path or glob>, ...              declares or changes this session's write scope; other sessions are told once; their scopes are refused to this session's file changes
   (a scope entry may be file#Class.method, file#Class.method > # Stage: Name, file## Stage: Name or tree_file#Node > Path, claiming only that part so others can still edit the rest of the file, or end with ' depth N')
   @SCOPE_END    @SESSION_END                      release this session's scope / end the session; refused while its changes are uncommitted, unless followed by 'handover'; @SESSION_END also waits for blocked work listed under WAITING ON, unless followed by 'drop'
-  @MESSAGE <session> | <text>                     a note for another session, shown once on its next run (labelled as from an AI, not the user)
+  @MESSAGE <session> | <text>                     a note for another session, shown in its footers until its next numbered script (labelled as from an AI, not the user)
+  @SESSIONS                                       lists every session with its aim, write scope and chat address (the footer shows only a count of the others unless this chat is waiting, delegated or braked)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
   @DELEGATE <session> | <paths> | <task>          hands those files (entries of your scope) and a task to that session at once, with your uncommitted work in them; its footer says INHERITED
   @RETURN <session> | <result>                    hands back what that session delegated to you: the files are released, the result goes to it as a note

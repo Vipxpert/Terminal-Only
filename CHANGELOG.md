@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- The footer shows a count and the names of the other sessions instead of a line each (aim, write scope, chat address), a cost that grew with every chat and never shrank; the full list stays in the footer while this chat waits on blocked work, holds delegated or inherited work, or is braked, and the new read-only @SESSIONS prints it on demand. The @MESSAGE card no longer says a message is shown once: it stays until the recipient's next numbered script.
+
 - Fix: the three-way merge of notes.md reads an own note ([own: <session>]) as an own note, as the loader does; before, it survived only as part of the note's text.
 - Fix: a script holding @TAKEOVER or @STEWARD no longer counts as one that only reads or that a @SIDE or @REPEATABLE script may carry, so a stale re-paste of it is not run again and does not ask the user a second time.
 
