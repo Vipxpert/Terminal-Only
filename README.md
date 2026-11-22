@@ -2,6 +2,35 @@
 
 A workflow harness for doing real coding work with an AI **chat interface** (ChatGPT, Claude, Gemini in a browser) instead of an agent app.
 
+## Friendly TLDR By Me
+
+A chat orchestrator, a code implementation tool that is...
+
+- Token efficient
+- Anti-drift context
+- Automated code edits, fewer AI turns
+- Undo, and a recycle bin for deleted files
+- Git actions automated
+- Several chats on one project, with conflict prevention
+- Magically code relations search algorithm CBM (https://github.com/DeusData/codebase-memory-mcp), along with tree files that explain the code's meaning
+- Code-aware for C, C++, C#, Java, Kotlin, Scala, Go, Rust, Swift, Dart, PHP, Python, JavaScript, TypeScript and Vue; edits any other text file safely (SQL, Lua, CSS, HTML, XML, YAML, shell, PowerShell...)
+
+You are likely a Windows user, just download and extract this whole repo folder, trigger setup.cmd for both installation and updates (on Linux, run setup.sh instead).
+
+After that, from any PowerShell window (Windows Terminal, VS Code, Visual Studio's Developer PowerShell), paste this. Bring the output to the AI with your needs laid out. Tada~ you can work on your project. Remember to read the Talk section of the AI.
+
+python "$HOME\.llm_harness\harness.py" --workspace "pathtoyourproject"
+
+The AI'll give you a script, you give the AI the output, and it'll give you another until everything is done.
+
+These features are automatically run by the AI when needed: to-do notes, a bug-tracking protocol for bugs that persist, chats on the same project can message each other, a new chat taking over a dead one's session (you confirm), chat addresses kept as reminders (a wrong one doesn't break the flow, it's just a label). If something should have run and did not, the rules have a gap, simply tell it to take note, activate bug-tracking protocol,... manually.
+
+New? Tell the AI you are new to this tool. It walks you through the rest. If you only operate the tool rather than develop it, this may be all you need to know.
+
+Why not agents? I prefer cheap subscription usage than most agents. I can't stand preparing a careful plan first due to trust issues then leave an agent running for 15 minutes on a task, constantly printing out jargons that I can't understand, at the speed I can't even read, then failed at somewhere I can't capture mid-way, then run out of tokens. I prefer the way the chat webs are made to output something that people can read by default. I don't prefer the way the agents are aligned to overwhelm people by default. It traps people in a loop of spending more tokens until it works. The cost of aligning the agents back to be normal would definitely be something (unmeasured). Some people could operate it, maybe agents could just operate this harness naturally. I simply don't have the budget for that research yet.
+
+Below are the professionally structured jargons made by the AI that explain further details.
+
 ## Why a chat-interface harness
 
 Agent apps run commands on your machine by themselves. In a chat window the AI cannot touch your machine at all: it writes, you paste. This harness turns that loop into a dependable protocol:
@@ -49,37 +78,37 @@ The harness is `harness.py` and `workflow_commands.txt`, plus the `knowledge` an
 
 **Windows (PowerShell)**
 
-1. Check that Python 3 and git are installed (the test suites run on Python 3.12 and 3.14):
+1.  Check that Python 3 and git are installed (the test suites run on Python 3.12 and 3.14):
 
         python --version; git --version
 
-2. Clone the harness into a folder of your choice, for example `E:\Work\Me`:
+2.  Clone the harness into a folder of your choice, for example `E:\Work\Me`:
 
         Set-Location E:\Work\Me; git clone https://github.com/Vipxpert/Terminal-Only.git llm_harness
 
-3. Run the setup from the clone (or double-click `setup.cmd` in Explorer):
+3.  Run the setup from the clone (or double-click `setup.cmd` in Explorer):
 
         Set-Location E:\Work\Me\llm_harness; .\setup.cmd
 
-4. To update later, run the setup again; it pulls the latest changes first:
+4.  To update later, run the setup again; it pulls the latest changes first:
 
         Set-Location E:\Work\Me\llm_harness; .\setup.cmd
 
 **Linux / macOS (terminal)**
 
-1. Check that Python 3 and git are installed (the test suites run on Python 3.12 and 3.14):
+1.  Check that Python 3 and git are installed (the test suites run on Python 3.12 and 3.14):
 
         python3 --version; git --version
 
-2. Clone the harness, for example into your home folder:
+2.  Clone the harness, for example into your home folder:
 
         git clone https://github.com/Vipxpert/Terminal-Only.git ~/llm_harness
 
-3. Run the setup (it uses curl or wget for the optional CBM; `NO_PAUSE=1` skips the final pause):
+3.  Run the setup (it uses curl or wget for the optional CBM; `NO_PAUSE=1` skips the final pause):
 
         sh ~/llm_harness/setup.sh
 
-4. To update later, run the setup again; it pulls the latest changes first:
+4.  To update later, run the setup again; it pulls the latest changes first:
 
         cd ~/llm_harness && sh setup.sh
 
@@ -97,13 +126,13 @@ Linux / macOS:
 
 On Windows with Git Bash or WSL, add `--shell bash` so the syntax card shows the bash wrapper.
 
-Then open a new chat and paste three things: `workflow_commands.txt`, the handshake output, and your task. The handshake prints the syntax card (every directive and the exact fence wrapper for your shell), the project's goal and its notes. Projects with a git repository (a `.git` folder with a HEAD inside it, or a `.git` file for a worktree) run in git mode; any other folder runs in no-git mode, which keeps undo but has no git directives until `@GIT_INIT [Name <email>]` turns it into a repository, carrying its numbering and undo history over.
+Then open a new chat and paste two things: the handshake output and your task. The handshake prints the syntax card (every directive and the exact fence wrapper for your shell), the project's goal, its notes and the whole `workflow_commands.txt` (the workflow and every rule), so nothing else needs pasting; after that, the footer of every run repeats the standing rules. Projects with a git repository (a `.git` folder with a HEAD inside it, or a `.git` file for a worktree) run in git mode; any other folder runs in no-git mode, which keeps undo but has no git directives until `@GIT_INIT [Name <email>]` turns it into a repository, carrying its numbering and undo history over.
 
 ## Moving to another computer
 
-1. Install the harness on the new computer (the steps above), then clone or pull your project there.
-2. Run the handshake for the project. Your goal, notes, verdicts and campaigns come with the project, because they are committed in `.llm_harness/`.
-3. If the project uses its own commit identity, set it again: repository-local git settings do not travel with a clone.
+1.  Install the harness on the new computer (the steps above), then clone or pull your project there.
+2.  Run the handshake for the project. Your goal, notes, verdicts and campaigns come with the project, because they are committed in `.llm_harness/`.
+3.  If the project uses its own commit identity, set it again: repository-local git settings do not travel with a clone.
 
         git config user.name "Your Name"; git config user.email "you@example.com"
 
@@ -111,17 +140,17 @@ Script numbering, undo history, saved run outputs, the session list and the rere
 
 ## What the AI can do
 
-| Purpose | Directives |
-|---|---|
-| Change files | `@FILE` + `@HUNK` (with `+++ [LINE EDITS] +++` for a few lines inside a long block), `@NEW_FILE`, `@DELETE_FILE` (files, folders or globs; every file stays recoverable with `@UNDO`), `@RENAME` (a file or a whole folder, undoable), `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder), `@REDO <n>` (rerun a failed script with small corrections) |
-| Read code | `@PROBE <file> \| Scope / Lines / TOC`, `@PROBE <file> \| Refs \| <scope>` (what a scope uses and where each piece is defined) |
-| Search | `@FIND` (files by name), `@GREP` (text or regex), both with an optional `| depth N` and a path filter (a fragment, a glob, or `re:<regex>`), `@XREF <name>` (references), `@XREF <name> \| callers / callees / impact` (code graph) |
-| Architecture tree | `@PROBE <tree> \| Tree \| <node> \| <depth>`, `@PROBE <tree> \| Check` (drift check) |
-| Dead code | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence) |
-| Run anything else | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once |
-| Project memory | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG` |
-| History | `@UNDO` (whole scripts, or only some files with `| /path, /other, /ye*`; `/old -> /new` recovers a file to another path), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG`, `@GIT_PUSH`, `@GIT_PULL`, `@GIT_ACCOUNT`, `@GIT_REMOTE` (add a remote or change its address: https or ssh, no password or token inside, never removed) |
-| Knowledge and planning | `@KB <words>` (pitfalls for the technologies the project uses), `@PLAYBOOK [name]` (`plan-first`, `plan-project`, `review`) |
+| Purpose                | Directives                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Change files           | `@FILE` + `@HUNK` (with `+++ [LINE EDITS] +++` for a few lines inside a long block), `@NEW_FILE`, `@DELETE_FILE` (files, folders or globs; every file stays recoverable with `@UNDO`), `@RENAME` (a file or a whole folder, undoable), `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder), `@REDO <n>` (rerun a failed script with small corrections) |
+| Read code              | `@PROBE <file> \| Scope / Lines / TOC`, `@PROBE <file> \| Refs \| <scope>` (what a scope uses and where each piece is defined)                                                                                                                                                                                                                                                        |
+| Search                 | `@FIND` (files by name), `@GREP` (text or regex), both with an optional `                                                                                                                                                                                                                                                                                                             | depth N`and a path filter (a fragment, a glob, or`re:<regex>`), `@XREF <name>`(references),`@XREF <name> \| callers / callees / impact` (code graph)                                                                                                                                                                                             |
+| Architecture tree      | `@PROBE <tree> \| Tree \| <node> \| <depth>`, `@PROBE <tree> \| Check` (drift check)                                                                                                                                                                                                                                                                                                  |
+| Dead code              | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence)                                                                                                                                                                                                                                                                                                              |
+| Run anything else      | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once                                                                                                                                                                                                                 |
+| Project memory         | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG`                                                                                                                                                                                                                                       |
+| History                | `@UNDO` (whole scripts, or only some files with `                                                                                                                                                                                                                                                                                                                                     | /path, /other, /ye\*`; `/old -> /new`recovers a file to another path),`@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT`(message checked),`@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG`, `@GIT_PUSH`, `@GIT_PULL`, `@GIT_ACCOUNT`, `@GIT_REMOTE` (add a remote or change its address: https or ssh, no password or token inside, never removed) |
+| Knowledge and planning | `@KB <words>` (pitfalls for the technologies the project uses), `@PLAYBOOK [name]` (`plan-first`, `plan-project`, `review`)                                                                                                                                                                                                                                                           |
 
 The syntax card printed by the handshake is the authoritative reference.
 
@@ -177,7 +206,7 @@ Install codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp) to enable 
 - `harness.py`: the harness.
 - `workflow_commands.txt`: the workflow and rules the AI follows.
 - `knowledge/`: the shared library of pitfalls, one file per technology, searched with `@KB`.
-- `playbooks/`: the planning and review procedures printed by `@PLAYBOOK`.
+- `playbooks/`: the planning, review and newcomer-introduction procedures printed by `@PLAYBOOK`.
 - `setup.cmd`, `setup.sh`: installers.
 - `docs/trees/tree_master.txt`: this project's architecture tree.
 - `docs/backlog.md`: what is known to be missing, deferred, unverified or worth doing.
