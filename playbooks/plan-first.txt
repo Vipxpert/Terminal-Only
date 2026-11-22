@@ -1,6 +1,7 @@
 # /llm_harness/playbooks/plan-first.txt
 # use when: one feature or change with a few decisions to agree on; the owner says "pause, discuss, add it to the Todo note and pin it"
 Plan first. Change no code until the owner answers.
+Frame first: say in one line the outcome the owner wants, apart from the solution and examples the request names. If another framing would change the architecture, avoid large rework or fit the pinned goal better (reuse an existing tool or project, and ask the owner to have it looked up when you cannot check; a host platform or adapter instead of building the thing in; another place in the architecture), lead your reply with it and your recommendation, and plan only the framing the owner picks.
 1. Read what the change touches: the tree nodes (@PROBE | Tree) and what uses the code you would change (@XREF <name> | impact). For the technology involved, search @KB first.
 2. Sort what the owner wrote: asked for (requirements), decided (keep it), only suggested (start from it, and say why if you depart from it), and anything you add yourself (say so). Then reply with, in this order:
    - What you found (each point tagged seen or inferred).

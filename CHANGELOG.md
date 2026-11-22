@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Before planning or coding a request that names its own solution, the AI separates the outcome wanted from that solution and its examples, and when another framing (reuse an existing tool or project, a host platform or adapter, another place in the architecture) would change the architecture, avoid large rework or fit the pinned goal better, it names it with a recommendation and asks first; both planning playbooks open with this "Frame first" step. The README's list of tools evaluated and not used now explains what was kept from Spec Kit and what was left out.
+
 - Fix: @GIT_BRANCH no longer refuses to switch to an existing branch whose committed tokens.json differs while the local one is modified (git said the local changes would be overwritten by checkout): the local token counts are set aside and merged back with the branch's, as @GIT_PULL does.
 
 - The AI may keep its own to-do list as one short "Todo:" note pinned to its own session, and is encouraged to for work that spans several scripts or chats (it says so when it creates it, edits it as steps finish and removes it when done); standing-fact notes still need the user's ask, and a log of scripts, decisions or progress is still never written. A new user no longer has to know the capability exists.
