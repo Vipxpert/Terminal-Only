@@ -79,6 +79,7 @@
     ├── run_cutoff_test.py (An @RUN followed by a line that is not a directive is not run as its first line alone and the run says so; a one-line @RUN, or one followed by a comment, a blank line or a directive, runs as before)
     ├── takeover_test.py (@TAKEOVER absorbs another chat's work only on the user's answer at the terminal (Enter agrees, n declines, no terminal changes nothing), refuses an unknown session, itself, a side script and a chat without a session, and the write scope and an unread message arrive; tested with a fake console)
     ├── early_exit_session_test.py (A refused @REPEATABLE script that carries a number and a @REDO that cannot run still print the chat's own session line in the footer)
+    ├── text_remove_line_test.py (A @TEXT_REPLACE with an empty replacement removes the whole line it empties and leaves no blank line; part of a line, several matching lines and an ordinary replacement behave as expected)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)
