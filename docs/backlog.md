@@ -3,6 +3,7 @@
 What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), friction (the same manual step, workaround or reminder more than once), deferred (decided to do later), idea (speculative: no evidence yet).
 
 ## Unverified
+- The new [L1-Notes] exception (the AI keeps one short Todo note pinned to its own session) has not been seen followed in a real chat; check the notes after the next multi-step task (it should be one note, pinned, short, removed when done) and shorten [L1-Notes] if it is ignored or overused. (2026-11-22)
 - The @TAKEOVER question has not been seen at a real terminal (the test replaced the console with a fake one, as the @STEWARD test did before the owner pressed Enter); try it once when a second chat exists. (2026-11-22)
 - The accidental-paste wording ("one or two short lines, no manifest, remind what is pending") has not been seen working in a real chat: the owner reported that the old sample reply ("beep boop") was not followed. The harness cannot see a paste into the chat, so only the wording can help; check on the next accidental paste, and shorten [L1-Harness], the longest rule, if it still fails. Seen once (2026-11-22): the rule counted "[REPLAY] in it" as already answered, though a replay can be the first sight of an output that never reached the chat; that clause is reworded. (2026-11-22)
 
@@ -30,7 +31,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 
 
 
-- @GIT_BRANCH and @GIT_TAG switches probably share the tokens.json problem that @GIT_PULL had (git refuses a switch that would overwrite a locally modified tokens.json); not tested, and park_tokens / unpark_tokens could wrap them. (2026-11-22)
+- @GIT_BRANCH refuses to switch when the target branch commits a different tokens.json while the local one is modified (confirmed by tests/branch_tokens_test.py: git says your local changes would be overwritten by checkout); @GIT_TAG probably does not share it, since it touches no files; and park_tokens / unpark_tokens could wrap them. (2026-11-22)
 
 - The tree's /tests node lists brief_rules_test.py twice, with two different descriptions. (2026-11-22)
 
