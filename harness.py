@@ -3434,6 +3434,7 @@ def find_deadlocks(reg):
     return [(names, [(a, names[(i + 1) % len(names)], edges[a][names[(i + 1) % len(names)]]) for i, a in enumerate(names)]) for names in found]
 
 def print_sessions(current):
+    SESSIONS_SHOWN[0] = True
     reg = load_json(sessions_path(), {})
     if not reg:
         return
@@ -3465,6 +3466,20 @@ def print_sessions(current):
             print("  %s: %s" % (n, describe(r)))
 
 CURRENT_SESSION = None
+SESSIONS_SHOWN = [False]
+
+def show_state_if_missing():
+    """A run that ends early (a replay, an undo from a re-paste, a refused script) still shows its chat what a normal run ends with: work that became free, messages and scope changes since, then the session lines."""
+    if SESSIONS_SHOWN[0] or not CURRENT_SESSION:
+        return
+    check_waiting(CURRENT_SESSION)
+    announce_scope_changes(CURRENT_SESSION)
+    print_sessions(CURRENT_SESSION)
+
+def print_footer(state):
+    # Comment (decision): every early exit ends with print_footer, while a normal run prints the session state before it; the flag set by print_sessions keeps a normal run from printing it twice
+    show_state_if_missing()
+    return print_footer_body(state)
 
 def events_path():
     return os.path.join(HARNESS_DIR, "scope_events.json")
@@ -4965,7 +4980,7 @@ def brief_reason(conds):
             return "unpushed commits on branch"
     return ""
 
-def print_footer(state):
+def print_footer_body(state):
     """Every run ends with the next free number, the pinned goal and the standing rules that apply to this workspace's mode."""
     if state is not None:
         print("\n=== NEXT SCRIPT NUMBER: %d ===" % (state["last_num"] + 1))
@@ -5880,6 +5895,8 @@ def main():
     if P["repeatable"] and (P["num"] is not None or not side_allowed(P)):
         print("  [REFUSED] a @REPEATABLE script has no number and may only read, search and @RUN, so running it again can never change files twice. Nothing was run.")
         return print_footer(state)
+    # Comment (decision): the session is named before any replay, undo or refusal can end the run, so the footer of every such run describes this chat as it is now; the registration (touch_session) and the one-time deliveries stay below and happen only for a run that executes
+    globals()["CURRENT_SESSION"], globals()["CURRENT_PART"] = P["session"], P.get("part")
     if P["repeatable"]:
         print("  [REPEATABLE] runs on every paste, also an identical one; edit its values and paste it again as often as needed")
     if P["side"]:

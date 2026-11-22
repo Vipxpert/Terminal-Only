@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Fix: a replayed script (an identical re-paste), an undo from a re-paste and a stale-script refusal now print a footer for the pasted script's own session (THIS SESSION, OTHER SESSIONS, WAITING ON, INHERITED, DELEGATED, the chat's pinned notes and its own list of unused commands) instead of a footer with no session, and they deliver what a normal run delivers, once (work that became free, messages and scope changes since); the saved execution output is still replayed as it was.
+
 - Fix: the tree drift check (@PROBE <tree> | Check) recognises "# Stage:" comments that carry a run of dashes (as harness.py's own do) and "#*" section headings (as workflow_commands.txt's do); before, every tree node for them read as stale although the anchors existed. The same pattern drives the table-of-contents probe, scope anchors and block bounds.
 
 - Fix: @GIT_PULL no longer aborts when the incoming commits change .llm_harness/tokens.json while it is modified here (it changes with every paste and is never committed alone): the local counts are set aside, the fast-forward runs, and they are merged back with the tokens merge rule, still uncommitted, with a note in the report.
