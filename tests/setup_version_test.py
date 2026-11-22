@@ -40,9 +40,9 @@ def main():
         return p.stdout.decode("utf-8", "replace")
 
     first = run("9.9")
-    check("a first install prints available 9.9, installed none, and now 9.9", "available 9.9 | installed none" in first and "Installed version now: 9.9" in first, first)
+    check("a first install prints none -> 9.9, and now 9.9", "Harness version: none -> 9.9" in first and "Installed version now: 9.9" in first, first)
     second = run("9.10")
-    check("an upgrade prints available 9.10, installed 9.9, and now 9.10", "available 9.10 | installed 9.9" in second and "Installed version now: 9.10" in second, second)
+    check("an upgrade prints 9.9 -> 9.10, and now 9.10", "Harness version: 9.9 -> 9.10" in second and "Installed version now: 9.10" in second, second)
     sys.exit(0 if all(RESULTS) else 1)
 
 

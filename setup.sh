@@ -42,7 +42,7 @@ done
 version_of() { sed -n 's/^VERSION = "\(.*\)".*/\1/p' "$1" 2>/dev/null | head -n 1; }
 AVAILABLE=$(version_of "$SOURCE_DIR/harness.py")
 INSTALLED_BEFORE=$(version_of "$TARGET_DIR/harness.py")
-echo "Harness version: available ${AVAILABLE:-unknown} | installed ${INSTALLED_BEFORE:-none}"
+echo "Harness version: ${INSTALLED_BEFORE:-none} -> ${AVAILABLE:-unknown}"
 STAMP=$(date '+%Y%m%d-%H%M%S')
 TEMP_DIR="$TARGET_DIR/.setup-tmp-$STAMP"
 BACKUP_DIR="$TARGET_DIR/.backups/$STAMP"

@@ -35,7 +35,7 @@ for %%F in (harness.py workflow_commands.txt) do (
 
 call :getver "%SOURCE_DIR%harness.py" AVAILABLE
 call :getver "%TARGET_DIR%\harness.py" INSTALLED_BEFORE
-echo Harness version: available %AVAILABLE% ^| installed %INSTALLED_BEFORE%
+echo Harness version: %INSTALLED_BEFORE% -^> %AVAILABLE%
 for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "STAMP=%%I"
 if not defined STAMP (
     echo ERROR: PowerShell could not be started to read the date.
