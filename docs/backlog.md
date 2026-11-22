@@ -4,7 +4,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 
 ## Unverified
 - The accidental-paste wording ("one or two short lines, no manifest, remind what is pending") has not been seen working in a real chat: the owner reported that the old sample reply ("beep boop") was not followed. The harness cannot see a paste into the chat, so only the wording can help; check on the next accidental paste, and shorten [L1-Harness], the longest rule, if it still fails. (2026-11-22)
-- A @SIDE script that carries the same @SESSION as a numbered chat runs the same end-of-run delivery for that session (seen in main), so it could print that chat's messages into an output meant for a second chat and consume them there; never tested. (2026-11-22)
+
 - A session that ends (@SESSION_END) or is released while messages for it are unread may lose them silently, because a message can only be sent to a session still in the registry; not tested. (2026-11-22)
 
 - setup.cmd copying knowledge/ and playbooks/ has never run on Windows; they were copied by hand. Run setup.cmd once and look in ~/.llm_harness. (2026-11-22)
@@ -20,8 +20,8 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)
 
 ## Gaps
-- README, the tree and the session rules still say messages, scope changes and [UNBLOCKED] are shown once; after the keep-until-progress fix they are shown until the chat's next numbered script. Update them with the commit. (2026-11-22)
-- A message, an [UNBLOCKED] notice and a scope event count as delivered when the harness prints them, because the recipient's cursor is saved before the print (seen in announce_scope_changes and check_waiting); if that output never reaches the chat (not pasted, a wrong clipboard), the notice is gone. Keep it in the footer until the chat sends its next numbered script, the only proof it read the output. tests/message_flows_test.py checks it. (2026-11-22)
+
+
 
 - The other "once only" marks may share the weakness (code unread; the README says once): [CHANGED] and [NEW] on rules, the knowledge hint, the git greeting, the first look at other sessions' scopes and [WAKE]. (2026-11-22)
 
