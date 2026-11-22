@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @TAKEOVER <session>: the AI asks to continue another chat's work, and the user's terminal asks one question (Enter agrees); it does what the --merge command does (write scope, grants, notes, verdicts, queues, unread messages), so the user never types --merge. With no terminal, or in a @SIDE or @REPEATABLE script, nothing changes. The merge itself is one shared function (merge_sessions), and a note pinned with "pin *" is documented on the card as reaching every chat with a session, those that appear later too.
+
 - Fix: an @RUN directly followed by a line that is not a directive (a command broken across lines, such as a multi-line python -c) is no longer run as its first line alone: the command is not run, and the warning says to put a longer program in a @NEW_FILE.
 
 - Fix: a message from another chat, a scope change and an [UNBLOCKED] notice no longer count as delivered when the harness prints them: they stay in the footers of that chat until it sends its next numbered script, the only proof it read the output, so a script pasted again because its output never reached the chat shows them again. A replay, an undo from a re-paste, a refused script and a @SIDE or @REPEATABLE script show them without confirming them (at worst one repeat, never a loss).

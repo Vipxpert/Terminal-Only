@@ -689,7 +689,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @CHAT_LINK @KB @PLAYBOOK @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -922,6 +922,8 @@ def parse_payload(txt):
             P["side"] = True
         elif d == "STEWARD":
             P["steward"] = arg.strip().lower() or "status"
+        elif d == "TAKEOVER":
+            P["takeover"] = arg.strip()
         elif d == "GIT_FOLD":
             P["git"].append({"kind": "fold", "n": int(arg) if arg.isdigit() else 0})
         elif d == "GIT_BRANCH":
@@ -4137,6 +4139,30 @@ def steward_cli():
     on = steward_on()
     print("PROJECT STEWARDSHIP IS %s for %s on this machine: the backlog and review rule [L1-Steward] %s. The switch is kept outside the project, so other machines and other projects are not affected, and a script cannot change it." % ("ON" if on else "OFF", os.path.abspath("."), "is printed in every footer" if on else "is not printed"))
 
+def takeover_directive(P):
+    """@TAKEOVER <session>: this chat asks to absorb another chat's work (write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge; only the user's answer at the terminal does it (no terminal, no change), and only a numbered script of a named chat can ask."""
+    src = re.sub(r"[^A-Za-z0-9_.-]+", "-", (P.get("takeover") or "")).strip("-")
+    me = P.get("session")
+    if P.get("side") or P.get("repeatable") or not me:
+        print("  [TAKEOVER REFUSED] it needs a numbered script with an @SESSION line (not @SIDE or @REPEATABLE). Nothing changed.")
+        return
+    reg = load_json(sessions_path(), {})
+    if not src or src == me or src not in reg:
+        print("  [TAKEOVER REFUSED] expected @TAKEOVER <another session>; sessions: %s. Nothing changed." % (", ".join(sorted(n for n in reg if n != me)) or "none"))
+        return
+    age = time.time() - reg[src].get("last_active", 0)
+    when = "%dm ago" % (age // 60) if age < 7200 else "%dh ago" % (age // 3600)
+    # Comment (decision): a script can ask but never decide: another chat's work moves only on the user's own answer at the terminal, so no terminal means no change
+    ans = ask_console("\nSession %s asks to take over what session %s holds (its write scope, grants, notes, verdicts and unread messages; %s was last active %s).\nPress Enter to agree, or type n to leave it as it is: " % (me, src, src, when))
+    if ans is None:
+        print("  [TAKEOVER NOT DONE] it needs you at a terminal to answer. Nothing changed; ask the user in Talk instead.")
+        return
+    if ans.strip().lower() in ("", "y", "yes"):
+        merge_sessions(src, me)
+        print("  [TAKEOVER] session %s now holds what %s held (your answer at the terminal)" % (me, src))
+    else:
+        print("  [TAKEOVER NOT DONE] you answered no; %s keeps its work" % src)
+
 def steward_directive(P):
     """@STEWARD [on | off]: the AI asks to switch the opt-in backlog-and-review rule; only the user's answer at the terminal changes it (no terminal, no change), and a side or repeatable script cannot ask at all."""
     word = (P.get("steward") or "").lower()
@@ -4175,6 +4201,10 @@ def merge_session_cli():
     if err or not src or not dst or src == dst:
         print("usage: harness.py --workspace <project folder> --merge <from_session> <into_session>" + ((" | " + err) if err else ""))
         return
+    merge_sessions(src, dst)
+
+def merge_sessions(src, dst):
+    """Fold session src's write scope, grants, uncommitted-history ownership, pinned notes, verdicts, delegation and waiting queues and unread messages into session dst: the work of the user's --merge, and of the @TAKEOVER directive after the user's answer at the terminal."""
     moved = []
     moved_notes, moved_verdicts = 0, 0
     with state_lock():
@@ -5711,7 +5741,8 @@ def print_card(shell, workspace):
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
   @CHAT_LINK [<address>]                          asks the user at the terminal for this chat's address (or sets it when given), replacing any old address on file; at a terminal a new session is asked once and cannot skip it
   @STEWARD [on | off]                             asks the user at the terminal to switch the opt-in backlog-and-review rule (the footer's [L1-Steward]) on or off for this project on this machine: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; alone it reports the state
-  @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
+  @TAKEOVER <session>                             asks the user at the terminal to let this chat take over what another chat holds (its write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; use it to continue a dead or finished chat's work
+  @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*; 'pin *' reaches every chat with a session, those that appear later too); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_REMOVE <note-id>                          removes an existing note
   @NOTE_LIST [words]                              prints all workspace notes, or those whose category, pins or text contain every word
@@ -6108,6 +6139,8 @@ def main():
         print("  [GOAL SET] " + P["goal"])
     if P.get("steward"):
         steward_directive(P)
+    if P.get("takeover"):
+        takeover_directive(P)
     if P["git_init"]:
         git_init(P["git_init"])
     if P["undo"] and (P["ops"] or P["git"]):
