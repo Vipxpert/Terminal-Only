@@ -58,6 +58,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - Unity project Big&Small: no goal pinned, and the checkout is 9 commits behind its remote. (2026-11-22)
 
 ## Ideas
+- Brief and expanded notes, like the brief L1 rules: the part of a note before a || is what footers print, with "(more: @NOTE_LIST <id>)", and @NOTE_LIST <id> prints it all; a note without || prints in full as today; the pin works the same. Owner's idea; open question: explicit || only (recommended) or also an automatic cut for long notes. Related gap: a pin has no keyword for "the sessions that exist now", and a plain edit cannot turn a pinned note back into a plain one. (2026-11-23)
 
 
 - A manual step the user must do BEFORE the script (an authentication, say) belongs in the first line of Talk, never only in the checklist after the script: reported by Gemini, where it was run in the wrong order. One short clause in [L1-Harness]. (2026-11-22)
