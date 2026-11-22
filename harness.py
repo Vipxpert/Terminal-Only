@@ -241,7 +241,8 @@ JS_ASSIGN = re.compile(r"^\s*" + _MOD + r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)
 JS_PROP = re.compile(r"^\s*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)")
 VUE_OPT = re.compile(r"^\s*(methods|computed|watch|props|emits|components)\s*:\s*[\{\[]")
 SFC_BLOCK = re.compile(r"^<(template|script|style)\b")
-ANCHOR_RE = re.compile(r"^\s*(?:#|//|<!--|--|;|::)\s*#?\s*(?:Stage|Step)\b")
+# Comment (decision): harness.py's own stage comments carry a run of dashes ("# ----- Stage: IO helpers") and workflow_commands.txt sections are "#* Heading" lines; the plain pattern never matched either, so every tree node for them read as stale
+ANCHOR_RE = re.compile(r"^\s*(?:(?:#|//|<!--|--|;|::)\s*#?\s*[-=*]*\s*(?:Stage|Step)\b|#\*\s+\S)")
 TOC_EXTRA = re.compile(r"^\s*@\w|\b(?:HandleFunc|Handle|GET|POST|PUT|PATCH|DELETE)\(|\b(?:app|router)\.(?:get|post|put|patch|delete|use)\(")
 IDENT = re.compile(r"^[A-Za-z_$][\w$]*(?:\(\))?$")
 DOTTED = re.compile(r"^[A-Za-z_$][\w$]*(?:(?:\.|::)[A-Za-z_$][\w$]*)+(?:\(\))?$")
@@ -2667,10 +2668,10 @@ def check_tree(rel, lines):
             texts[fpath] = read_text(fpath)
         body = texts[fpath]
         if head.startswith("#"):
-            anchor = norm_ws(head.lstrip("#").strip())
+            anchor = norm_ws(head.lstrip("#").lstrip("*-= ").strip())
             counts["anchor"] += 1
             if fpath not in anchor_lines:
-                anchor_lines[fpath] = [norm_ws(re.sub(r"^\s*(?:#|//|<!--|--|;|::)\s*#?\s*", "", l)) for l in body.split("\n") if ANCHOR_RE.match(l)]
+                anchor_lines[fpath] = [norm_ws(re.sub(r"^\s*(?:#|//|<!--|--|;|::)\s*#?\s*[-=*]*\s*", "", l)) for l in body.split("\n") if ANCHOR_RE.match(l)]
             if anchor and not any(a == anchor or (a.startswith(anchor) and a[len(anchor)] in " (:") for a in anchor_lines[fpath]):
                 stale.append((i, label, "anchor not found in /%s: %s" % (fpath, anchor)))
             continue

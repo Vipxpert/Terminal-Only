@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Fix: the tree drift check (@PROBE <tree> | Check) recognises "# Stage:" comments that carry a run of dashes (as harness.py's own do) and "#*" section headings (as workflow_commands.txt's do); before, every tree node for them read as stale although the anchors existed. The same pattern drives the table-of-contents probe, scope anchors and block bounds.
+
 - Fix: @GIT_PULL no longer aborts when the incoming commits change .llm_harness/tokens.json while it is modified here (it changes with every paste and is never committed alone): the local counts are set aside, the fast-forward runs, and they are merged back with the tokens merge rule, still uncommitted, with a note in the report.
 
 - Fix: saved run outputs are pruned separately for numbered runs and @SIDE runs, so a flood of side runs no longer deletes the numbered runs (which broke @REDO and replay for them), and side runs are bounded too; a merged verdict record keeps its path field.
