@@ -1507,6 +1507,43 @@ COMMIT_TYPES = ("build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor
 REPO_KINDS = ("branch", "worktree", "tag", "push", "pull", "account")
 ACTIVE_S = 15 * 60
 
+def park_tokens(incoming):
+    """Set aside this checkout's own tokens.json when it is modified (or untracked) and the incoming commits change it too, because git would refuse the fast-forward: returns (local text, committed text) or None. The harness never commits the file alone, so it is dirty on every machine that has copied output."""
+    rel = WORKSPACE_NOTES_DIR + "/tokens.json"
+    if rel not in incoming:
+        return None
+    status = run_git(["status", "--porcelain", "--", rel])[1]
+    if not status.strip():
+        return None
+    try:
+        with open(rel, "r", encoding="utf-8") as f:
+            local = f.read()
+    except OSError:
+        return None
+    rc, base, _ = run_git(["show", "HEAD:" + rel])
+    if status.lstrip().startswith("??"):
+        os.remove(rel)
+    else:
+        run_git(["checkout", "--", rel])
+    return local, (base if rc == 0 else "")
+
+def unpark_tokens(parked, moved):
+    """Put the set-aside counts back after the move: merged with the incoming file by the tokens merge rule (the committed text is the base), or unchanged when the move failed or the files cannot be merged. Returns what happened, for the report."""
+    rel = WORKSPACE_NOTES_DIR + "/tokens.json"
+    local, base = parked
+    text, note = local, "kept as they were"
+    if moved:
+        try:
+            with open(rel, "r", encoding="utf-8") as f:
+                theirs = f.read()
+            text, note = merge_tokens_text(base, local, theirs), "merged with the incoming counts"
+        except (OSError, ValueError, KeyError, TypeError):
+            note = "could not be merged with the incoming file, so they were kept as they were"
+    os.makedirs(os.path.dirname(rel), exist_ok=True)
+    with open(rel, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    return note
+
 def repo_guard(what, clean=True, alone=True):
     """The shared safety checks for operations that affect a whole checkout: no unfinished git operation, no local changes, no other active chat in this folder. '' when it is safe."""
     blockers = git_blockers()
@@ -1878,7 +1915,10 @@ def run_repo_ops(ops):
             # Comment (invariant): a pull is a fast-forward of a clean checkout or nothing, so it never merges and never touches local work; the old position is bookmarked first
             bookmark = "refs/llm_harness/backup/" + time.strftime("%Y%m%d-%H%M%S")
             run_git(["update-ref", bookmark, "HEAD"])
+            # Comment (decision): tokens.json changes with every paste on every machine and is never committed alone, so a pull whose incoming commits change it too would be refused by git; the local counts are set aside and merged back with the tokens merge rule
+            parked = park_tokens(files)
             rc, out, err = run_git(["merge", "--ff-only", up])
+            tokens_note = unpark_tokens(parked, rc == 0) if parked else ""
             if rc:
                 print("  [PULL FAILED] %s. Nothing changed." % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
                 return False
@@ -1886,6 +1926,8 @@ def run_repo_ops(ops):
             hit = [f for f in files if any(scope_path_covers(f, e) for e in mine)]
             print("  [PULLED] fast-forwarded %d commit(s) from %s; %d file(s) changed: %s%s" % (behind, up, len(files), ", ".join(files[:8]) + (" +%d more" % (len(files) - 8) if len(files) > 8 else ""), "; INSIDE YOUR SCOPE: " + ", ".join(hit[:6]) if hit else ""))
             print("  -> where this branch was is bookmarked as %s; going back is the user's command (a hard reset), and @UNDO does not cover a pull" % bookmark)
+            if tokens_note:
+                print("  -> .llm_harness/tokens.json: the local token counts were set aside for the pull and %s (still uncommitted)" % tokens_note)
         elif op["kind"] == "account":
             info = remote_login_info()
             if not info:
