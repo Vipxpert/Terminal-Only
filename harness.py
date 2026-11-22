@@ -1776,14 +1776,19 @@ def run_repo_ops(ops):
             if why:
                 print("  [BRANCH REFUSED] %s. Nothing changed." % why)
                 return False
+            # Comment (decision): the local token counts (never committed alone, changed by every paste) are set aside around a switch to an existing branch and merged back, exactly as for a pull; git refuses the switch when that branch commits a different tokens.json
+            parked = park_tokens(run_git(["diff", "--name-only", "HEAD", name, "--"])[1].splitlines()) if exists else None
             with state_lock():
                 rc, out, err = run_git(["switch", name] if exists else ["switch", "-c", name] + ([base] if base else []))
+            tokens_note = unpark_tokens(parked, rc == 0) if parked else ""
             if rc:
                 print("  [BRANCH FAILED] %s. Nothing changed." % (err or out))
                 return False
             if not exists:
                 remember_base(name, base or here)
             print("  [BRANCH] now on %s%s" % (name, "" if exists else " (new, from %s)" % (base or here)))
+            if tokens_note:
+                print("  -> .llm_harness/tokens.json: the local token counts were set aside for the switch and %s (still uncommitted)" % tokens_note)
         elif op["kind"] == "worktree":
             args = op.get("args") or []
             if args[:1] == ["list"]:
