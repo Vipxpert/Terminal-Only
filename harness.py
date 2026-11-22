@@ -3516,6 +3516,10 @@ def show_state_if_missing():
     announce_scope_changes(CURRENT_SESSION)
     print_sessions(CURRENT_SESSION)
 
+def name_session(P):
+    """Name the script's session (and part) for the footer before anything can end the run: a replay, an undo from a re-paste and every early refusal (a @REDO that cannot run, a @REPEATABLE script that carries a number, a stale number) then describe this chat as it is now; the registration (touch_session) and the one-time deliveries stay later and happen only for a run that executes."""
+    globals()["CURRENT_SESSION"], globals()["CURRENT_PART"] = P["session"], P.get("part")
+
 def print_footer(state):
     # Comment (decision): every early exit ends with print_footer, while a normal run prints the session state before it; the flag set by print_sessions keeps a normal run from printing it twice
     show_state_if_missing()
@@ -6034,12 +6038,14 @@ def main():
         return print_footer(None)
     print("  Workspace: %s | %s" % (os.path.abspath("."), mode_label()))
     state = load_state()
+    name_session(P)
     if re.search(r"(?m)^@REDO\s+\d+\s*$", raw_txt):
         raw_txt, redo_err = expand_redo(raw_txt)
         if redo_err:
             print("  [REFUSED] %s. Nothing was run." % redo_err)
             return print_footer(state)
         P = parse_payload(raw_txt)
+        name_session(P)
         print("  [REDO] runs the saved text of an earlier script, with its corrections")
     start, rerun, assigned = len(tee.text()), False, False
     if P["repeatable"] and (P["num"] is not None or not side_allowed(P)):
