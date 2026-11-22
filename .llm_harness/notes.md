@@ -1,2 +1,3 @@
-<!-- llm_harness_notes_next_id: 6 -->
+<!-- llm_harness_notes_next_id: 7 -->
 - [N004] The user can relay questions to ChatGPT, which can browse the web and inspect GitHub repositories; Claude in this chat cannot. When something external is unknown (a tool's options or docs, a repository's code, a release's changes), ask the user to have ChatGPT look it up instead of guessing.
+- [N006] [pin: harness-dev] Todo: 1) @GIT_BRANCH tokens fix: branch_tokens_test + repo_ops, then commit with its tree node and drop its backlog line; 2) owner: run setup.cmd, then say "push the tags" (v3.13.0, v3.14.0); 3) @GIT_ACCOUNT with gh once ChatGPT's answer arrives
