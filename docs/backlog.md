@@ -22,6 +22,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)
 
 ## Gaps
+- Nothing in the rules or the planning playbooks asks the AI to question the solution a request names: asked to code Geometry Dash into a codebase, a chat planned and built it, although the owner's broader aim was a platform that could install apps such as that game (reported by the owner); a plan only builds the stated thing well. Add a framing step before planning: separate the outcome from the proposed solution and examples, and name another framing (reuse, a host platform or adapter, another place in the architecture) when it would change the architecture. (2026-11-22)
 - The footer prints every note as "the user's", also the Todo note the AI keeps for itself (seen with N006, pinned to harness-dev), so a chat that inherits it with @TAKEOVER could read the AI's plan as the owner's instruction; record which session wrote a note and print that in the footer (the footer code is unread). (2026-11-22)
 
 
