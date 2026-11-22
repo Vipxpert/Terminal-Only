@@ -3,6 +3,7 @@
 What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), friction (the same manual step, workaround or reminder more than once), deferred (decided to do later), idea (speculative: no evidence yet).
 
 ## Unverified
+- An own note ([own: <session>]) through the two-machine notes.md merge: the merge's own parser was not read, so the mark is inferred to survive as part of the note's text; memory_merge_test runs at the next full run, and a merge case with an own note would prove it. (2026-11-22)
 - The framing step ([L1-Notes] clause, and "Frame first" in plan-first and plan-project) has not been seen in a real chat. Owner's case to recheck it against: a request to code Geometry Dash into a codebase whose broader aim was a platform that installs apps; the AI should ask about the platform before planning the game. Watch for the opposite failure too: challenging small, clear requests. (2026-11-22)
 - The new [L1-Notes] exception (the AI keeps one short Todo note pinned to its own session) has not been seen followed in a real chat; check the notes after the next multi-step task (it should be one note, pinned, short, removed when done) and shorten [L1-Notes] if it is ignored or overused. (2026-11-22)
 - The @TAKEOVER question has not been seen at a real terminal (the test replaced the console with a fake one, as the @STEWARD test did before the owner pressed Enter); try it once when a second chat exists. (2026-11-22)
@@ -23,7 +24,6 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)
 
 ## Gaps
-- The footer prints every note as "the user's", also the Todo note the AI keeps for itself (seen with N006, pinned to harness-dev), so a chat that inherits it with @TAKEOVER could read the AI's plan as the owner's instruction; record which session wrote a note and print that in the footer (the footer code is unread). (2026-11-22)
 
 
 
