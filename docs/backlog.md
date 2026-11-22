@@ -14,12 +14,12 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 
 ## Gaps
 - A @REPEATABLE script that carries a script number is refused before the session is named, so that one refusal's footer probably still has no session lines; the lines above the naming point were not read. Check after the replay fix. (2026-11-22)
-- A replayed script keeps its saved execution and shows the latest goal and notes, but its footer seems to be printed with no session: [L1-Commands] lists the full command list instead of "not used yet in this chat" (seen in tests/replay_footer_test.py), so THIS SESSION, OTHER SESSIONS, WAITING ON, INHERITED, [BRAKED] and pending messages are probably missing. Fix by setting the session from the replayed script's @SESSION line before the footer; the test is written and fails until then. (2026-11-22)
+
 - @GIT_BRANCH and @GIT_TAG switches probably share the tokens.json problem that @GIT_PULL had (git refuses a switch that would overwrite a locally modified tokens.json); not tested, and park_tokens / unpark_tokens could wrap them. (2026-11-22)
 
 - The tree's /tests node lists brief_rules_test.py twice, with two different descriptions. (2026-11-22)
 - The tree drift check (@PROBE tree | Check) reports 41 stale nodes, seen after the README script: 14 harness.py "# Stage:" anchors and 8 workflow_commands.txt anchors read as not found, and the 19 knowledge/ and playbooks/ file nodes read as files at the repository root (their parent nodes are probably not recognised as folders). Find out which were already stale before this session, then fix the nodes. (2026-11-22)
-- --link is a user-only command per [L1-Sessions], but the @RUN refusal list (run_command) does not include it. (2026-11-22)
+
 - A pitfall proven in another project has no path into the shared knowledge library: the AI there cannot write to the harness repository. Needs a proposal file or a ready-to-paste entry. (2026-11-22)
 - halagames-tools' own docs/knowledge.txt still holds the contradictory Split-Brain and headless-API entries that the shared library merged into one. (2026-11-22)
 - [L1-Notes] is printed in full on every footer and keeps growing; give it a short form once the planning and backlog clauses have proven themselves. (2026-11-22)
@@ -30,9 +30,9 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - @TEXT_REPLACE refuses old text under 12 characters, so renaming .sql to .csv in one test took 15 whole-line replacements, and a three-character token in the pull test needed whole statements again; a short token with a stated count could be allowed. (2026-11-22)
 
 ## Deferred
-- Stewardship opt-in: a --steward on|off switch per project (machine-local by default), with the backlog and review clauses moved out of [L1-Notes] into their own rule that is printed only when it is on, and a short form for the planning trigger. Waiting for the owner to choose machine-local or committed. (2026-11-22)
+
 - Releases: push tag v3.13.0 when the owner says so; cut 3.14 for the playbooks, backlog and review work. (2026-11-22)
-- Desktop: run setup.cmd (many commits behind), end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
+- Desktop: run setup.cmd (many commits behind), run --steward on for this repository, end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
 - halagames-tools: pin the HalaGames account with @GIT_ACCOUNT; add !.llm_harness/git.json to .gitignore with the git.json branch policy; add the .gitattributes merge lines. (2026-11-22)
 - Laptop: point origin at the Terminal-Only repository on GitHub instead of the old llm_harness name. (2026-11-22)
 - Unity project Big&Small: no goal pinned, and the checkout is 9 commits behind its remote. (2026-11-22)
