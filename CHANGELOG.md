@@ -4,6 +4,9 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @LIST_DIR and @LIST_RECURSIVE count, instead of list, what .gitignore excludes (now also in @LIST_DIR) and binary or media files (images, video, audio, archives, parquet and other data files, databases, compiled files, fonts, PDFs, logs), and '| all' lists them; .json and .sql stay listed.
+- The handshake prints the whole workflow_commands.txt once, so a new chat starts with one paste instead of the rules file plus the handshake.
+
 - @PLAYBOOK intro introduces the tool to a new user in plain words (what it is, what it gives, what runs by itself, what only the user does, what to do when a feature did not trigger), and [L1-Notes] tells the AI to open it when the user says they are new or asks what the tool can do. The README opens with a short TLDR of what the tool does.
 
 - @NOTE_ADD own | <text> keeps a to-do as the running chat's own: it is pinned to that chat, stored as [own: <session>], and footers print it as "this chat's own to-do, written by the AI, not the user's" (every other note still prints as the user's), so a chat that takes over another with @TAKEOVER no longer reads the AI's plan as the owner's instruction. @NOTE_EDIT <id> own | <text> marks an existing note, a plain edit keeps the mark, and an edit with pin makes it a pinned user note again.

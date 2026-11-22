@@ -2145,6 +2145,9 @@ def run_git_ops(ops):
 
 # ---------------------------------------------------------------- Stage: Read-only directives
 
+# Comment (decision): types that are never code a chat needs to see in a listing; .json and .sql are left out on purpose, since configs and migrations are code
+JUNK_EXTS = frozenset(".png .jpg .jpeg .gif .bmp .ico .webp .tif .tiff .psd .svgz .mp4 .mov .avi .mkv .webm .mp3 .wav .ogg .flac .m4a .zip .7z .rar .tar .gz .tgz .bz2 .xz .parquet .feather .arrow .avro .orc .db .sqlite .sqlite3 .pkl .pickle .npy .npz .h5 .exe .dll .so .dylib .pyc .pyo .class .jar .o .obj .lib .a .pdb .woff .woff2 .ttf .otf .eot .pdf .log".split())
+
 def repo_files(base):
     """Files under base: tracked plus untracked-but-not-ignored in git mode, else a walk that skips tool and build folders."""
     rc, out, _ = run_git(["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", base]) if MODE == "git" else (1, "", "")
@@ -2158,6 +2161,8 @@ def repo_files(base):
     return sorted(set(f for f in files if not SKIP_DIRS.intersection(f.split("/")[:-1])))
 
 def run_list(arg, recursive):
+    show_all = bool(re.search(r"\|\s*all\s*(?=\||$)", arg, re.IGNORECASE))
+    arg = re.sub(r"\|\s*all\s*(?=\||$)", "", arg, flags=re.IGNORECASE)
     arg, depth = split_depth(arg)
     dp = safe_rel(arg, allow_root=True)
     label = "RECURSIVE" if recursive else "NON-RECURSIVE"
@@ -2169,10 +2174,29 @@ def run_list(arg, recursive):
         rows = [r for r in repo_files(dp) if within_depth(r, "" if dp == "." else dp, depth)]
     else:
         rows = [x + ("/" if os.path.isdir(os.path.join(dp, x)) else "") for x in sorted(os.listdir(dp)) if x != ".git"]
+    # Comment (decision): a listing is for finding code, so what .gitignore excludes and binary or media files are counted instead of listed, and '| all' lists them (the owner's request)
+    hidden = []
+    if not show_all:
+        base = "" if dp == "." else dp.replace("\\", "/").rstrip("/") + "/"
+        ignored = set()
+        if not recursive and MODE == "git" and rows:
+            ignored = set(run_git(["check-ignore", "--"] + [base + x for x in rows])[1].splitlines())
+        keep = []
+        for x in rows:
+            junk = not x.endswith("/") and os.path.splitext(x)[1].lower() in JUNK_EXTS
+            (hidden if junk or (base + x) in ignored else keep).append(x)
+        rows = keep
     for x in rows[:LIST_CAP]:
         print("  " + x)
     if len(rows) > LIST_CAP:
         print("  ... +%d more (list a subfolder)" % (len(rows) - LIST_CAP))
+    if hidden:
+        kinds = {}
+        for h in hidden:
+            k = os.path.splitext(h.rstrip("/"))[1].lower() or "ignored"
+            kinds[k] = kinds.get(k, 0) + 1
+        most = sorted(kinds.items(), key=lambda kv: (-kv[1], kv[0]))[:6]
+        print("  (%d hidden, ignored by .gitignore or binary/media: %s; add '| all' to list them)" % (len(hidden), ", ".join("%s %d" % kv for kv in most)))
 
 def run_xref(arg):
     """@XREF <symbol> is a text search; '| callers', '| callees' or '| impact' asks the code graph."""
@@ -5817,7 +5841,7 @@ def print_card(shell, workspace):
   @FIND <name, path fragment or glob>             files by name or path, e.g. @FIND lease or @FIND *.vue; re:<regex> filters by a regex on the path, e.g. @FIND re:^api/.*_test[.]py$
   @GREP <text>  or  @GREP /<regex>/[i]            matching lines; add ' | in <path fragment, glob or re:<regex>>' to limit where it looks
   @LIST_DIR /<path>    @LIST_RECURSIVE /<path>
-  (@FIND, @GREP, @LIST_RECURSIVE and @TEXT_REPLACE take a last '| depth N': at most N folder levels below the fixed part of the path, 1 = directly inside.
+  (@FIND, @GREP, @LIST_RECURSIVE and @TEXT_REPLACE take a last '| depth N': at most N folder levels below the fixed part of the path, 1 = directly inside. @LIST_DIR and @LIST_RECURSIVE count instead of list what .gitignore excludes and binary or media files; add '| all' to list them (a recursive listing in a git project never shows ignored files: use @LIST_DIR <folder> | all).
    Globs: with a '/' they start at the workspace root and * stays in one folder, ** crosses folders; without a '/' they match file names at any depth.)
   @RUN [--timeout <s>] <command>                  any other command (tests, builds, installs, CLI tools) in the workspace; default limit 300s; not undoable
   @INIT_DEBUG <slug>                              creates docs/debug/bug_<slug>.txt with its four sections and prints it
@@ -5833,6 +5857,16 @@ Tree files: write |-- and \\-- connectors; they are stored as box glyphs. Every 
     print("Notes are the user's: add, edit or remove them only when the user explicitly asks. They are stored in .llm_harness/notes.md, may ride along with any script, and are not reversed by @UNDO.")
     print("Inside a fence write %s for three consecutive backticks and https%s for a URL scheme; both are decoded before matching." % (SENT_BT3, "@@" + "://"))
     print("Lines beginning with '->' in harness output are instructions for your next turn.")
+
+def print_rules_file():
+    """The whole workflow_commands.txt, printed once by the handshake: the workflow, the reply format and every rule in full."""
+    try:
+        with open(RULES_PATH, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read().replace("\r", "").strip("\n")
+    except OSError:
+        return
+    print("\n=== WORKFLOW AND RULES (workflow_commands.txt, printed once per chat; the footers repeat the standing rules after every run) ===")
+    print(text)
 
 def handshake(workspace, shell):
     line = "llm_harness v%s | python %s" % (VERSION, sys.version.split()[0])
@@ -5855,6 +5889,8 @@ def handshake(workspace, shell):
         print("WARNING: workflow_commands.txt is not next to harness.py (%s); standing rules cannot be printed after runs." % SELF_DIR)
     print_workspace_notes()
     print_card(shell, os.path.abspath("."))
+    # Comment (decision): the owner pasted workflow_commands.txt beside the handshake at the start of every chat; printing it here makes one paste start a chat, and the footers keep the standing rules in view after that
+    print_rules_file()
 
 def timed(fn, *args):
     """Run one read-only directive and print how long it took, so slow steps are visible."""
