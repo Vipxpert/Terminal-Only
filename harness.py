@@ -5477,6 +5477,14 @@ def execute_note_ops(ops):
                         continue
                     found["for"], found["own"] = [CURRENT_SESSION], True
                     shown = "this chat's own to-do"
+                elif low in ("current", "now", "existing"):
+                    # Comment (decision): a snapshot of the registered session names, so chats that appear later do not get the note; the opposite is * (every chat with a session, new ones too), and @NOTE_PIN switches between the two without touching the text
+                    names = sorted(load_json(sessions_path(), {}))
+                    if not names:
+                        print("  [NOTE ERROR] @NOTE_PIN current needs at least one registered session; none exists yet")
+                        continue
+                    found["for"], found["own"] = names, False
+                    shown = "the %d chat(s) that exist now (%s), not chats that appear later" % (len(names), ", ".join(names))
                 else:
                     names = [x.strip() for x in aud.split(",") if x.strip()]
                     if not names:
@@ -5909,7 +5917,7 @@ def print_card(shell, workspace):
   @TAKEOVER <session>                             asks the user at the terminal to let this chat take over what another chat holds (its write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; use it to continue a dead or finished chat's work
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*; 'pin *' reaches every chat with a session, those that appear later too); '@NOTE_ADD own | <text>' is the running chat's own to-do, pinned to it and shown as its own, never as the user's; any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
-  @NOTE_PIN <note-id> <*|names|all|own>           changes only who sees a note, never its text: * every chat with a session (new ones too), names or patterns, all = a plain note (also for runs without a session), own = this chat's own to-do; a note's text before ' || ' is all footers print, '@NOTE_LIST <note-id>' prints it whole
+  @NOTE_PIN <note-id> <*|names|all|own>           changes only who sees a note, never its text: * every chat with a session (new ones too), current = only the chats that exist now (not later ones), names or patterns, all = a plain note (also for runs without a session), own = this chat's own to-do; a note's text before ' || ' is all footers print, '@NOTE_LIST <note-id>' prints it whole
   @NOTE_REMOVE <note-id>                          removes an existing note
   @NOTE_LIST [words]                              prints all workspace notes, or those whose category, pins or text contain every word
   @FILE /<path>                                   selects the file for the hunks that follow
