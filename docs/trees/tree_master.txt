@@ -76,6 +76,7 @@
     ├── message_flows_test.py (A message one chat sends another must reach it: the control, a replay of the delivering script, the chat's next numbered script, a merge of the recipient's session, a side script of the same chat, and a wrong name that the sender is told about)
     ├── event_log_test.py (The shared event log keeps the newest 200 events and every event addressed to a session that has not read it yet, up to 1000; once read, or addressed to nobody, an event is trimmed like the rest)
     ├── note_pin_all_test.py (A plain note and a note pinned with * reach a chat that appeared later; a note pinned to one chat does not)
+    ├── run_cutoff_test.py (An @RUN followed by a line that is not a directive is not run as its first line alone and the run says so; a one-line @RUN, or one followed by a comment, a blank line or a directive, runs as before)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)
