@@ -22,6 +22,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)
 
 ## Gaps
+- The footer prints every note as "the user's", also the Todo note the AI keeps for itself (seen with N006, pinned to harness-dev), so a chat that inherits it with @TAKEOVER could read the AI's plan as the owner's instruction; record which session wrote a note and print that in the footer (the footer code is unread). (2026-11-22)
 
 
 
@@ -31,7 +32,6 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 
 
 
-- @GIT_BRANCH refuses to switch when the target branch commits a different tokens.json while the local one is modified (confirmed by tests/branch_tokens_test.py: git says your local changes would be overwritten by checkout); @GIT_TAG probably does not share it, since it touches no files; and park_tokens / unpark_tokens could wrap them. (2026-11-22)
 
 - The tree's /tests node lists brief_rules_test.py twice, with two different descriptions. (2026-11-22)
 
