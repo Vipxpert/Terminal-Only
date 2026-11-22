@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.15
+
 - @GIT_ACCOUNT also finds accounts through the GitHub CLI when Git Credential Manager and the Windows credential list find none (a headless Linux machine, say): it reads `gh auth status --json hosts`, offers only healthy accounts, and pinning one also runs `gh auth switch`; when git does not use gh as its credential helper it says to run `gh auth setup-git --hostname <host>` and never runs it. SSH remotes are unchanged: an SSH key picks the account there, and gh cannot switch it.
 
 - setup.cmd and setup.sh print the available and the installed harness version before replacing anything ("3.13 -> 3.14", or "none -> 3.14" on a first install) and the version now installed at the end; the number is read as text from harness.py's VERSION line, so no Python is needed.
