@@ -97,7 +97,7 @@ Linux / macOS:
 
 On Windows with Git Bash or WSL, add `--shell bash` so the syntax card shows the bash wrapper.
 
-Then open a new chat and paste three things: `workflow_commands.txt`, the handshake output, and your task. The handshake prints the syntax card (every directive and the exact fence wrapper for your shell), the project's goal and its notes. Projects with a `.git` folder or file (a worktree has a file) run in git mode; any other folder runs in no-git mode, which keeps undo but has no git directives until `@GIT_INIT [Name <email>]` turns it into a repository, carrying its numbering and undo history over.
+Then open a new chat and paste three things: `workflow_commands.txt`, the handshake output, and your task. The handshake prints the syntax card (every directive and the exact fence wrapper for your shell), the project's goal and its notes. Projects with a git repository (a `.git` folder with a HEAD inside it, or a `.git` file for a worktree) run in git mode; any other folder runs in no-git mode, which keeps undo but has no git directives until `@GIT_INIT [Name <email>]` turns it into a repository, carrying its numbering and undo history over.
 
 ## Moving to another computer
 
@@ -120,7 +120,7 @@ Script numbering, undo history, saved run outputs, the session list and the rere
 | Dead code | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence) |
 | Run anything else | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once |
 | Project memory | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG` |
-| History | `@UNDO` (whole scripts, or only some files with `| /path, /other, /ye*`; `/old -> /new` recovers a file to another path), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG`, `@GIT_PUSH`, `@GIT_PULL`, `@GIT_ACCOUNT` |
+| History | `@UNDO` (whole scripts, or only some files with `| /path, /other, /ye*`; `/old -> /new` recovers a file to another path), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG`, `@GIT_PUSH`, `@GIT_PULL`, `@GIT_ACCOUNT`, `@GIT_REMOTE` (add a remote or change its address: https or ssh, no password or token inside, never removed) |
 | Knowledge and planning | `@KB <words>` (pitfalls for the technologies the project uses), `@PLAYBOOK [name]` (`plan-first`, `plan-project`, `review`) |
 
 The syntax card printed by the handshake is the authoritative reference.
@@ -162,7 +162,7 @@ Edits work byte for byte in any language. Comment markers (for the `Comment` con
 ## Planning and the backlog
 
 - `@PLAYBOOK` prints a short procedure on demand: `plan-first` for one feature with a few decisions to agree on, `plan-project` for a new project or a big redesign (it ends in a living `docs/plan.md`, a decision record, and Todo notes for the first milestone only), and `review`, the check before anything is called complete. The playbooks install next to `harness.py`; `docs/plan.md` and the backlog belong to your project. The AI is told to propose a playbook only when a request would force several consequential decisions, never for small work, and to treat your "we could" ideas as proposals, not decisions.
-- Project stewardship is off until you switch it on for a project with the terminal command `harness.py --workspace <folder> --steward on` (kept on your machine for that project only; `off` switches it off, no argument says which; a script cannot run it); `@PLAYBOOK review` works by hand either way. While it is on, anything the AI defers, skips, leaves unverified or notices on the way goes into `docs/backlog.md` in the same script, grouped as unverified, question, gap, friction, deferred or idea, so nothing lives only in a chat. The review reads it before work is called complete and at the end of a milestone or session, and proposes improvements only from evidence, labelling the rest speculative.
+- Project stewardship is off until you switch it on for a project with `@STEWARD on` (the AI sends it and your terminal asks one question: Enter agrees, and with no terminal nothing changes) or the terminal command `harness.py --workspace <folder> --steward on` (kept on your machine for that project only; `off` switches it off, no argument says which; a script cannot run it); `@PLAYBOOK review` works by hand either way. While it is on, anything the AI defers, skips, leaves unverified or notices on the way goes into `docs/backlog.md` in the same script, grouped as unverified, question, gap, friction, deferred or idea, so nothing lives only in a chat. The review reads it before work is called complete and at the end of a milestone or session, and proposes improvements only from evidence, labelling the rest speculative.
 
 ## Optional: the code graph (CBM)
 

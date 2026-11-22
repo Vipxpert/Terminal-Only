@@ -4,6 +4,10 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @GIT_REMOTE [<name> [<url>]] lists the remotes, or adds a remote or changes its address (https or ssh only, no password or token inside, never removes or renames one) and prints the old and the new address; the rule "git only via @GIT_*" no longer leaves the AI without a way to set where code is published.
+- @STEWARD [on | off]: the AI asks, the user's terminal asks one question (Enter agrees), and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes, so the user never has to remember the --steward command (it stays as a manual fallback).
+- Fix: a .git folder counts as a git repository only with a HEAD inside it (or as a file, for a worktree); a folder holding only harness state ran in git mode, and @GIT_INIT answered that it was a repository already.
+
 - Project stewardship is opt-in: the terminal command `harness.py --workspace <folder> --steward on|off` (kept per project on that machine, never inside the project; no argument says which) switches the new [L1-Steward] rule, which carries the backlog and review clauses that used to ride in [L1-Notes] for everyone, so a project that does not switch it on pays no footer words and gets no backlog file. A rule header may now carry the condition (steward). The @RUN refusal of the user's own commands now includes --link and --steward.
 
 - Fix: a replayed script (an identical re-paste), an undo from a re-paste and a stale-script refusal now print a footer for the pasted script's own session (THIS SESSION, OTHER SESSIONS, WAITING ON, INHERITED, DELEGATED, the chat's pinned notes and its own list of unused commands) instead of a footer with no session, and they deliver what a normal run delivers, once (work that became free, messages and scope changes since); the saved execution output is still replayed as it was.

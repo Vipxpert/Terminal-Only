@@ -689,7 +689,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @CHAT_LINK @KB @PLAYBOOK @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @CHAT_LINK @KB @PLAYBOOK @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -916,6 +916,8 @@ def parse_payload(txt):
             P["git_init"] = arg or True
         elif d == "SIDE":
             P["side"] = True
+        elif d == "STEWARD":
+            P["steward"] = arg.strip().lower() or "status"
         elif d == "GIT_FOLD":
             P["git"].append({"kind": "fold", "n": int(arg) if arg.isdigit() else 0})
         elif d == "GIT_BRANCH":
@@ -932,6 +934,8 @@ def parse_payload(txt):
             P["git"].append({"kind": "pull"})
         elif d == "GIT_ACCOUNT":
             P["git"].append({"kind": "account", "arg": arg.strip()})
+        elif d == "GIT_REMOTE":
+            P["git"].append({"kind": "remote", "args": arg.split()})
         elif d == "GIT_COMMIT":
             j = i + 1
             while j < n and lines[j].rstrip() != "@END_GIT_COMMIT" and not lines[j].lstrip().startswith("@"):
@@ -1929,6 +1933,36 @@ def run_repo_ops(ops):
             print("  -> where this branch was is bookmarked as %s; going back is the user's command (a hard reset), and @UNDO does not cover a pull" % bookmark)
             if tokens_note:
                 print("  -> .llm_harness/tokens.json: the local token counts were set aside for the pull and %s (still uncommitted)" % tokens_note)
+        elif op["kind"] == "remote":
+            words = list(op.get("args") or [])
+            if words and words[0].lower() in ("add", "set-url"):
+                words = words[1:]
+            if not words:
+                have = run_git(["remote", "-v"])[1].strip()
+                print("  [GIT REMOTE] %s" % (have.replace("\n", "\n    ") if have else "this repository has no remote yet; add one with @GIT_REMOTE <name> <url>"))
+                continue
+            name, url = words[0], (words[1] if len(words) > 1 else "")
+            if len(words) > 2 or not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", name):
+                print("  [GIT REMOTE REFUSED] expected @GIT_REMOTE [<name> [<url>]]; a name holds letters, digits, dots, dashes and underscores. Nothing changed.")
+                return False
+            rc_old, old, _ = run_git(["remote", "get-url", name])
+            old = old.strip() if rc_old == 0 else ""
+            if not url:
+                print("  [GIT REMOTE] %s -> %s" % (name, old or "no such remote"))
+                continue
+            # Comment (invariant): only a network address the owner typed is accepted, with no password or token inside it (it would be kept in plain text in .git/config and echoed here); a remote is added or its address changed, never removed or renamed
+            if url.startswith("-") or not re.match(r"^(https://[^\s/@]+/\S+|ssh://[A-Za-z0-9_.-]+@[^\s/@:]+(:\d+)?/\S+|[A-Za-z0-9_.-]+@[^\s:/]+:\S+)$", url):
+                print("  [GIT REMOTE REFUSED] '%s' is not an https:// or ssh address without a password or token in it (sign in with @GIT_ACCOUNT instead). Nothing changed." % url)
+                return False
+            if old == url:
+                print("  [GIT REMOTE] %s already points at %s; nothing to change" % (name, url))
+                continue
+            rc, out, err = run_git(["remote", "set-url", name, url] if old else ["remote", "add", name, url])
+            if rc:
+                print("  [GIT REMOTE FAILED] %s" % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                return False
+            print("  [GIT REMOTE] %s" % ("changed %s from %s to %s" % (name, old, url) if old else "added %s -> %s" % (name, url)))
+            print("  -> @GIT_PUSH publishes the current branch there (it sets the upstream the first time); @GIT_ACCOUNT pins the account git signs in with")
         elif op["kind"] == "account":
             info = remote_login_info()
             if not info:
@@ -4085,6 +4119,34 @@ def steward_cli():
     on = steward_on()
     print("PROJECT STEWARDSHIP IS %s for %s on this machine: the backlog and review rule [L1-Steward] %s. The switch is kept outside the project, so other machines and other projects are not affected, and a script cannot change it." % ("ON" if on else "OFF", os.path.abspath("."), "is printed in every footer" if on else "is not printed"))
 
+def steward_directive(P):
+    """@STEWARD [on | off]: the AI asks to switch the opt-in backlog-and-review rule; only the user's answer at the terminal changes it (no terminal, no change), and a side or repeatable script cannot ask at all."""
+    word = (P.get("steward") or "").lower()
+    if word not in ("on", "off", "status"):
+        print("  [STEWARD REFUSED] expected @STEWARD on, @STEWARD off or @STEWARD alone. Nothing changed.")
+        return
+    if P.get("side") or P.get("repeatable"):
+        print("  [STEWARD REFUSED] a @SIDE or @REPEATABLE script cannot change it. Nothing changed.")
+        return
+    now = steward_on()
+    if word == "status":
+        print("  [STEWARD] project stewardship is %s for this project on this machine" % ("ON" if now else "OFF"))
+        return
+    if (word == "on") == now:
+        print("  [STEWARD] it is already %s here; nothing to ask" % word.upper())
+        return
+    # Comment (decision): a script can ask but never decide: the switch changes only on the user's own answer at the terminal, so no terminal means no change
+    ans = ask_console("\nThe AI asks to switch project stewardship %s for this project on this machine (%s).\nPress Enter to agree, or type n to leave it as it is: " % (word.upper(), "it keeps docs/backlog.md and reviews before calling work done" if word == "on" else "the backlog and review rule leaves the footer"))
+    if ans is None:
+        print("  [STEWARD NOT CHANGED] it needs you at a terminal to answer. Nothing changed; ask the user in Talk instead.")
+        return
+    if ans.strip().lower() in ("", "y", "yes"):
+        os.makedirs(HARNESS_DIR, exist_ok=True)
+        save_json(steward_path(), {"on": word == "on"})
+        print("  [STEWARD %s] project stewardship is now %s for this project on this machine (your answer at the terminal)" % (word.upper(), word.upper()))
+    else:
+        print("  [STEWARD NOT CHANGED] you answered no; it stays %s" % ("ON" if now else "OFF"))
+
 def merge_session_cli():
     """User-only command: --merge <from_session> <into_session> folds a dead or ended session's write scope, grants, uncommitted history ownership, pinned notes, verdicts, and delegation/waiting queues into an ongoing session."""
     args = sys.argv[1:]
@@ -5079,7 +5141,8 @@ def enter_workspace(path):
     if not os.path.isdir(full):
         return "workspace folder does not exist: %s" % full
     os.chdir(full)
-    set_mode("git" if os.path.exists(".git") else "nogit")
+    # Comment (invariant): a .git folder counts only with a HEAD inside it (or as a file, for a worktree); a folder holding only harness state is no repository, and every git command would fail in it
+    set_mode("git" if os.path.isfile(os.path.join(".git", "HEAD")) or os.path.isfile(".git") else "nogit")
     return None
 
 def set_mode(mode):
@@ -5245,6 +5308,7 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_PUSH [tag <name>]                          publishes the current branch's commits to its upstream (origin the first time), or one tag; never forced, never a protected branch (git.json); a rejected push is reported, not overridden
   @GIT_PULL                                       fast-forwards a clean checkout to its upstream (bookmarking where it was); when the branches have diverged it only reports whether a merge would conflict, and changes nothing. The footer's UPSTREAM line says what is incoming
   @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager) and, at a terminal, lets the user press a number to pin one for this project, or A to sign in another account first; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
+  @GIT_REMOTE [<name> [<url>]]                    lists the remotes, shows one, or adds it / changes its address (an https:// or ssh address with no password or token in it; a remote is never removed or renamed); '@GIT_REMOTE origin <url>' prints the old and the new address, and @GIT_PUSH then publishes there
 """
 
 def print_languages():
@@ -5621,6 +5685,7 @@ def print_card(shell, workspace):
   @RETURN <session> | <result>                    hands back what that session delegated to you: the files are released, the result goes to it as a note
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
   @CHAT_LINK [<address>]                          asks the user at the terminal for this chat's address (or sets it when given), replacing any old address on file; at a terminal a new session is asked once and cannot skip it
+  @STEWARD [on | off]                             asks the user at the terminal to switch the opt-in backlog-and-review rule (the footer's [L1-Steward]) on or off for this project on this machine: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; alone it reports the state
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*); any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_REMOVE <note-id>                          removes an existing note
@@ -6016,6 +6081,8 @@ def main():
         state["goal"] = P["goal"]
         write_goal(P["goal"])
         print("  [GOAL SET] " + P["goal"])
+    if P.get("steward"):
+        steward_directive(P)
     if P["git_init"]:
         git_init(P["git_init"])
     if P["undo"] and (P["ops"] or P["git"]):
@@ -6027,8 +6094,8 @@ def main():
     else:
         git_ok = True
         if P["git"]:
-            repo_ops = [op for op in P["git"] if op["kind"] in REPO_KINDS]
-            git_rest = [op for op in P["git"] if op["kind"] not in REPO_KINDS]
+            repo_ops = [op for op in P["git"] if op["kind"] in REPO_KINDS or op["kind"] == "remote"]
+            git_rest = [op for op in P["git"] if op["kind"] not in REPO_KINDS and op["kind"] != "remote"]
             git_ok = run_git_ops(git_rest) if git_rest else True
             if git_ok and git_rest:
                 state["committed_through"] = P["num"] - 1 if P["ops"] else P["num"]
