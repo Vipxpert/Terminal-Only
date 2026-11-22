@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- setup.cmd and setup.sh print the available and the installed harness version before replacing anything ("available 3.14 | installed 3.13", or "installed none" on a first install) and the version now installed at the end; the number is read as text from harness.py's VERSION line, so no Python is needed.
+
 - The footer shows a count and the names of the other sessions instead of a line each (aim, write scope, chat address), a cost that grew with every chat and never shrank; the full list stays in the footer while this chat waits on blocked work, holds delegated or inherited work, or is braked, and the new read-only @SESSIONS prints it on demand. The @MESSAGE card no longer says a message is shown once: it stays until the recipient's next numbered script.
 
 - Fix: the three-way merge of notes.md reads an own note ([own: <session>]) as an own note, as the loader does; before, it survived only as part of the note's text.

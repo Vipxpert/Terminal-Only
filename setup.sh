@@ -38,6 +38,11 @@ for file in harness.py workflow_commands.txt; do
     fi
 done
 
+# Comment (decision): the version is read as text from the VERSION line of harness.py, so it needs neither Python nor a working install, and the installed one is read before the files are replaced
+version_of() { sed -n 's/^VERSION = "\(.*\)".*/\1/p' "$1" 2>/dev/null | head -n 1; }
+AVAILABLE=$(version_of "$SOURCE_DIR/harness.py")
+INSTALLED_BEFORE=$(version_of "$TARGET_DIR/harness.py")
+echo "Harness version: available ${AVAILABLE:-unknown} | installed ${INSTALLED_BEFORE:-none}"
 STAMP=$(date '+%Y%m%d-%H%M%S')
 TEMP_DIR="$TARGET_DIR/.setup-tmp-$STAMP"
 BACKUP_DIR="$TARGET_DIR/.backups/$STAMP"
@@ -200,4 +205,5 @@ fi
 echo ""
 echo "Setup successful."
 echo "Harness installed at: $TARGET_DIR"
+echo "Installed version now: $(version_of "$TARGET_DIR/harness.py")"
 [ ! -d "$BACKUP_DIR" ] || echo "Harness backup at: $BACKUP_DIR"

@@ -33,6 +33,9 @@ for %%F in (harness.py workflow_commands.txt) do (
     )
 )
 
+call :getver "%SOURCE_DIR%harness.py" AVAILABLE
+call :getver "%TARGET_DIR%\harness.py" INSTALLED_BEFORE
+echo Harness version: available %AVAILABLE% ^| installed %INSTALLED_BEFORE%
 for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "STAMP=%%I"
 if not defined STAMP (
     echo ERROR: PowerShell could not be started to read the date.
@@ -115,6 +118,8 @@ rd /s /q "%TEMP_DIR%" 2>nul
 echo.
 echo Setup successful.
 echo Harness installed at: %TARGET_DIR%
+call :getver "%TARGET_DIR%\harness.py" INSTALLED_NOW
+echo Installed version now: %INSTALLED_NOW%
 if "%EXISTING%"=="1" echo Harness backup at: %BACKUP_DIR%
 goto :end
 
@@ -128,3 +133,11 @@ if defined TEMP_DIR if exist "%TEMP_DIR%" echo Temporary files may remain at: %T
 echo.
 pause
 exit /b %EXIT_CODE%
+
+:: Comment (decision): the version is read as text from the VERSION line of a harness.py (a dot stands for each quote, so no quote has to be escaped); none means no file, unknown means no version line found
+:getver
+set "%~2=none"
+if not exist "%~1" exit /b 0
+set "%~2=unknown"
+for /f "delims=" %%V in ('powershell -NoProfile -Command "$m=[regex]::Match([IO.File]::ReadAllText('%~1'),'VERSION = .([0-9.]+).'); if($m.Success){$m.Groups[1].Value}"') do set "%~2=%%V"
+exit /b 0
