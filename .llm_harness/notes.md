@@ -1,3 +1,3 @@
 <!-- llm_harness_notes_next_id: 7 -->
 - [N004] The user can relay questions to ChatGPT, which can browse the web and inspect GitHub repositories; Claude in this chat cannot. When something external is unknown (a tool's options or docs, a repository's code, a release's changes), ask the user to have ChatGPT look it up instead of guessing.
-- [N006] [own: harness-dev] Todo: 1) release 3.15: if the full run is clean, commit the bump, push, tag v3.15.0 locally; 2) owner: run setup.cmd whole and paste its output; 3) owner: try gh with a real gh and two accounts; 4) optional: show [SENT, unread] to the message sender
+- [N006] [own: harness-dev] Todo: 1) owner: say "push the tags" to publish v3.15.0; 2) owner: run setup.cmd whole and paste its output; 3) owner: try gh with a real gh and two accounts; 4) optional: show [SENT, unread] to the message sender
