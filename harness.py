@@ -3935,7 +3935,11 @@ def log_event(event):
     event.setdefault("aim", "")
     event.setdefault("paths", [])
     event["seq"], event["time"] = log["seq"], time.time()
-    log["events"] = (log["events"] + [event])[-200:]
+    # Comment (invariant): the newest 200 events are kept, and so is any event addressed to a session that has not read it yet (its seen_seq is behind), up to 1000 in all; trimming by count alone would delete a message for a chat that stays idle while others work
+    reg = load_json(sessions_path(), {})
+    allev = log["events"] + [event]
+    unread = [e for e in allev[:-200] if isinstance(reg.get(e.get("to")), dict) and e.get("seq", 0) > (reg[e["to"]].get("seen_seq") or 0)]
+    log["events"] = (unread + allev[-200:])[-1000:]
     save_json(events_path(), log)
 
 def hand_over_work(reg, me, arg):
@@ -4206,7 +4210,10 @@ def merge_session_cli():
                     new_verdicts[k] = v
             if moved_verdicts:
                 save_json(verdicts_path(), dict(vdata, verdicts=new_verdicts))
-        if src_rec is None and not src_grants and not hist_paths and not moved_notes and not moved_verdicts:
+        src_seen = (src_rec or {}).get("seen_seq", 0)
+        # Comment (decision): messages sent to the merged-away session that it never read are sent again to the session it is merged into (a released session has no read position, so nothing is guessed for it)
+        pending = [e for e in load_json(events_path(), {"events": []}).get("events", []) if src_rec and e.get("to") == src and e.get("seq", 0) > src_seen and e.get("kind") not in ("brake", "session merged by the user")]
+        if src_rec is None and not src_grants and not hist_paths and not moved_notes and not moved_verdicts and not pending:
             print("nothing found for session %s; sessions: %s" % (src, ", ".join(sorted(reg)) or "none"))
             return
         drec = reg[dst]
@@ -4261,6 +4268,10 @@ def merge_session_cli():
             moved.append("notes (%d)" % moved_notes)
         if moved_verdicts:
             moved.append("verdicts (%d)" % moved_verdicts)
+        if pending:
+            for e in pending:
+                log_event({"session": e.get("session", src), "kind": e.get("kind", "message"), "to": dst, "text": "(sent to %s before it was merged into you) %s" % (src, e.get("text", ""))})
+            moved.append("messages (%d)" % len(pending))
         summary = ", ".join(moved) or "empty session record"
         save_json(sessions_path(), reg)
         log_event({"session": dst, "kind": "session merged by the user", "to": dst, "text": "merged session %s into your session (%s)" % (src, summary)})

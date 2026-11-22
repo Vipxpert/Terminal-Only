@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Fix: a message another chat sent to a session that was then merged away (--merge) is sent again to the session it was merged into, with a note, and the shared event log keeps every event addressed to a chat that has not read it yet (it kept only the newest 200, so a message for an idle chat could be trimmed away while others worked).
+
 - @GIT_REMOTE [<name> [<url>]] lists the remotes, or adds a remote or changes its address (https or ssh only, no password or token inside, never removes or renames one) and prints the old and the new address; the rule "git only via @GIT_*" no longer leaves the AI without a way to set where code is published.
 - @STEWARD [on | off]: the AI asks, the user's terminal asks one question (Enter agrees), and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes, so the user never has to remember the --steward command (it stays as a manual fallback).
 - Fix: a .git folder counts as a git repository only with a HEAD inside it (or as a file, for a worktree); a folder holding only harness state ran in git mode, and @GIT_INIT answered that it was a repository already.
