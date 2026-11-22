@@ -3,6 +3,8 @@
 What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), friction (the same manual step, workaround or reminder more than once), deferred (decided to do later), idea (speculative: no evidence yet).
 
 ## Unverified
+- A @SIDE script that carries the same @SESSION as a numbered chat runs the same end-of-run delivery for that session (seen in main), so it could print that chat's messages into an output meant for a second chat and consume them there; never tested. (2026-11-22)
+- A session that ends (@SESSION_END) or is released while messages for it are unread may lose them silently, because a message can only be sent to a session still in the registry; not tested. (2026-11-22)
 
 - setup.cmd copying knowledge/ and playbooks/ has never run on Windows; they were copied by hand. Run setup.cmd once and look in ~/.llm_harness. (2026-11-22)
 - The planning trigger and the three playbooks have never met a real request; the first big task is the trial. (2026-11-22)
@@ -10,6 +12,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - macOS has never been tested, and CI on GitHub is off (Actions disabled until billing is sorted). (2026-11-22)
 
 ## Questions
+- Gemini (another project, script ids not visible here) reported a message that never appeared in the recipient's footers. Ask it for the sender's [SENT] line and the recipient's exact @SESSION name; the loss paths found so far are listed under Gaps. (2026-11-22)
 
 - MongoDB entries for the knowledge library: what Motor's AsyncIOMotorGridFSBucket.find() yields, and the documented fix for $$ROOT memory use inside $group. Ask ChatGPT. (2026-11-22)
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)

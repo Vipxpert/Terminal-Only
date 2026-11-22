@@ -74,6 +74,7 @@
     ├── steward_prompt_test.py (@STEWARD changes the switch only on the user's own answer at the terminal (Enter agrees, n declines, no terminal changes nothing); a side or repeatable script cannot ask; tested with a fake console)
     ├── git_remote_test.py (@GIT_REMOTE lists, adds or changes a remote and names the old address; refuses non-https/ssh addresses, passwords or tokens in the address, option-like names and addresses, and extra words; never removes a remote)
     ├── message_flows_test.py (A message one chat sends another must reach it: the control, a replay of the delivering script, a merge of the recipient's session, and a wrong name that the sender is told about)
+    ├── event_log_test.py (The shared event log keeps the newest 200 events and every event addressed to a session that has not read it yet, up to 1000; once read, or addressed to nobody, an event is trimmed like the rest)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)
