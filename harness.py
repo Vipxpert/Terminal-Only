@@ -1113,10 +1113,17 @@ def execute_ops(ops):
                 continue
             for i in at:
                 lines[i] = lines[i].replace(op["find"], op["replace"])
+            shown = lines[at[0]].strip()
+            # Comment (decision): an empty replacement that leaves a whole line empty removes that line (it used to leave a blank line behind); a later text replacement of the same script that was limited to a scope (lo, hi) was measured before the removal and may miss by a line, so it is refused with its own message and can be sent in a script of its own
+            gone = [i for i in at if op["replace"] == "" and not lines[i].strip()]
+            for i in reversed(gone):
+                del lines[i]
             cur[rel] = "\n".join(lines)
             touch(rel)
-            shown = lines[at[0]].strip()
-            op["status"], op["detail"] = "OK", "line %d now: %s" % (at[0] + 1, shown if len(shown) <= 110 else shown[:110] + "...")
+            if gone and len(gone) == len(at):
+                op["status"], op["detail"] = "OK", "%d line(s) removed, from line %d" % (len(gone), gone[0] + 1)
+            else:
+                op["status"], op["detail"] = "OK", "line %d now: %s" % (at[0] + 1, shown if len(shown) <= 110 else shown[:110] + "...")
         elif op["type"] == "new_file":
             if text is not None and op.get("init"):
                 op["status"], op["detail"] = "ALREADY APPLIED", "ledger exists: update it with @FILE hunks scoped by its # Stage anchors"

@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @TEXT_REPLACE with an empty replacement now removes the whole line when nothing else is left on it (it left a blank line behind, which piled up in files edited this way); a replacement that leaves other text on the line, and any ordinary replacement, behave as before.
+
 - Fix: a @REPEATABLE script that carries a number and a @REDO that cannot run are refused with a footer that names the chat's own session (THIS SESSION, OTHER SESSIONS, its own command list), like every other run; the session is now named as soon as the saved state is loaded (name_session).
 
 - @TAKEOVER <session>: the AI asks to continue another chat's work, and the user's terminal asks one question (Enter agrees); it does what the --merge command does (write scope, grants, notes, verdicts, queues, unread messages), so the user never types --merge. With no terminal, or in a @SIDE or @REPEATABLE script, nothing changes. The merge itself is one shared function (merge_sessions), and a note pinned with "pin *" is documented on the card as reaching every chat with a session, those that appear later too.
