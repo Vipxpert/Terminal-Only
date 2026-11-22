@@ -1610,6 +1610,38 @@ def remote_login_info():
     m = re.match(r"^(https?)://(?:[^@/]+@)?([^/:]+)", url.strip())
     return {"url": url.strip(), "scheme": m.group(1) if m else None, "host": m.group(2) if m else ""}
 
+GH_SOURCE = "GitHub CLI (gh)"
+
+def parse_gh_accounts(text, host):
+    """(logins, active) from 'gh auth status --json hosts': only accounts whose state is success count, because that command exits 0 even when a login is broken; garbage gives ([], None)."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return [], None
+    hosts = data.get("hosts") if isinstance(data, dict) else None
+    rows = hosts.get(host) if isinstance(hosts, dict) else None
+    ok = [r for r in (rows or []) if isinstance(r, dict) and r.get("state") == "success" and r.get("login")]
+    return list(dict.fromkeys(r["login"] for r in ok)), next((r["login"] for r in ok if r.get("active")), None)
+
+def run_gh(args):
+    """Run the gh CLI: (exit code, stdout, stderr); 127 when it is not installed or hangs."""
+    try:
+        p = subprocess.run(["gh"] + args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, "", "gh is not available"
+    return p.returncode, p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
+
+def gh_after_pin(host, login, source):
+    """After pinning an account that came from gh: switch gh's active account to it and say whether git uses gh as its credential helper. The harness never runs 'gh auth setup-git' itself, since that edits the user's git config."""
+    if source != GH_SOURCE:
+        return
+    rc, out, err = run_gh(["auth", "switch", "--hostname", host, "--user", login])
+    last = ((err or out).strip().splitlines() or ["exit code %d" % rc])[-1]
+    print("  [GH] %s" % ("gh's active account for %s is now %s" % (host, login) if rc == 0 else "gh auth switch failed: " + last))
+    helpers = run_git(["config", "--get-all", "credential.helper"])[1] + "\n" + run_git(["config", "--get-all", "credential.https://%s.helper" % host])[1]
+    if not re.search(r"gh(\.exe)?\"?\s+auth\s+git-credential", helpers):
+        print("  -> git does not use gh as its credential helper here, so https pushes will not use this account yet; set it up once with: gh auth setup-git --hostname %s" % host)
+
 def known_accounts(host):
     """(accounts, source): the signed-in accounts for a host. GitHub is asked through Git Credential Manager ('github list'); failing that, on Windows, the git entries of the credential list."""
     found = []
@@ -1625,6 +1657,13 @@ def known_accounts(host):
             found = parse_cmdkey_accounts(out, host)
             if found:
                 return found, "the Windows credential list"
+    # Comment (decision): the GitHub CLI is the last source, for machines (a headless Linux server, say) that have gh but no Git Credential Manager; it lists only accounts that are signed in and healthy
+    if host == "github.com":
+        rc, out, _ = run_gh(["auth", "status", "--hostname", host, "--json", "hosts", "--no-refresh"])
+        if rc == 0:
+            found, _active = parse_gh_accounts(out, host)
+            if found:
+                return found, GH_SOURCE
     return [], ""
 
 def offer_account_pin():
@@ -2008,6 +2047,7 @@ def run_repo_ops(ops):
                 pick = match or want
                 run_git(["config", "--local", key, pick])
                 print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], pick))
+                gh_after_pin(info["host"], pick, source)
                 continue
             while True:
                 print("  [GIT ACCOUNT] %s%s" % (info["host"], "  (accounts from %s)" % source if source else ""))
@@ -2027,6 +2067,7 @@ def run_repo_ops(ops):
                     pick = shown[int(pressed) - 1]
                     run_git(["config", "--local", key, pick])
                     print("  [PINNED] %s -> %s (this project on this machine)" % (info["host"], pick))
+                    gh_after_pin(info["host"], pick, source)
                 elif pressed is None:
                     print("  -> pin one with @GIT_ACCOUNT <account>, add one with 'git credential-manager github login', or remove the pin with @GIT_ACCOUNT clear")
                 break
@@ -5435,7 +5476,7 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true
   @GIT_PUSH [tag <name>]                          publishes the current branch's commits to its upstream (origin the first time), or one tag; never forced, never a protected branch (git.json); a rejected push is reported, not overridden
   @GIT_PULL                                       fast-forwards a clean checkout to its upstream (bookmarking where it was); when the branches have diverged it only reports whether a merge would conflict, and changes nothing. The footer's UPSTREAM line says what is incoming
-  @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager) and, at a terminal, lets the user press a number to pin one for this project, or A to sign in another account first; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
+  @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager, else the gh CLI, whose active account is then switched too) and, at a terminal, lets the user press a number to pin one for this project, or A to sign in another account first; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
   @GIT_REMOTE [<name> [<url>]]                    lists the remotes, shows one, or adds it / changes its address (an https:// or ssh address with no password or token in it; a remote is never removed or renamed); '@GIT_REMOTE origin <url>' prints the old and the new address, and @GIT_PUSH then publishes there
 """
 
