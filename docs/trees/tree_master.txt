@@ -69,6 +69,8 @@
     ├── check_command_test.py (The user's own check command, set with --check and kept on this machine for the project, runs after a change to a file of that type and only reports; a script cannot set it; a failing command rolls nothing back; a clear removes it)
     ├── knowledge_test.py (The library is read from knowledge/<technology>.txt; @HELP KB lists technologies and finds entries by technology, tag or symptom words, hides retired entries and keeps its output short; the shipped library has no malformed, repeated or contradicted entries)
     ├── untracked_tokens_test.py (A git project whose only uncommitted item is an untracked .llm_harness folder holding just tokens.json keeps the git rule folded)
+    ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
+    ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too)
     ├── kb_search_test.py (A project's technologies are detected from manifests, file types, file names and imports; the search shows only those unless named or all, needs a strong match or two matched words, and leaves out entries that cover little of the question)
     ├── playbook_test.py (@PLAYBOOK lists the playbooks and when to use each, prints one by name without its automatic header, says so for an unknown name; the shipped playbooks say when to use them and stay short)
     ├── rename_folder_test.py (@RENAME on a folder moves it file by file through the journal, binary files and exact bytes kept; undo restores it; unsafe moves are refused whole; claims apply per file)
