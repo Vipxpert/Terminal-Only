@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.14
+
 - @TEXT_REPLACE with an empty replacement now removes the whole line when nothing else is left on it (it left a blank line behind, which piled up in files edited this way); a replacement that leaves other text on the line, and any ordinary replacement, behave as before.
 
 - Fix: a @REPEATABLE script that carries a number and a @REDO that cannot run are refused with a footer that names the chat's own session (THIS SESSION, OTHER SESSIONS, its own command list), like every other run; the session is now named as soon as the saved state is loaded (name_session).
