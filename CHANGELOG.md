@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @NOTE_PIN <id> <*|names|all|own> changes only who sees a note, never its text (* = every chat with a session, new ones too; all = a plain note; own = the chat's own to-do), so a pin no longer means resending the note. A note's text before " || " is all the footers print, followed by "(more: @NOTE_LIST <id>)", and @NOTE_LIST <id> prints one note whole; a note without " || " prints in full as before.
+
 ## 3.15
 
 - @GIT_ACCOUNT also finds accounts through the GitHub CLI when Git Credential Manager and the Windows credential list find none (a headless Linux machine, say): it reads `gh auth status --json hosts`, offers only healthy accounts, and pinning one also runs `gh auth switch`; when git does not use gh as its credential helper it says to run `gh auth setup-git --hostname <host>` and never runs it. SSH remotes are unchanged: an SSH key picks the account there, and gh cannot switch it.

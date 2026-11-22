@@ -690,7 +690,7 @@ def check_files(changed, pre):
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
-              "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
+              "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
@@ -891,6 +891,12 @@ def parse_payload(txt):
             else:
                 who, text, own = note_audience(nm.group(2))
                 P["notes"].append({"action": "edit", "id": nm.group(1).upper(), "text": text, "for": who, "own": own})
+        elif d == "NOTE_PIN":
+            pm = re.match(r"^(N\d+)\s+(.+)$", arg, re.IGNORECASE)
+            if not pm:
+                P["warnings"].append("expected '@NOTE_PIN <note-id> <*, names, all or own>'")
+            else:
+                P["notes"].append({"action": "pin", "id": pm.group(1).upper(), "aud": pm.group(2).strip()})
         elif d == "NOTE_REMOVE":
             if not re.fullmatch(r"N\d+", arg, re.IGNORECASE):
                 P["warnings"].append("expected '@NOTE_REMOVE <note-id>'")
@@ -5153,9 +5159,9 @@ def print_footer_notes():
         if note_for(note, CURRENT_SESSION):
             # Comment (decision): the AI writes every note, so only the [own] mark it sets on its own to-do says who it belongs to; without it a chat that takes this one over would read the AI's plan as the owner's instruction
             if note.get("own"):
-                print("=== NOTE %s (this chat's own to-do, written by the AI, not the user's): %s ===" % (note["id"], note["text"]))
+                print("=== NOTE %s (this chat's own to-do, written by the AI, not the user's): %s ===" % (note["id"], brief_text(note)))
             else:
-                print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", pinned to this chat" if note.get("for") else "", note["text"]))
+                print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", pinned to this chat" if note.get("for") else "", brief_text(note)))
 
 def rule_hash(body):
     return hashlib.sha1(body.strip().strip("`").strip().encode("utf-8")).hexdigest()[:12]
@@ -5335,6 +5341,11 @@ def note_audience(arg):
         return None, arg.strip(), False
     return [x.strip() for x in m.group(1).split(",") if x.strip()], m.group(2).strip(), False
 
+def brief_text(note):
+    """A note's footer text: the part before ' || ' with a pointer to @NOTE_LIST <id> for the rest; a note without ' || ' prints in full."""
+    head, sep, _ = note["text"].partition(" || ")
+    return (head.strip() + " (more: @NOTE_LIST %s)" % note["id"]) if sep else note["text"]
+
 def note_mark(note):
     """The tag written before a note's text: [own: <session>] for a chat's own to-do, [pin: <names>] for a note pinned to chats, nothing for a note for every chat."""
     if not note.get("for"):
@@ -5399,7 +5410,9 @@ def print_workspace_notes(query=None):
         return
 
     words = (query or "").lower().split()
-    if words:
+    if len(words) == 1 and re.fullmatch(r"n\d+", words[0]):
+        notes = [n for n in notes if n["id"].lower() == words[0]]
+    elif words:
         notes = [n for n in notes if all(w in ("%s %s" % (" ".join(n.get("for") or []), n["text"])).lower() for w in words)]
     print("=== WORKSPACE NOTES%s ===" % (" matching '%s'" % query.strip() if words else ""))
     if not notes:
@@ -5447,6 +5460,32 @@ def execute_note_ops(ops):
                     found["for"], found["own"] = op["for"], False
                 write_workspace_notes(notes, next_id)
                 print("  [NOTE EDITED] %s" % op["id"])
+
+            elif action == "pin":
+                found = next((n for n in notes if n["id"] == op["id"]), None)
+                if found is None:
+                    print("  [NOTE ERROR] note ID not found: %s" % op["id"])
+                    continue
+                aud = re.sub(r"(?i)^(pin|for)\s+", "", op["aud"].strip())
+                low = aud.lower()
+                if low in ("all", "plain", "none"):
+                    found["for"], found["own"] = None, False
+                    shown = "every chat, and runs without a session"
+                elif low == "own":
+                    if not CURRENT_SESSION:
+                        print("  [NOTE ERROR] @NOTE_PIN ... own needs the script's @SESSION line: the note belongs to that chat")
+                        continue
+                    found["for"], found["own"] = [CURRENT_SESSION], True
+                    shown = "this chat's own to-do"
+                else:
+                    names = [x.strip() for x in aud.split(",") if x.strip()]
+                    if not names:
+                        print("  [NOTE ERROR] @NOTE_PIN needs *, chat names, all or own")
+                        continue
+                    found["for"], found["own"] = names, False
+                    shown = "every chat with a session, new ones too" if names == ["*"] else ", ".join(names)
+                write_workspace_notes(notes, next_id)
+                print("  [NOTE PINNED] %s -> %s" % (op["id"], shown))
 
             elif action == "remove":
                 kept = [n for n in notes if n["id"] != op["id"]]
@@ -5870,6 +5909,7 @@ def print_card(shell, workspace):
   @TAKEOVER <session>                             asks the user at the terminal to let this chat take over what another chat holds (its write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; use it to continue a dead or finished chat's work
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*; 'pin *' reaches every chat with a session, those that appear later too); '@NOTE_ADD own | <text>' is the running chat's own to-do, pinned to it and shown as its own, never as the user's; any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
+  @NOTE_PIN <note-id> <*|names|all|own>           changes only who sees a note, never its text: * every chat with a session (new ones too), names or patterns, all = a plain note (also for runs without a session), own = this chat's own to-do; a note's text before ' || ' is all footers print, '@NOTE_LIST <note-id>' prints it whole
   @NOTE_REMOVE <note-id>                          removes an existing note
   @NOTE_LIST [words]                              prints all workspace notes, or those whose category, pins or text contain every word
   @FILE /<path>                                   selects the file for the hunks that follow
