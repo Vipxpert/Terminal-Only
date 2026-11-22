@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- The AI may keep its own to-do list as one short "Todo:" note pinned to its own session, and is encouraged to for work that spans several scripts or chats (it says so when it creates it, edits it as steps finish and removes it when done); standing-fact notes still need the user's ask, and a log of scripts, decisions or progress is still never written. A new user no longer has to know the capability exists.
+
 - Fix: the safety rule that refuses history-changing git commands in @RUN no longer refuses the listing forms git tag -n1 and git tag -n5 (it knew -n but not -n with a number).
 
 ## 3.14
