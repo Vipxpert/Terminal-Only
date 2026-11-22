@@ -88,6 +88,7 @@
     ├── handshake_rules_test.py (The handshake prints the whole workflow_commands.txt once; an ordinary script run does not)
     ├── note_own_merge_test.py (The notes.md three-way merge keeps an own note as an own note beside the other machine's note)
     ├── readonly_directives_test.py (A script holding @TAKEOVER or @STEWARD is neither read-only nor side-allowed; a plain listing is both)
+    ├── session_count_test.py (The footer counts and names the other sessions instead of listing each; @SESSIONS lists them with their aims; a lone session prints nothing)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)
