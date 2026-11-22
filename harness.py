@@ -4054,7 +4054,7 @@ def merge_session_cli():
                     dk = "%s\t%s" % (target, dst)
                     cur = new_verdicts.get(dk) or verdicts.get(dk)
                     if not isinstance(cur, dict) or float(v.get("time") or 0) >= float(cur.get("time") or 0):
-                        new_verdicts[dk] = dict(v, session=dst, target=target)
+                        new_verdicts[dk] = dict(v, session=dst, path=target)
                 elif k not in new_verdicts:
                     new_verdicts[k] = v
             if moved_verdicts:
@@ -4787,20 +4787,30 @@ def expand_redo(raw):
         j = e + 1
     return "\n".join(lines[:i] + [text] + lines[j:]), None
 
+def prune_runs(folder, pattern, by_time):
+    """Keep only the newest RUNS_KEEP saved runs matching the pattern: numbered runs by name, side runs by modification time."""
+    files = glob.glob(os.path.join(glob.escape(folder), pattern))
+    files.sort(key=(lambda p: (os.path.getmtime(p), p)) if by_time else None)
+    for stale in files[:max(0, len(files) - RUNS_KEEP)]:
+        try:
+            os.remove(stale)
+        except OSError:
+            pass
+
 def save_run(P, raw_txt, body):
     """Keep a run's output (without its footer) for replay; only the newest RUNS_KEEP runs are kept."""
     d = runs_dir()
     os.makedirs(d, exist_ok=True)
     if P.get("side"):
         save_json(side_run_path(raw_txt), {"id": P["id"], "key": payload_key(raw_txt), "output": body})
+        prune_runs(d, "side_*.json", True)
         return
     for old in glob.glob(os.path.join(d, "%06d_*.json" % P["num"])):
         os.remove(old)
     name = "%06d_%s.json" % (P["num"], re.sub(r"[^A-Za-z0-9_-]", "_", P["id"]))
     save_json(os.path.join(d, name), {"id": P["id"], "key": payload_key(raw_txt), "output": body, "payload": raw_txt})
-    runs = sorted(glob.glob(os.path.join(d, "*.json")))
-    for stale in runs[:max(0, len(runs) - RUNS_KEEP)]:
-        os.remove(stale)
+    # Comment (constraint): numbered runs and side runs are pruned separately; sorted together, every name that starts with a digit sorts before "side_" and a flood of side runs would delete all the numbered runs first, breaking @REDO and replay
+    prune_runs(d, "[0-9]*_*.json", False)
 
 def find_run(num):
     found = glob.glob(os.path.join(runs_dir(), "%06d_*.json" % num))
