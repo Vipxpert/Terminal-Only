@@ -82,6 +82,7 @@
     ├── text_remove_line_test.py (A @TEXT_REPLACE with an empty replacement removes the whole line it empties and leaves no blank line; part of a line, several matching lines and an ordinary replacement behave as expected)
     ├── git_write_re_test.py (The pattern that refuses history-changing git commands in @RUN refuses tag creation and deletion, commit and push, and lets the listing forms through, including git tag -n1 and -n5)
     ├── branch_tokens_test.py (@GIT_BRANCH switches to an existing branch that commits a different tokens.json while the local one is modified, and keeps the local counts, uncommitted)
+    ├── note_own_test.py (@NOTE_ADD own pins a to-do to the running chat and footers print it as the chat's own, not the user's; list and notes.md show [own: <session>]; other chats do not see it; a plain edit keeps the mark; no session is refused)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)
