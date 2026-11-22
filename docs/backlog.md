@@ -4,7 +4,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 
 ## Unverified
 - The @TAKEOVER question has not been seen at a real terminal (the test replaced the console with a fake one, as the @STEWARD test did before the owner pressed Enter); try it once when a second chat exists. (2026-11-22)
-- The accidental-paste wording ("one or two short lines, no manifest, remind what is pending") has not been seen working in a real chat: the owner reported that the old sample reply ("beep boop") was not followed. The harness cannot see a paste into the chat, so only the wording can help; check on the next accidental paste, and shorten [L1-Harness], the longest rule, if it still fails. (2026-11-22)
+- The accidental-paste wording ("one or two short lines, no manifest, remind what is pending") has not been seen working in a real chat: the owner reported that the old sample reply ("beep boop") was not followed. The harness cannot see a paste into the chat, so only the wording can help; check on the next accidental paste, and shorten [L1-Harness], the longest rule, if it still fails. Seen once (2026-11-22): the rule counted "[REPLAY] in it" as already answered, though a replay can be the first sight of an output that never reached the chat; that clause is reworded. (2026-11-22)
 
 - A session that ends (@SESSION_END) or is released while messages for it are unread may lose them silently, because a message can only be sent to a session still in the registry; not tested. (2026-11-22)
 
@@ -29,12 +29,12 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - @GIT_ACCOUNT knows only Git Credential Manager and, on Windows, the credential list (seen in known_accounts), so a headless Linux machine that has only the gh tool finds no accounts; offering gh needs gh's exact output formats, which ChatGPT is looking up. (2026-11-22)
 
 
-- A @REPEATABLE script that carries a script number is refused before the session is named, so that one refusal's footer probably still has no session lines; the lines above the naming point were not read. Check after the replay fix. (2026-11-22)
+- A @REPEATABLE script that carries a script number is refused before the session is named, so that one refusal's footer probably still has no session lines; read in main (2026-11-22): that refusal, and a @REDO refusal, return before the session is named; move the naming above them. (2026-11-22)
 
 - @GIT_BRANCH and @GIT_TAG switches probably share the tokens.json problem that @GIT_PULL had (git refuses a switch that would overwrite a locally modified tokens.json); not tested, and park_tokens / unpark_tokens could wrap them. (2026-11-22)
 
 - The tree's /tests node lists brief_rules_test.py twice, with two different descriptions. (2026-11-22)
-- The tree drift check (@PROBE tree | Check) reports 41 stale nodes, seen after the README script: 14 harness.py "# Stage:" anchors and 8 workflow_commands.txt anchors read as not found, and the 19 knowledge/ and playbooks/ file nodes read as files at the repository root (their parent nodes are probably not recognised as folders). Find out which were already stale before this session, then fix the nodes. (2026-11-22)
+- @TEXT_REPLACE with an empty NEW TEXT leaves an empty line behind when it removes a whole line (seen: docs/backlog.md has about ten stray blank lines after cleanups); remove the line instead, after reading expand_text_ops, then tidy the file. (2026-11-22)
 
 - A pitfall proven in another project has no path into the shared knowledge library: the AI there cannot write to the harness repository. Needs a proposal file or a ready-to-paste entry. (2026-11-22)
 - halagames-tools' own docs/knowledge.txt still holds the contradictory Split-Brain and headless-API entries that the shared library merged into one. (2026-11-22)
@@ -51,13 +51,13 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 ## Deferred
 
 - Releases: push tag v3.13.0 when the owner says so; cut 3.14 for the playbooks, backlog and review work. (2026-11-22)
-- Desktop: run setup.cmd (many commits behind), run --steward on for this repository, end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
+- Desktop: run setup.cmd (many commits behind), send @STEWARD on for this repository (one question at its terminal), end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
 - halagames-tools: pin the HalaGames account with @GIT_ACCOUNT; add !.llm_harness/git.json to .gitignore with the git.json branch policy; add the .gitattributes merge lines. (2026-11-22)
 - Laptop: point origin at the Terminal-Only repository on GitHub instead of the old llm_harness name. (2026-11-22)
 - Unity project Big&Small: no goal pinned, and the checkout is 9 commits behind its remote. (2026-11-22)
 
 ## Ideas
-- @TAKEOVER <old chat>: a directive that absorbs a dead or finished chat's scope, grants, notes, verdicts, queues and unread messages into this chat, with one question at the user's terminal (Enter agrees), so the owner never types --merge to move work to a new chat (owner's old note: transfer work to another chat, or several at once, with minimal conflicts; the rest of that is built: scopes, @DELEGATE, --merge, worktrees, messages). (2026-11-22)
+
 
 - A manual step the user must do BEFORE the script (an authentication, say) belongs in the first line of Talk, never only in the checklist after the script: reported by Gemini, where it was run in the wrong order. One short clause in [L1-Harness]. (2026-11-22)
 - Speculative: the harness could count its own repeated refusals, mismatches and failed commands from saved runs and hand them to the review, so friction is measured rather than remembered. (2026-11-22)

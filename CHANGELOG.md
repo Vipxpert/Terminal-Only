@@ -10,7 +10,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 - Fix: a message from another chat, a scope change and an [UNBLOCKED] notice no longer count as delivered when the harness prints them: they stay in the footers of that chat until it sends its next numbered script, the only proof it read the output, so a script pasted again because its output never reached the chat shows them again. A replay, an undo from a re-paste, a refused script and a @SIDE or @REPEATABLE script show them without confirming them (at worst one repeat, never a loss).
 
-- Fix: the rule for an accidental paste (an output the chat already answered, or one with no new information and no words from the user) and the LOOP CHECK line now ask the AI for one or two short, unformatted, discardable lines that say so and remind what is pending, instead of a manifest, a script and a checklist; the playful sample reply is gone.
+- Fix: the rule for an accidental paste (an output the chat already answered, or one with no new information and no words from the user) and the LOOP CHECK line now ask the AI for one or two short, unformatted, discardable lines that say so and remind what is pending, instead of a manifest, a script and a checklist; the playful sample reply is gone, and a replay of a script whose output the chat never saw counts as new, not as an accidental paste.
 
 - Fix: a message another chat sent to a session that was then merged away (--merge) is sent again to the session it was merged into, with a note, and the shared event log keeps every event addressed to a chat that has not read it yet (it kept only the newest 200, so a message for an idle chat could be trimmed away while others worked).
 
