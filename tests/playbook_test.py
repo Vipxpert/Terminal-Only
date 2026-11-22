@@ -41,7 +41,7 @@ def main():
     check("an unknown name says so and lists the playbooks", "no playbook named 'nothing-like-this'" in out and "alpha" in out and "beta" in out, out)
     os.environ["LLM_HARNESS_PLAYBOOKS"] = LIB
     shipped = hh.playbook_files()
-    check("the shipped playbooks include plan-first and plan-project", "plan-first" in shipped and "plan-project" in shipped and "review" in shipped, sorted(shipped))
+    check("the shipped playbooks include plan-first and plan-project", "plan-first" in shipped and "plan-project" in shipped and "review" in shipped and "intro" in shipped, sorted(shipped))
     bad = [n for n, t in shipped.items() if "use when:" not in t.split("\n")[0] or len(t) > 3500 or len(t.split("\n")) > 40]
     check("every shipped playbook says when to use it and stays short", not bad, bad)
     sys.exit(0 if all(RESULTS) else 1)

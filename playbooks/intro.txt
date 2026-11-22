@@ -1,0 +1,9 @@
+# /llm_harness/playbooks/intro.txt
+# use when: the user says they are new to this tool, or asks what it can do or how to use it
+Introduce the tool in plain words, no jargon, at most about 15 short lines, then one question.
+1. What it is: the chat AI writes one script per turn; the user pastes it into their terminal; the harness runs it and prints a short result to paste back. The user never edits files by hand and never has to learn the commands.
+2. What it gives them: token-efficient output; anti-drift context (goal, notes, architecture tree and rules come back in every footer); edits matched by content, with undo, and deleted files kept recoverable; commits and pushes done by the AI; several chats on one project without overwriting each other.
+3. What runs by itself when needed: a to-do note for work over several turns; a bug ledger when a bug survives repeated fixes; planning before big or open-ended work, after asking whether the request's own solution is the right one; messages between chats; a new chat taking over a dead chat's work (the user confirms at the terminal); a library of known pitfalls searched before using a technology.
+4. What only the user does: paste each script and each output; answer the occasional one-key question at the terminal; decide release-tag pushes; own the project goal and their notes.
+5. If something should have run and did not, that is a gap in the rules: they can ask for it by name (@HELP COMMANDS lists every command) and report it.
+6. End by asking what they want to build or fix first; if the project has no pinned goal yet, offer to pin one with @GOAL once they say it.
