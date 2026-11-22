@@ -13,7 +13,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - macOS has never been tested, and CI on GitHub is off (Actions disabled until billing is sorted). (2026-11-22)
 
 ## Questions
-- Owner's old note "Note renaming": rename what (a note's id, a chat name inside pins, a category)? Asked 2026-11-22. @NOTE_EDIT changes the text and its category prefix; --merge already renames a chat inside pins. (2026-11-22)
+
 - Gemini (another project, script ids not visible here) reported a message that never appeared in the recipient's footers. Ask it for the sender's [SENT] line and the recipient's exact @SESSION name; the loss paths found so far are listed under Gaps. (2026-11-22)
 
 - MongoDB entries for the knowledge library: what Motor's AsyncIOMotorGridFSBucket.find() yields, and the documented fix for $$ROOT memory use inside $group. Ask ChatGPT. (2026-11-22)
@@ -26,7 +26,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The other "once only" marks may share the weakness (code unread; the README says once): [CHANGED] and [NEW] on rules, the knowledge hint, the git greeting, the first look at other sessions' scopes and [WAKE]. (2026-11-22)
 
 - @GIT_ACCOUNT knows only Git Credential Manager and, on Windows, the credential list (seen in known_accounts), so a headless Linux machine that has only the gh tool finds no accounts; offering gh needs gh's exact output formats, which ChatGPT is looking up. (2026-11-22)
-- @RUN is one line: the lines after it become stray lines with a warning while the first line runs alone (reported by Gemini with a truncated python -c; the warning code is seen in main). Running a truncated command is the hazard; refuse a script whose @RUN is directly followed by stray lines and say to put a longer program in a @NEW_FILE. (2026-11-22)
+
 
 - A @REPEATABLE script that carries a script number is refused before the session is named, so that one refusal's footer probably still has no session lines; the lines above the naming point were not read. Check after the replay fix. (2026-11-22)
 
@@ -57,7 +57,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 
 ## Ideas
 - @TAKEOVER <old chat>: a directive that absorbs a dead or finished chat's scope, grants, notes, verdicts, queues and unread messages into this chat, with one question at the user's terminal (Enter agrees), so the owner never types --merge to move work to a new chat (owner's old note: transfer work to another chat, or several at once, with minimal conflicts; the rest of that is built: scopes, @DELEGATE, --merge, worktrees, messages). (2026-11-22)
-- Owner's old note: a note pin mode for every chat including ones that appear later; a plain @NOTE_ADD and "pin *" should already do it, tests/note_pin_all_test.py checks; document it on the card if so. (2026-11-22)
+
 - A manual step the user must do BEFORE the script (an authentication, say) belongs in the first line of Talk, never only in the checklist after the script: reported by Gemini, where it was run in the wrong order. One short clause in [L1-Harness]. (2026-11-22)
 - Speculative: the harness could count its own repeated refusals, mismatches and failed commands from saved runs and hand them to the review, so friction is measured rather than remembered. (2026-11-22)
 - When an @RUN command fails, search the knowledge library with its error text and print the matching entries automatically. (2026-11-22)
