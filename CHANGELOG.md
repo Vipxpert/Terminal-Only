@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Fix: the safety rule that refuses history-changing git commands in @RUN no longer refuses the listing forms git tag -n1 and git tag -n5 (it knew -n but not -n with a number).
+
 ## 3.14
 
 - @TEXT_REPLACE with an empty replacement now removes the whole line when nothing else is left on it (it left a blank line behind, which piled up in files edited this way); a replacement that leaves other text on the line, and any ordinary replacement, behave as before.

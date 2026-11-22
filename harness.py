@@ -2489,7 +2489,7 @@ def run_grep(arg):
 # ---------------------------------------------------------------- Stage: Running commands
 
 # Comment (decision): 'git tag' alone, 'git tag --list' and the other listing forms, and 'git stash list' or 'show' only read; the same words with a name, -d, -a or -f still write, so they stay refused
-GIT_WRITE_RE = re.compile(r"(^|[;&|(]\s*)git(\.exe)?\s+(commit|push|pull|reset|rebase|merge|cherry-pick|revert|checkout|switch|stash(?!\s+(?:list|show)\b)|clean|restore|am|apply|tag(?!\s*(?:$|[;&|)]|-l\b|--list\b|-n\b|--contains\b|--points-at\b|--merged\b|--no-merged\b|--sort\b))|branch\s+-[dDmM])\b", re.I)
+GIT_WRITE_RE = re.compile(r"(^|[;&|(]\s*)git(\.exe)?\s+(commit|push|pull|reset|rebase|merge|cherry-pick|revert|checkout|switch|stash(?!\s+(?:list|show)\b)|clean|restore|am|apply|tag(?!\s*(?:$|[;&|)]|-l\b|--list\b|-n\d*\b|--contains\b|--points-at\b|--merged\b|--no-merged\b|--sort\b))|branch\s+-[dDmM])\b", re.I)
 
 def kill_tree(proc):
     """Stop a command and every process it started."""
