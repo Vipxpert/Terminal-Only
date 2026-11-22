@@ -92,6 +92,8 @@
     ├── setup_version_test.py (setup.sh prints the available and the installed version before replacing anything and the version now installed, for a first install and an upgrade, in a temporary HOME with fake curl and xclip)
     ├── setup_cmd_getver_test.py (setup.cmd's :getver subroutine, cut out and run alone with cmd /c, reads a VERSION line, says none for a missing file and unknown for a file without a version line; Windows only)
     ├── gh_account_test.py (The gh CLI is a source of accounts for @GIT_ACCOUNT: the JSON parser keeps healthy accounts of the asked host; with a fake gh, accounts are listed, a pin also switches gh, and gh auth setup-git is named when git does not use gh as its helper)
+    ├── note_pin_switch_test.py (A note pinned with * reaches a chat that appears later; @NOTE_EDIT narrows it to named chats and widens it back; a plain edit keeps the pin)
+    ├── note_pin_action_test.py (@NOTE_PIN changes only a note's audience: *, names, all, own; a note's text before || is all a footer prints, and @NOTE_LIST <id> prints it whole)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)
