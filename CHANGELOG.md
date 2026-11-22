@@ -4,6 +4,9 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Fix: the three-way merge of notes.md reads an own note ([own: <session>]) as an own note, as the loader does; before, it survived only as part of the note's text.
+- Fix: a script holding @TAKEOVER or @STEWARD no longer counts as one that only reads or that a @SIDE or @REPEATABLE script may carry, so a stale re-paste of it is not run again and does not ask the user a second time.
+
 - @LIST_DIR and @LIST_RECURSIVE count, instead of list, what .gitignore excludes (now also in @LIST_DIR) and binary or media files (images, video, audio, archives, parquet and other data files, databases, compiled files, fonts, PDFs, logs), and '| all' lists them; .json and .sql stay listed.
 - The handshake prints the whole workflow_commands.txt once, so a new chat starts with one paste instead of the rules file plus the handshake.
 

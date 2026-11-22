@@ -4998,7 +4998,7 @@ def expand_text_ops(P):
 
 def side_allowed(P):
     """A @SIDE script may only read, search and @RUN: no file, note, goal, git or undo actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"])
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover"))
 
 def side_run_path(raw_txt):
     return os.path.join(runs_dir(), "side_%s.json" % payload_key(raw_txt)[:16])
@@ -5066,7 +5066,7 @@ def idle_script(P):
 
 def read_only(P):
     """True when a script only reads: no file, note, goal, git, undo or @RUN actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"])
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover"))
 
 def load_state():
     """Numbering and shell from the machine-local state file; the goal from .llm_harness/goal.md, which travels with the project."""
@@ -5910,8 +5910,8 @@ def parse_notes_text(text):
             if not entry:
                 raise ValueError("unrecognized line in notes.md: %s" % line[:80])
             nid, body = entry.group(1).upper(), entry.group(2)
-            fm = re.match(r"^\[(?:pin|for): ([^\]]+)\] (.+)$", body)
-            notes.append({"id": nid, "text": fm.group(2) if fm else body, "for": [x.strip() for x in fm.group(1).split(",") if x.strip()] if fm else None})
+            fm = re.match(r"^\[(pin|for|own): ([^\]]+)\] (.+)$", body)
+            notes.append({"id": nid, "text": fm.group(3) if fm else body, "for": [x.strip() for x in fm.group(2).split(",") if x.strip()] if fm else None, "own": bool(fm) and fm.group(1) == "own"})
             next_id = max(next_id, int(nid[1:]) + 1)
     return notes, next_id
 
