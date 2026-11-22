@@ -3,6 +3,7 @@
 What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), friction (the same manual step, workaround or reminder more than once), deferred (decided to do later), idea (speculative: no evidence yet).
 
 ## Unverified
+- The @TAKEOVER question has not been seen at a real terminal (the test replaced the console with a fake one, as the @STEWARD test did before the owner pressed Enter); try it once when a second chat exists. (2026-11-22)
 - The accidental-paste wording ("one or two short lines, no manifest, remind what is pending") has not been seen working in a real chat: the owner reported that the old sample reply ("beep boop") was not followed. The harness cannot see a paste into the chat, so only the wording can help; check on the next accidental paste, and shorten [L1-Harness], the longest rule, if it still fails. (2026-11-22)
 
 - A session that ends (@SESSION_END) or is released while messages for it are unread may lose them silently, because a message can only be sent to a session still in the registry; not tested. (2026-11-22)
