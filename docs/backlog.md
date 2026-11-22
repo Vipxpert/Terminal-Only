@@ -48,7 +48,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 
 ## Deferred
 
-- Releases: push tag v3.13.0 when the owner says so; cut 3.14 for the playbooks, backlog and review work. (2026-11-22)
+- Releases: tags v3.13.0 and v3.14.0 exist only on this machine; push each with @GIT_PUSH tag <name> when the owner says so (a tag push can start a deployment), ideally after one run of setup.cmd on Windows. (2026-11-22)
 - Desktop: run setup.cmd (many commits behind), send @STEWARD on for this repository (one question at its terminal), end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
 - halagames-tools: pin the HalaGames account with @GIT_ACCOUNT; add !.llm_harness/git.json to .gitignore with the git.json branch policy; add the .gitattributes merge lines. (2026-11-22)
 - Laptop: point origin at the Terminal-Only repository on GitHub instead of the old llm_harness name. (2026-11-22)
