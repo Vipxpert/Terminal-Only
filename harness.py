@@ -773,7 +773,11 @@ def parse_payload(txt):
         elif d == "RUN":
             mt = re.match(r"^--timeout\s+(\d+)\s+(.*)$", arg)
             cmd, limit = (mt.group(2), min(3600, int(mt.group(1)))) if mt else (arg, RUN_TIMEOUT)
-            if cmd.strip():
+            nxt = lines[i + 1] if i + 1 < n else ""
+            # Comment (invariant): an @RUN is one line, so a line after it that is not blank, not a # comment and not a directive means the command was probably broken across lines (a multi-line python -c, say); running the first line alone could do something else than was meant, so the command is not run
+            if cmd.strip() and nxt.strip() and not nxt.startswith("#") and not re.match(r"^@([A-Z_]+)(?:[ \t]+(.*))?$", nxt):
+                P["warnings"].append("@RUN at payload line %d is directly followed by a line that is not a directive, so the command was probably cut off at the line break and was not run (an @RUN is one line: put a longer program in a @NEW_FILE and run it with @RUN python <file>)" % (i + 1))
+            elif cmd.strip():
                 P["runs"].append({"cmd": cmd.strip(), "timeout": max(1, limit)})
             else:
                 P["warnings"].append("@RUN needs a command")
