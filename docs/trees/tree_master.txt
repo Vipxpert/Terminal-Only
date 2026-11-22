@@ -86,6 +86,8 @@
     ├── note_own_test.py (@NOTE_ADD own pins a to-do to the running chat and footers print it as the chat's own, not the user's; list and notes.md show [own: <session>]; other chats do not see it; a plain edit keeps the mark; no session is refused)
     ├── list_junk_test.py (Listings count instead of list what .gitignore excludes and binary or media files; '| all' lists them; a project without git hides binary files too)
     ├── handshake_rules_test.py (The handshake prints the whole workflow_commands.txt once; an ordinary script run does not)
+    ├── note_own_merge_test.py (The notes.md three-way merge keeps an own note as an own note beside the other machine's note)
+    ├── readonly_directives_test.py (A script holding @TAKEOVER or @STEWARD is neither read-only nor side-allowed; a plain listing is both)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)

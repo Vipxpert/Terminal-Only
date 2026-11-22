@@ -12,24 +12,49 @@ A chat orchestrator, a code implementation tool that is...
 - Undo, and a recycle bin for deleted files
 - Git actions automated
 - Several chats on one project, with conflict prevention
-- Magically code relations search algorithm CBM (https://github.com/DeusData/codebase-memory-mcp), along with tree files that explain the code's meaning
+- Magically code relations search algorithm [CBM](https://github.com/DeusData/codebase-memory-mcp), along with tree files that explain the code's meaning
 - Code-aware for C, C++, C#, Java, Kotlin, Scala, Go, Rust, Swift, Dart, PHP, Python, JavaScript, TypeScript and Vue; edits any other text file safely (SQL, Lua, CSS, HTML, XML, YAML, shell, PowerShell...)
 
-You are likely a Windows user, just download and extract this whole repo folder, trigger setup.cmd for both installation and updates (on Linux, run setup.sh instead).
+### Get started
 
-After that, from any PowerShell window (Windows Terminal, VS Code, Visual Studio's Developer PowerShell), paste this. Bring the output to the AI with your needs laid out. Tada~ you can work on your project. Remember to read the Talk section of the AI.
+1.  You are likely a Windows user: just download and extract this whole repo folder, and trigger `setup.cmd` for both installation and updates (on Linux, run `setup.sh` instead).
+2.  After that, from any PowerShell window (Windows Terminal, VS Code, Visual Studio's Developer PowerShell), paste this:
 
-python "$HOME\.llm_harness\harness.py" --workspace "pathtoyourproject"
+        python "$HOME\.llm_harness\harness.py" --workspace "pathtoyourproject"
+
+3.  Bring the output to the AI with your needs laid out. Tada~ you can work on your project. Remember to read the Talk section of the AI.
 
 The AI'll give you a script, you give the AI the output, and it'll give you another until everything is done.
 
-These features are automatically run by the AI when needed: to-do notes, a bug-tracking protocol for bugs that persist, chats on the same project can message each other, a new chat taking over a dead one's session (you confirm), chat addresses kept as reminders (a wrong one doesn't break the flow, it's just a label). If something should have run and did not, the rules have a gap, simply tell it to take note, activate bug-tracking protocol,... manually.
+### Runs by itself
 
-New? Tell the AI you are new to this tool. It walks you through the rest. If you only operate the tool rather than develop it, this may be all you need to know.
+These features are automatically run by the AI when needed:
 
-Why not agents? I prefer cheap subscription usage than most agents. I can't stand preparing a careful plan first due to trust issues then leave an agent running for 15 minutes on a task, constantly printing out jargons that I can't understand, at the speed I can't even read, then failed at somewhere I can't capture mid-way, then run out of tokens. I prefer the way the chat webs are made to output something that people can read by default. I don't prefer the way the agents are aligned to overwhelm people by default. It traps people in a loop of spending more tokens until it works. The cost of aligning the agents back to be normal would definitely be something (unmeasured). Some people could operate it, maybe agents could just operate this harness naturally. I simply don't have the budget for that research yet.
+- to-do notes
+- a bug-tracking protocol for bugs that persist
+- chats on the same project can message each other
+- a new chat taking over a dead one's session (you confirm)
+- chat addresses kept as reminders (a wrong one doesn't break the flow, it's just a label)
 
-Below are the professionally structured jargons made by the AI that explain further details.
+If something should have run and did not, the rules have a gap: simply tell it to take note, activate bug-tracking protocol,... manually.
+
+### New?
+
+Tell the AI you are new to this tool. It walks you through the rest. If you only operate the tool rather than develop it, this may be all you need to know.
+
+### Why not agents?
+
+I prefer cheap subscription usage than most agents.
+
+I can't stand preparing a careful plan first due to trust issues then leave an agent running for 15 minutes on a task, constantly printing out jargons that I can't understand, at the speed I can't even read, then failed at somewhere I can't capture mid-way, then run out of tokens.
+
+I prefer the way the chat webs are made to output something that people can read by default. I don't prefer the way the agents are aligned to overwhelm people by default. It traps people in a loop of spending more tokens until it works. The cost of aligning the agents back to be normal would definitely be something (unmeasured).
+
+Some people could operate it, maybe agents could just operate this harness naturally. I simply don't have the budget for that research yet.
+
+---
+
+*Below are the professionally structured jargons made by the AI that explain further details.*
 
 ## Why a chat-interface harness
 
