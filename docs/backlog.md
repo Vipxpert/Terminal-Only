@@ -29,12 +29,10 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - @GIT_ACCOUNT knows only Git Credential Manager and, on Windows, the credential list (seen in known_accounts), so a headless Linux machine that has only the gh tool finds no accounts; offering gh needs gh's exact output formats, which ChatGPT is looking up. (2026-11-22)
 
 
-- A @REPEATABLE script that carries a script number is refused before the session is named, so that one refusal's footer probably still has no session lines; read in main (2026-11-22): that refusal, and a @REDO refusal, return before the session is named; move the naming above them. (2026-11-22)
 
 - @GIT_BRANCH and @GIT_TAG switches probably share the tokens.json problem that @GIT_PULL had (git refuses a switch that would overwrite a locally modified tokens.json); not tested, and park_tokens / unpark_tokens could wrap them. (2026-11-22)
 
 - The tree's /tests node lists brief_rules_test.py twice, with two different descriptions. (2026-11-22)
-- @TEXT_REPLACE with an empty NEW TEXT leaves an empty line behind when it removes a whole line (seen: docs/backlog.md has about ten stray blank lines after cleanups); remove the line instead, after reading expand_text_ops, then tidy the file. (2026-11-22)
 
 - A pitfall proven in another project has no path into the shared knowledge library: the AI there cannot write to the harness repository. Needs a proposal file or a ready-to-paste entry. (2026-11-22)
 - halagames-tools' own docs/knowledge.txt still holds the contradictory Split-Brain and headless-API entries that the shared library merged into one. (2026-11-22)
