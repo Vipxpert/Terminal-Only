@@ -162,7 +162,7 @@ Edits work byte for byte in any language. Comment markers (for the `Comment` con
 ## Planning and the backlog
 
 - `@PLAYBOOK` prints a short procedure on demand: `plan-first` for one feature with a few decisions to agree on, `plan-project` for a new project or a big redesign (it ends in a living `docs/plan.md`, a decision record, and Todo notes for the first milestone only), and `review`, the check before anything is called complete. The playbooks install next to `harness.py`; `docs/plan.md` and the backlog belong to your project. The AI is told to propose a playbook only when a request would force several consequential decisions, never for small work, and to treat your "we could" ideas as proposals, not decisions.
-- Anything the AI defers, skips, leaves unverified or notices on the way goes into `docs/backlog.md` in the same script, grouped as unverified, question, gap, friction, deferred or idea, so nothing lives only in a chat. The review reads it before work is called complete and at the end of a milestone or session, and proposes improvements only from evidence, labelling the rest speculative.
+- Project stewardship is off until you switch it on for a project with the terminal command `harness.py --workspace <folder> --steward on` (kept on your machine for that project only; `off` switches it off, no argument says which; a script cannot run it); `@PLAYBOOK review` works by hand either way. While it is on, anything the AI defers, skips, leaves unverified or notices on the way goes into `docs/backlog.md` in the same script, grouped as unverified, question, gap, friction, deferred or idea, so nothing lives only in a chat. The review reads it before work is called complete and at the end of a milestone or session, and proposes improvements only from evidence, labelling the rest speculative.
 
 ## Optional: the code graph (CBM)
 
@@ -170,7 +170,7 @@ Install codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp) to enable 
 
 ## Rules (L1)
 
-`workflow_commands.txt` holds every rule exactly once. Its `L1 Rule` lines are printed in the footer after every run; rules tagged `(git)` print only for git projects, and `(campaign)` rules only while a campaign runs. A rule with an `L1 Brief` line prints as that brief; the harness prints the full rule in its place after a failed change or command, or while a debug ledger is open, and `@HELP L1-<name>` prints any rule in full. A rule that changed since a chat last saw it is marked `[CHANGED]` once, a newly applying one `[NEW]`; a project without git says `NO GIT HERE`; and the command list shows only the commands that chat has not used yet. Edit a rule there and the next run everywhere uses the new wording.
+`workflow_commands.txt` holds every rule exactly once. Its `L1 Rule` lines are printed in the footer after every run; rules tagged `(git)` print only for git projects, `(campaign)` rules only while a campaign runs, and the `(steward)` rule only where you switched stewardship on. A rule with an `L1 Brief` line prints as that brief; the harness prints the full rule in its place after a failed change or command, or while a debug ledger is open, and `@HELP L1-<name>` prints any rule in full. A rule that changed since a chat last saw it is marked `[CHANGED]` once, a newly applying one `[NEW]`; a project without git says `NO GIT HERE`; and the command list shows only the commands that chat has not used yet. Edit a rule there and the next run everywhere uses the new wording.
 
 ## Repository layout
 

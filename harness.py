@@ -2465,8 +2465,8 @@ def run_command(cmd, timeout, shell):
     if GIT_WRITE_RE.search(cmd):
         print("  [REFUSED] git commands that change history or the working tree go through @GIT_COMMIT / @GIT_FOLD; publishing goes through @GIT_PUSH.")
         return
-    if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake|merge|check)\b", cmd, re.I):
-        print("  [REFUSED] --grant, --revoke, --release, --unbrake, --merge and --check are the user's own commands, typed in their terminal; a script never runs them.")
+    if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake|merge|check|link|steward)\b", cmd, re.I):
+        print("  [REFUSED] --grant, --revoke, --release, --unbrake, --merge, --check, --link and --steward are the user's own commands, typed in their terminal; a script never runs them.")
         return
     if shell == "powershell":
         prefix = "$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
@@ -4058,6 +4058,33 @@ def session_cli(flag):
         log_event({"session": sess, "kind": kind})
     print("%s: %s" % (kind.upper(), sess))
 
+def steward_path():
+    return os.path.join(HARNESS_DIR, "steward.json")
+
+def steward_on():
+    """True when the user switched project stewardship on for this project on this machine (--steward on); anything unreadable, or no workspace yet, counts as off."""
+    if not HARNESS_DIR:
+        return False
+    try:
+        return bool((load_json(steward_path(), {}) or {}).get("on"))
+    except (TypeError, AttributeError, OSError):
+        return False
+
+def steward_cli():
+    """User-only command: harness.py --workspace <folder> --steward [on | off]. Switches the backlog-and-review rule ([L1-Steward]) on or off for this project on this machine only; without on or off it only says which. A script can never run it."""
+    args = sys.argv[1:]
+    i = args.index("--steward")
+    word = args[i + 1].lower() if len(args) > i + 1 and not args[i + 1].startswith("--") else ""
+    err = enter_workspace(arg_value("--workspace"))
+    if err or word not in ("", "on", "off"):
+        print("usage: harness.py --workspace <project folder> --steward [on | off]" + ((" | " + err) if err else ""))
+        return
+    if word:
+        os.makedirs(HARNESS_DIR, exist_ok=True)
+        save_json(steward_path(), {"on": word == "on"})
+    on = steward_on()
+    print("PROJECT STEWARDSHIP IS %s for %s on this machine: the backlog and review rule [L1-Steward] %s. The switch is kept outside the project, so other machines and other projects are not affected, and a script cannot change it." % ("ON" if on else "OFF", os.path.abspath("."), "is printed in every footer" if on else "is not printed"))
+
 def merge_session_cli():
     """User-only command: --merge <from_session> <into_session> folds a dead or ended session's write scope, grants, uncommitted history ownership, pinned notes, verdicts, and delegation/waiting queues into an ongoing session."""
     args = sys.argv[1:]
@@ -4996,7 +5023,7 @@ def print_footer_body(state):
         found = re.findall(r"(?m)^- \*\*L1 Rule\W*(\[[^\]]+\])`?\s*(?:\(([\w-]+)\))?[`:*\s]*(.*)$", rules_text)
         briefs = {tag: ([c.strip().lower() for c in conds.split(",")], brief) for tag, conds, brief in re.findall(r"(?m)^- \*\*L1 Brief\W*(\[[^\]]+\])`?\s*\(([^)]*)\)[`:*\s]*(.*)$", rules_text)}
         modes = {"git": "git", "nogit": "nogit", "no-git": "nogit"}
-        rules = [(tag, body) for tag, cond, body in found if not cond or (bool(active_campaigns()) if cond.lower() == "campaign" else modes.get(cond.lower(), MODE) == MODE)]
+        rules = [(tag, body) for tag, cond, body in found if not cond or (bool(active_campaigns()) if cond.lower() == "campaign" else steward_on() if cond.lower() == "steward" else modes.get(cond.lower(), MODE) == MODE)]
     except OSError:
         print("=== L1 CONTRACT: workflow_commands.txt not found next to harness.py (%s); no standing rules printed ===" % SELF_DIR)
         return
@@ -5860,6 +5887,8 @@ def main():
         return merge_memory_cli(sys.argv[sys.argv.index("--merge-memory") + 1:])
     if "--check" in sys.argv[1:]:
         return check_cli()
+    if "--steward" in sys.argv[1:]:
+        return steward_cli()
     if "--link" in sys.argv[1:]:
         return link_cli()
     if "--merge" in sys.argv[1:]:
