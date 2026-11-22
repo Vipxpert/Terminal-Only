@@ -69,7 +69,7 @@ def main():
     out = run(d, *commit("feat: delta", "src/c.py"))
     check("committing another active session's uncommitted work is refused", "uncommitted changes from other active sessions" in out and "[COMMITTED]" not in out, out)
     out = run(d, "@RUN python \"" + HARNESS + "\" --workspace . --release gamma")
-    check("a script cannot run --release", "[REFUSED] --grant, --revoke, --release, --unbrake, --merge and --check" in out, out)
+    check("a script cannot run --release", "[REFUSED] --grant, --revoke, --release" in out and "the user's own commands" in out, out)
     rel = user("--release", "gamma")
     out = run(d, *commit("feat: delta", "src/c.py"))
     check("after the user releases that session, the commit goes through", "SESSION RELEASED BY THE USER" in rel and "[COMMITTED]" in out, out)
