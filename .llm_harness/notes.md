@@ -1,3 +1,3 @@
 <!-- llm_harness_notes_next_id: 7 -->
 - [N004] The user can relay questions to ChatGPT, which can browse the web and inspect GitHub repositories; Claude in this chat cannot. When something external is unknown (a tool's options or docs, a repository's code, a release's changes), ask the user to have ChatGPT look it up instead of guessing.
-- [N006] [own: harness-dev] Todo: 1) owner: run setup.cmd and paste its output; 2) @GIT_ACCOUNT with gh once ChatGPT's answer arrives; 3) optional: unread messages at @SESSION_END, the other once-only marks
+- [N006] [own: harness-dev] Todo: 1) listing hides gitignored and binary files by default, with a count and | all; 2) the handshake prints workflow_commands.txt so one paste starts a chat; 3) README typos if the owner says so; 4) owner: run setup.cmd and paste its output; 5) @GIT_ACCOUNT with gh once ChatGPT answers
