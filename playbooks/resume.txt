@@ -1,0 +1,8 @@
+# /llm_harness/playbooks/resume.txt
+# use when: the user says a chat ran out of room (tokens, context) or asks to continue another chat's work
+Resume another chat's work without getting lost. Change no project file until step 4.
+1. Find it: @SESSIONS lists each session's aim, scope, last script and chat. Take the one the user named; when two fit, ask in one line. UNCLAIMED -> name it in your @SESSION line to claim it. Otherwise ask the user which: @BORROW <session> when that chat may come back, @TAKEOVER <session> when it is finished for good (the user answers at the terminal either way).
+2. Read its whole state in ONE script: @NOTE_LIST (its own Todo note and the notes pinned to it), the brief or LENT/BORROWING lines in the footer, its unread messages, docs/backlog.md, @GIT_STATUS (uncommitted work), its last commits, and the files its Todo points at.
+3. Report in Talk before acting: its aim; the Todo steps done and left; uncommitted changes; open questions and decisions it left; the next step you propose. Tag each point seen or inferred.
+4. Continue from that next step only after the user agrees. Keep one Todo note for this work current (@NOTE_EDIT as steps finish), so the next chat can resume the same way.
+5. Stopping: borrowed work -> @RETURN <session> | <what was done> when finished, or @MESSAGE <session> | <what is done and what is left> when stopping early; work you claimed or took over stays with you.

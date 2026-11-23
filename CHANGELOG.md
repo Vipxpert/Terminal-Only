@@ -4,6 +4,10 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @UNCLAIM <brief> hands a chat's own session to the next chat: it becomes UNCLAIMED with the brief and keeps its files, uncommitted work, notes and messages, the old chat address is cleared, and the next chat claims it by name. [L1-Sessions] tells a borrower that stops before @RETURN to leave the owner a @MESSAGE with what is done and what is left.
+
+- @PLAYBOOK resume: when the user says a chat ran out of room or asks to continue another chat's work, the AI finds the session, claims, borrows or takes it over on the user's answer, reads its Todo note, brief, messages, backlog and uncommitted work in one script, reports what is done and left, and continues only after the user agrees. [L1-Notes] opens it from a one-line request.
+
 - After a loan returns, its owner may @UNDO a script the borrower ran on that work, only after the user's answer at the terminal (Enter undoes the returned files, n or no terminal leaves them); every other script of another chat is skipped as before.
 
 - A script with @BORROW or @RECLAIM never counts as read-only (no harmless replay) and cannot ride in a @SIDE script, the same as @TAKEOVER.

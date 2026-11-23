@@ -735,7 +735,7 @@ def check_files(changed, pre):
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
-              "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @NEW_SESSION @BORROW @RECLAIM @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
+              "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @NEW_SESSION @BORROW @RECLAIM @UNCLAIM @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
 
@@ -986,6 +986,8 @@ def parse_payload(txt):
             P["borrow"] = arg.strip()
         elif d == "RECLAIM":
             P["reclaim"] = True
+        elif d == "UNCLAIM":
+            P["unclaim"] = arg.strip()
         elif d == "GIT_FOLD":
             P["git"].append({"kind": "fold", "n": int(arg) if arg.isdigit() else 0})
         elif d == "GIT_BRANCH":
@@ -3450,8 +3452,9 @@ def touch_session(P):
                     orec["merged_from"] = [m for m in orec["merged_from"] if m != P["session"]]
                     print("=== MERGED: session %s was taken over by %s%s (its scope, notes and queues moved there); this chat starts again with nothing claimed: check @SESSIONS and ask the user before changing anything ===" % (P["session"], owner, chat_link(owner)))
         rec = reg.get(P["session"], {})
-        claimed = rec.pop("unclaimed", False)
+        claimed = False if P.get("unclaimed_now") else rec.pop("unclaimed", False)
         if claimed:
+            rec["link_asked"] = False
             print("=== CLAIMED: this chat now holds session %s, set up by %s for: %s | brief: %s ===" % (P["session"], rec.get("created_by", "?"), rec.get("aim", ""), rec.get("brief", "")))
         rec["last_active"], rec["last_script"] = time.time(), P["id"]
         rec["idle_runs"] = rec.get("idle_runs", 0) + 1 if idle_script(P) else 0
@@ -4515,6 +4518,28 @@ def borrow_directive(P):
         save_json(sessions_path(), reg)
     print("  [BORROWED] %s now holds %s's work (%s); it stays %s's: @RETURN %s | <what was done> gives it back" % (me, src, files, src, src))
 
+def unclaim_directive(P):
+    """@UNCLAIM <brief>: this chat hands its own session to whichever chat comes next. The session becomes UNCLAIMED with the brief and keeps its files, uncommitted work, notes, messages and queues; this chat's address is cleared (the claiming chat is asked for its own), and this chat sends nothing more under that name."""
+    me, brief = P.get("session"), (P.get("unclaim") or "").strip()
+    if P.get("side") or P.get("repeatable") or not me:
+        print("  [UNCLAIM REFUSED] it needs a numbered script with an @SESSION line (not @SIDE or @REPEATABLE). Nothing changed.")
+        return
+    if not brief:
+        print("  [UNCLAIM REFUSED] say what the next chat needs: @UNCLAIM <brief> (the goal, the decisions, what is done, the code locations and what is left). Nothing changed.")
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        rec = reg.setdefault(me, {})
+        if rec.get("lent"):
+            print("  [UNCLAIM REFUSED] this session's work is lent to %s; take it back with @RECLAIM first. Nothing changed." % rec["lent"].get("to"))
+            return
+        # Comment (decision): the address is cleared but marked as asked, so the chat that unclaims is not asked again in this run; the claim step clears the mark, so the next chat records its own address
+        rec["unclaimed"], rec["brief"], rec["created_by"] = True, brief, me
+        rec["link"], rec["link_asked"] = None, True
+        save_json(sessions_path(), reg)
+    P["unclaimed_now"] = True
+    print("  [UNCLAIMED] session %s waits for the next chat, with its files, uncommitted work, notes and messages; this chat must send nothing more under that name. A new chat takes it by starting with @SESSION %s | <aim>, and gets the brief once." % (me, me))
+
 def takeover_directive(P):
     """@TAKEOVER <session>: this chat asks to absorb another chat's work (write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge; only the user's answer at the terminal does it (no terminal, no change), and only a numbered script of a named chat can ask."""
     src = re.sub(r"[^A-Za-z0-9_.-]+", "-", (P.get("takeover") or "")).strip("-")
@@ -5335,7 +5360,7 @@ def expand_text_ops(P):
 
 def side_allowed(P):
     """A @SIDE script may only read, search and @RUN: no file, note, goal, git or undo actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim"))
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim"))
 
 def side_run_path(raw_txt):
     return os.path.join(runs_dir(), "side_%s.json" % payload_key(raw_txt)[:16])
@@ -5403,7 +5428,7 @@ def idle_script(P):
 
 def read_only(P):
     """True when a script only reads: no file, note, goal, git, undo or @RUN actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim"))
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim"))
 
 def load_state():
     """Numbering and shell from the machine-local state file; the goal from .llm_harness/goal.md, which travels with the project."""
@@ -6214,6 +6239,7 @@ def print_card(shell, workspace):
   @TAKEOVER <session>                             asks the user at the terminal to let this chat take over what another chat holds (its write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; use it to continue a dead or finished chat's work
   @BORROW <session>                               asks the user at the terminal to lend that session's work to this chat, which keeps its own name and files (or to move an existing loan of it here); the work stays that session's: @RETURN <session> | <result> puts it back in its scope
   @RECLAIM                                        the owner of lent work asks for it back: Enter takes it now with the holder's uncommitted changes, n only asks the holder to return it; after a loan returns, @UNDO of a borrower's script on that work asks the user too
+  @UNCLAIM <brief>                                hands this chat's own session to the next chat: it becomes UNCLAIMED with the brief and keeps its files, uncommitted work, notes and messages; the next chat claims it with @SESSION <name>; send nothing more under that name
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*; 'pin *' reaches every chat with a session, those that appear later too); '@NOTE_ADD own | <text>' is the running chat's own to-do, pinned to it and shown as its own, never as the user's; any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_BRIEF <note-id> | <short text>            puts a short version before a note's existing text (footers print only that, with a pointer to @NOTE_LIST <note-id>); a note's old short part is replaced, its audience stays
@@ -6635,6 +6661,8 @@ def main():
         takeover_directive(P)
     if P.get("borrow") or P.get("reclaim"):
         borrow_directive(P)
+    if P.get("unclaim") is not None:
+        unclaim_directive(P)
     if P["git_init"]:
         git_init(P["git_init"])
     if P["undo"] and (P["ops"] or P["git"]):
