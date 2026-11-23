@@ -65,6 +65,7 @@ Agent apps run commands on your machine by themselves. In a chat window the AI c
 - The AI answers each turn with one script. You paste it into a terminal and paste the output back.
 - `harness.py` executes the script safely: exact-match patches, syntax rollback, an undo journal, a git gate.
 - Every run ends with a footer: the next script number, the project's pinned goal and the standing rules (L1). The rules arrive at the end of every paste, so long chats do not drift away from them.
+- **Why only some rules repeat.** What the AI does on every turn (the manifest, one script, reading the output) is already shown in its own earlier turns, so the conversation itself teaches that loop. Rules for rare moments (a failed hunk, another chat's scope, a release) never appear in that history, so every footer reprints them, and a short rule grows to its full form only when its moment arrives.
 
 No API key, no MCP server, no agent permissions. Python 3 standard library only; the code graph (CBM) and `psutil` (to name a program that holds a folder open) are optional extras.
 
