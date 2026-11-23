@@ -11,6 +11,8 @@ finish() {
     if [ "$status" -ne 0 ]; then
         echo ""
         echo "ERROR: Harness setup stopped (exit code $status). Read the messages above."
+    elif [ "${PULL_FAILED:-0}" = "1" ]; then
+        echo "To get the newest harness: in $SOURCE_DIR run git status -sb to see why the pull failed. If you have nothing to keep there, run git reset --hard origin/main and then run this setup again."
     fi
     if [ -t 0 ] && [ -t 1 ] && [ "${NO_PAUSE:-0}" != "1" ]; then
         printf '\nPress Enter to close...'
@@ -28,6 +30,7 @@ if [ "${LLM_SETUP_PULLED:-0}" != "1" ] && [ -e "$SOURCE_DIR/.git" ] && command -
         LLM_SETUP_PULLED=1 exec sh "$0" "$@"
     fi
     echo "WARNING: git pull did not complete. Installing the files that are already here."
+    PULL_FAILED=1
 fi
 TARGET_DIR="$HOME/.llm_harness"
 
@@ -203,7 +206,7 @@ if [ "$(uname -s 2>/dev/null || true)" != "Darwin" ] && ! command -v pbcopy >/de
 fi
 
 echo ""
-echo "Setup successful."
+if [ "${PULL_FAILED:-0}" = "1" ]; then echo "Setup finished, but the harness was NOT updated: git pull failed, so the files already in this folder were installed."; else echo "Setup successful."; fi
 echo "Harness installed at: $TARGET_DIR"
 echo "Installed version now: $(version_of "$TARGET_DIR/harness.py")"
 [ ! -d "$BACKUP_DIR" ] || echo "Harness backup at: $BACKUP_DIR"

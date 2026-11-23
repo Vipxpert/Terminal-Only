@@ -12,6 +12,7 @@ echo Pulling the latest harness from its repository...
 git -C "%~dp0." pull --ff-only
 if errorlevel 1 (
     echo WARNING: git pull did not complete. Installing the files that are already here.
+    set "PULL_FAILED=1"
     goto :start
 )
 call "%~f0" --pulled & exit /b
@@ -116,11 +117,18 @@ if exist "%TEMP_DIR%\playbooks\" (
 rd /s /q "%TEMP_DIR%" 2>nul
 
 echo.
-echo Setup successful.
+if defined PULL_FAILED (
+    echo Setup finished, but the harness was NOT updated: git pull failed, so the files already in this folder were installed.
+) else (
+    echo Setup successful.
+)
 echo Harness installed at: %TARGET_DIR%
 call :getver "%TARGET_DIR%\harness.py" INSTALLED_NOW
 echo Installed version now: %INSTALLED_NOW%
 if "%EXISTING%"=="1" echo Harness backup at: %BACKUP_DIR%
+if defined PULL_FAILED (
+    echo To get the newest harness: in %SOURCE_DIR% run git status -sb to see why the pull failed. If you have nothing to keep there, run git reset --hard origin/main and then run this setup again.
+)
 goto :end
 
 :failed

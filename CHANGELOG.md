@@ -4,6 +4,10 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- setup.sh, like setup.cmd, no longer says "Setup successful" after a failed git pull and prints the way to get level. The README's Safety model is split under short headings, with its three longest bullets cut into labelled ones.
+
+- setup.cmd no longer ends with "Setup successful" after a failed git pull: it says the harness was not updated, that the files already in the folder were installed, and how to get level (git status -sb, then git reset --hard origin/main when nothing needs keeping).
+
 - @GUIDE makes a session the project's optional guide (one at a time): it claims only docs/ (plans, the tree, the backlog) and never code, every other chat's footer names it for cross-worker interfaces, architecture, data ownership and direction, and @GUIDE off ends the role.
 
 - @UNCLAIM <brief> hands a chat's own session to the next chat: it becomes UNCLAIMED with the brief and keeps its files, uncommitted work, notes and messages, the old chat address is cleared, and the next chat claims it by name. [L1-Sessions] tells a borrower that stops before @RETURN to leave the owner a @MESSAGE with what is done and what is left.
