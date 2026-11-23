@@ -4,6 +4,10 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- A tree node that is not found now says where the search looked and lists the names at that level, so a selector is copied instead of guessed. A refused @SCOPE stays all-or-nothing but counts its free and busy paths, names the free ones and suggests claiming them on their own (or @REDO with the @SCOPE line corrected) when that work stands alone.
+
+- The recovery hints for a refused or malformed script, and the out-of-scope refusal, now say to send @REDO <number> with corrections when nothing in the script was applied, instead of only "resend"; a failing large script was being resent whole. [L1-Sessions] names the hand-over commands (@SCOPE_END handover, @SESSION_END handover).
+
 - [L1-Notes] tells the AI to brief a note whose detail is not needed on most turns, with a short part before " || " that says what the note is for: it briefs its own notes itself and only suggests @NOTE_BRIEF for the user's notes.
 
 - @NOTE_BRIEF <id> | <short text> puts a short version before an existing note's text without retyping it: footers print only the short part with "(more: @NOTE_LIST <id>)", @NOTE_LIST <id> prints it all, an old short part is replaced and the note's pin stays.

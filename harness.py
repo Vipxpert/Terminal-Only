@@ -466,6 +466,16 @@ def tree_path(nodes, k):
             out.append(tree_key(nodes[j][2]))
     return " > ".join(reversed(out))
 
+def tree_children_hint(nodes, lo, hi, cur):
+    """For a tree node that was not found: where the search looked and the names at that level, so a selector is copied instead of guessed."""
+    if lo >= hi:
+        return ""
+    top = min(nodes[j][1] for j in range(lo, hi))
+    names = [tree_key(nodes[j][2]) for j in range(lo, hi) if nodes[j][1] == top]
+    where = " under " + tree_path(nodes, cur) if cur is not None else ""
+    more = " +%d more" % (len(names) - 12) if len(names) > 12 else ""
+    return "%s; the nodes there are: %s%s" % (where, ", ".join(names[:12]), more)
+
 def resolve_tree_scope(lines, scope):
     """Node path -> (start, end, note, (nodes, first, stop)). Segments may skip levels but must be unique."""
     nodes = tree_nodes(lines)
@@ -476,7 +486,7 @@ def resolve_tree_scope(lines, scope):
         exact = [j for j in cands if tree_key(nodes[j][2]) == key or tree_key(nodes[j][2]).split(" / ")[0] == key]
         cands = exact or cands
         if not cands:
-            return 0, len(lines), "node '%s' not found" % seg, None
+            return 0, len(lines), "node '%s' not found%s" % (seg, tree_children_hint(nodes, lo, hi, cur)), None
         if len(cands) > 1:
             paths = "; ".join(tree_path(nodes, j) for j in cands[:6])
             return 0, len(lines), "node '%s' matches %d places (%s); qualify it as Parent > %s" % (seg, len(cands), paths, seg), None
@@ -1017,9 +1027,9 @@ def parse_payload(txt):
 NEXT_STEPS = {
     "MISMATCH": "rebuild ONLY that hunk from the on-disk excerpt printed below (never from memory) and resend it under the next script number.",
     "AMBIGUOUS": "resend ONLY that hunk with 2-3 more distinguishing context lines or a narrower scope.",
-    "MALFORMED": "a marker line is missing (if the fence was cut short, write " + SENT_BT3 + " for three backticks); resend that hunk and every hunk after it.",
+    "MALFORMED": "a marker line is missing (if the fence was cut short, write " + SENT_BT3 + " for three backticks); resend that hunk and every hunk after it, or, when nothing in this script was applied, send @REDO <this script's number> with --- [OLD TEXT] --- / +++ [NEW TEXT] +++ corrections for the broken markers instead of resending it whole.",
     "ROLLED BACK": "the file was restored to its pre-script state; resend every hunk for that file, corrected.",
-    "REFUSED": "each refusal above names its reason (a path not written from the workspace root, a missing @SCOPE claim, another chat's scope, a wrong count, a brake): fix that and resend only those operations.",
+    "REFUSED": "each refusal above names its reason (a path not written from the workspace root, a missing @SCOPE claim, another chat's scope, a wrong count, a brake): fix that and resend only those operations, or, when nothing in this script was applied, send @REDO <this script's number> with --- [OLD TEXT] --- / +++ [NEW TEXT] +++ corrections instead of resending it whole.",
 }
 
 def structure_sig(text):
@@ -3881,6 +3891,12 @@ def apply_scope_change(P):
                 for name, x, y in clashes[:6]:
                     print("    %s  overlaps  %s's  %s%s" % (x, name, y, chat_link(name)))
                 print("  -> narrow the scope, or tell the user: they can have that session release its scope, or grant this session the overlap with their own --grant command.")
+                # Comment (decision): the claim stays all-or-nothing, so half of a cross-file change cannot land while its other half waits; the count and the free list only make the next step obvious
+                busy = {x for name, x, y in clashes}
+                free = [x for x in paths if x not in busy]
+                print("  %d of %d requested path(s) are free and %d are held by another chat; nothing was claimed, and the held ones are on WAITING ON." % (len(free), len(paths), len(busy)))
+                if free:
+                    print("  -> if the work on the free paths stands alone, claim them in their own @SCOPE (%s) and leave the rest waiting; when nothing in this script was applied, send @REDO <this script's number> with the @SCOPE line corrected." % ", ".join(free[:8]))
                 note_waiting(reg, me, [(x, name) for name, x, y in clashes])
                 save_json(sessions_path(), reg)
                 return
@@ -3955,7 +3971,7 @@ def guard_ops(P):
                 blocked.append((rel, owner))
                 break
             if rel and P["session"] and not own_scope_covers(P["session"], rel):
-                op["blocked"] = "outside this session's write scope: claim it with @SCOPE <aim> | <paths> (a claim in the same script runs before the changes) and resend"
+                op["blocked"] = "outside this session's write scope: claim it with @SCOPE <aim> | <paths> (a claim in the same script runs before the changes) and resend; when nothing in this script was applied, send @REDO <this script's number> with the @SCOPE line corrected instead of resending it whole"
                 break
             others = foreign_uncommitted(rel) if rel and P["session"] else []
             if others and rel not in warned:
