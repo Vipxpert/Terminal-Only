@@ -3,6 +3,7 @@
 What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), friction (the same manual step, workaround or reminder more than once), deferred (decided to do later), idea (speculative: no evidence yet).
 
 ## Unverified
+- setup.cmd's failed-pull message (PULL_FAILED) has not run on a checkout whose pull really fails; only :getver is tested. Try it on the next diverged checkout. (2026-11-23)
 - The gh provider for @GIT_ACCOUNT (JSON list, switch, setup-git hint) has been tested only against a fake gh, built from ChatGPT's reading of GitHub's docs; try it once with the real gh on a machine with two accounts. SSH-key selection per account stays unsupported by design. (2026-11-23)
 - The setup.cmd version lines (the :getver subroutine, a PowerShell call inside a batch file) have not run on Windows; setup.sh's are tested. Run setup.cmd once and read the "Harness version" and "Installed version now" lines. (2026-11-22)
 - The intro playbook and its [L1-Notes] trigger have not met a real newcomer; check that a chat told "I'm new to this tool" opens @PLAYBOOK intro and stays short. (2026-11-22)

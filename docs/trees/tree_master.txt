@@ -102,6 +102,7 @@
     ├── scope_hint_test.py (A missing tree node lists the names at that level; a refused @SCOPE counts its free and busy paths and names the free ones)
     ├── session_split_test.py (@SPLIT and @NEW_SESSION set up UNCLAIMED sessions, the list marks them, the first chat that names one claims it with its brief and files, and a split whose files cannot move creates nothing)
     ├── unclaim_test.py (@UNCLAIM needs a brief, hands the chat's own session on without claiming it back, the handshake lists it, and the next chat claims it with its brief, files and own to-do)
+    ├── guide_test.py (@GUIDE makes one optional project guide that claims only docs/, a second guide or one holding code is refused, both footers say so, and @GUIDE off ends it)
     ├── borrow_test.py (@BORROW lends work on the user's answer, LENT blocks the owner, the borrower stays author, a second borrower takes over the loan, @RETURN puts files back in the owner's scope, @RECLAIM n asks and Enter takes; the owner's undo of a borrower's script on returned work asks the user; @BORROW is never read-only)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
