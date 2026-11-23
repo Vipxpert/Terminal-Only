@@ -735,7 +735,7 @@ def check_files(changed, pre):
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
-              "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @NEW_SESSION @BORROW @RECLAIM @UNCLAIM @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
+              "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
 
@@ -791,8 +791,8 @@ def parse_payload(txt):
             P["session_end"] = arg.strip() or True
         elif d == "CHAT_LINK":
             P["chat_link"] = arg.strip()
-        elif d in ("MESSAGE", "SCOPE_REQUEST", "BRAKE", "DELEGATE", "RETURN", "NEW_SESSION", "SPLIT"):
-            P["msgs"].append(({"MESSAGE": "message", "SCOPE_REQUEST": "scope request", "BRAKE": "brake", "DELEGATE": "delegate", "RETURN": "return", "NEW_SESSION": "new session", "SPLIT": "split"}[d], arg))
+        elif d in ("MESSAGE", "SCOPE_REQUEST", "BRAKE", "DELEGATE", "RETURN", "SPLIT"):
+            P["msgs"].append(({"MESSAGE": "message", "SCOPE_REQUEST": "scope request", "BRAKE": "brake", "DELEGATE": "delegate", "RETURN": "return", "SPLIT": "split"}[d], arg))
         elif d == "VERDICT":
             P["verdicts"].append(arg)
         elif d == "VERDICTS":
@@ -988,6 +988,8 @@ def parse_payload(txt):
             P["reclaim"] = True
         elif d == "UNCLAIM":
             P["unclaim"] = arg.strip()
+        elif d == "GUIDE":
+            P["guide"] = arg.strip().lower() or "on"
         elif d == "GIT_FOLD":
             P["git"].append({"kind": "fold", "n": int(arg) if arg.isdigit() else 0})
         elif d == "GIT_BRANCH":
@@ -3443,7 +3445,7 @@ def sessions_path():
     return os.path.join(HARNESS_DIR, "sessions.json")
 
 def touch_session(P):
-    """Record a session's latest script and activity time in the project's session registry; the first script that names an UNCLAIMED session (set up by @NEW_SESSION or @SPLIT) claims it, and its brief prints once."""
+    """Record a session's latest script and activity time in the project's session registry; the first script that names an UNCLAIMED session (set up by @SPLIT or @UNCLAIM) claims it, and its brief prints once."""
     with state_lock():
         reg = load_json(sessions_path(), {})
         if P["session"] not in reg:
@@ -3677,6 +3679,11 @@ def print_sessions(current, full=False):
         print("=== INHERITED (the user set delegation to run automatically: these files and tasks were handed to this chat and are in its scope now; do each task, then @RETURN <chat> | <result>): %s ===" % "; ".join("from %s%s: %s (%s)" % (i["from"], chat_link(i["from"]), i["task"], ", ".join("/" + p for p in i["paths"][:4])) for i in mine["inherited"]))
     if mine.get("delegated"):
         print("=== DELEGATED (handed to other chats; each hands the files back with @RETURN, then claim them again to continue): %s ===" % "; ".join("%s%s has %s (%s)" % (d["to"], chat_link(d["to"]), ", ".join("/" + p for p in d["paths"][:4]), d["task"]) for d in mine["delegated"]))
+    guide = next((n for n, r in reg.items() if r.get("role") == "guide"), None)
+    if guide and guide == current:
+        print("=== YOU ARE THE PROJECT'S GUIDE: you change no code (your scope stays in docs/: plans, the tree, the backlog); frame requests, review proposals, plan, answer workers and hand out work with @SPLIT; @GUIDE off ends the role ===")
+    elif guide:
+        print("=== GUIDE: %s%s keeps the project's direction: @MESSAGE it about cross-worker interfaces, architecture, data ownership or a change of direction; never wait on it for local work ===" % (guide, chat_link(guide)))
     if mine.get("lent"):
         lt = mine["lent"]
         print("=== LENT (this session's work is held by %s%s since %s: %s; it stays yours, so do not change those files; @RECLAIM takes it back after the user's answer at the terminal) ===" % (lt["to"], chat_link(lt["to"]), lt.get("since") or "?", ", ".join("/" + p for p in lt.get("paths", [])[:6])))
@@ -3921,6 +3928,12 @@ def apply_scope_change(P):
             if not paths:
                 print("  [REFUSED] @SCOPE needs '<aim> | <path or glob>, ...'. Scopes are unchanged.")
                 return
+            # Comment (decision): the project's guide keeps the direction and never changes code, so its claims stay inside docs/ (plans, the tree, the backlog); edits outside a session's scope are refused already
+            if rec.get("role") == "guide":
+                code = [x for x in paths if not scope_item(x)[0].replace("\\", "/").lstrip("/").startswith("docs/")]
+                if code:
+                    print("  [REFUSED] this session is the project's guide: it may claim only docs/ (plans, the tree, the backlog), not %s. Scopes are unchanged." % ", ".join(code[:4]))
+                    return
             spaced = [x for x in paths if spaced_entry_problem(scope_item(x)[0])]
             if spaced:
                 print("  [REFUSED] scope entry '%s' holds a space and names no existing path: separate scope paths with commas (a.py, b.py). Scopes are unchanged." % spaced[0])
@@ -4230,22 +4243,21 @@ def take_back_work(reg, me, arg):
     print("  [RETURNED] %s -> %s: %s%s" % (", ".join("/" + p for p in paths), to, result, "" if to in reg else " (that session has ended; the files are simply free)"))
 
 def create_session(reg, me, kind, arg):
-    """@NEW_SESSION <name> | <aim> | <brief> and @SPLIT <name> | <aim> | <paths> | <brief>: set up a session no chat holds yet (UNCLAIMED) with an aim and a brief for the chat that will take it; a split also hands it some of this chat's files, with their uncommitted work and the waits on them, the way @DELEGATE does. Call inside state_lock."""
+    """@SPLIT <name> | <aim> | <paths, or nothing> | <brief>: set up a session no chat holds yet (UNCLAIMED) with an aim and a brief for the chat that will take it; a split also hands it some of this chat's files, with their uncommitted work and the waits on them, the way @DELEGATE does. Call inside state_lock."""
     parts = [x.strip() for x in arg.split("|")]
     name = re.sub(r"[^A-Za-z0-9_.-]+", "-", parts[0]).strip("-")
-    split = kind == "split"
-    need = 4 if split else 3
-    form = "@SPLIT <name> | <aim> | <paths> | <brief>" if split else "@NEW_SESSION <name> | <aim> | <brief>"
-    if len(parts) < need or not all(parts[:need]) or not name:
+    need = 4
+    form = "@SPLIT <name> | <aim> | <paths, or nothing for a session with no files> | <brief>"
+    if len(parts) < need or not (name and parts[1] and " | ".join(parts[3:]).strip()):
         print("  [SESSION REFUSED] the form is %s" % form)
         return
     if name in reg or name == me:
         print("  [SESSION REFUSED] a session named %s already exists; pick another name" % name)
         return
     aim, brief = parts[1], " | ".join(parts[need - 1:])
-    paths = [x.strip().replace("\\", "/").lstrip("/") for x in parts[2].split(",") if x.strip()] if split else []
+    paths = [x.strip().replace("\\", "/").lstrip("/") for x in parts[2].split(",") if x.strip()]
     reg[name] = {"aim": aim, "unclaimed": True, "brief": brief, "created_by": me, "last_active": time.time(), "last_script": CURRENT_SCRIPT}
-    if split:
+    if paths:
         hand_over_work(reg, me, "%s | %s | %s" % (name, ", ".join(paths), aim))
         if not reg[name].get("inherited"):
             reg.pop(name, None)
@@ -4540,6 +4552,32 @@ def unclaim_directive(P):
     P["unclaimed_now"] = True
     print("  [UNCLAIMED] session %s waits for the next chat, with its files, uncommitted work, notes and messages; this chat must send nothing more under that name. A new chat takes it by starting with @SESSION %s | <aim>, and gets the brief once." % (me, me))
 
+def guide_directive(P):
+    """@GUIDE: this session becomes the project's guide (one at a time): it claims only docs/ (plans, the tree, the backlog), never code, and every other chat's footer names it for cross-worker, architecture, data-ownership and direction questions; @GUIDE off ends the role."""
+    me, arg = P.get("session"), P.get("guide")
+    if P.get("side") or P.get("repeatable") or not me:
+        print("  [GUIDE REFUSED] it needs a numbered script with an @SESSION line (not @SIDE or @REPEATABLE). Nothing changed.")
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        rec = reg.setdefault(me, {})
+        if arg in ("off", "end", "stop"):
+            was = rec.pop("role", None)
+            save_json(sessions_path(), reg)
+            print("  [GUIDE] %s" % ("%s is no longer the project's guide" % me if was else "%s was not the guide; nothing changed" % me))
+            return
+        other = next((n for n, r in reg.items() if n != me and r.get("role") == "guide"), None)
+        if other:
+            print("  [GUIDE REFUSED] %s is already the project's guide; it ends that with @GUIDE off. Nothing changed." % other)
+            return
+        code = [p for p in ((rec.get("scope") or {}).get("paths") or []) if not scope_item(p)[0].replace("\\", "/").lstrip("/").startswith("docs/")]
+        if code:
+            print("  [GUIDE REFUSED] this session holds code files (%s): commit and release them, or hand them over, first. Nothing changed." % ", ".join("/" + p for p in code[:4]))
+            return
+        rec["role"] = "guide"
+        save_json(sessions_path(), reg)
+    print("  [GUIDE] %s is now the project's guide: it changes no code, and every other chat's footer names it for cross-worker, architecture, data-ownership and direction questions" % me)
+
 def takeover_directive(P):
     """@TAKEOVER <session>: this chat asks to absorb another chat's work (write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge; only the user's answer at the terminal does it (no terminal, no change), and only a numbered script of a named chat can ask."""
     src = re.sub(r"[^A-Za-z0-9_.-]+", "-", (P.get("takeover") or "")).strip("-")
@@ -4692,6 +4730,23 @@ def merge_sessions(src, dst):
                         w["owner"] = dst
                 if (orec.get("brake") or {}).get("from") == src:
                     orec["brake"]["from"] = dst
+            # Comment (decision): loans know their two sessions by name, so a merge settles them: a loan between the two merged sessions ends (the work is simply the merged chat's), a loan the merged session held from a third moves here and that owner's LENT record follows, and work the merged session had lent out keeps pointing at its owner
+            drec["borrowed"] = [b for b in drec.get("borrowed", []) if b.get("from") != src]
+            if (drec.get("lent") or {}).get("to") == src:
+                drec.pop("lent", None)
+            for b in src_rec.get("borrowed", []):
+                if b.get("from") == dst:
+                    continue
+                drec.setdefault("borrowed", []).append(dict(b))
+                lender = reg.get(b.get("from")) or {}
+                if (lender.get("lent") or {}).get("to") == src:
+                    lender["lent"]["to"] = dst
+            sl = src_rec.get("lent") or {}
+            if sl.get("to") and sl["to"] != dst and sl["to"] in reg and not drec.get("lent"):
+                drec["lent"] = dict(sl)
+                for b in reg[sl["to"]].get("borrowed", []):
+                    if b.get("from") == src:
+                        b["from"] = dst
             inh = [dict(i) for i in src_rec.get("inherited", []) if i.get("from") != dst]
             if inh:
                 drec.setdefault("inherited", []).extend(inh)
@@ -5360,7 +5415,7 @@ def expand_text_ops(P):
 
 def side_allowed(P):
     """A @SIDE script may only read, search and @RUN: no file, note, goal, git or undo actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim"))
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim") or P.get("guide"))
 
 def side_run_path(raw_txt):
     return os.path.join(runs_dir(), "side_%s.json" % payload_key(raw_txt)[:16])
@@ -5428,7 +5483,7 @@ def idle_script(P):
 
 def read_only(P):
     """True when a script only reads: no file, note, goal, git, undo or @RUN actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim"))
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim") or P.get("guide"))
 
 def load_state():
     """Numbering and shell from the machine-local state file; the goal from .llm_harness/goal.md, which travels with the project."""
@@ -6230,8 +6285,7 @@ def print_card(shell, workspace):
   @SESSIONS                                       lists every session with its aim, write scope and chat address (the footer shows only a count of the others unless this chat is waiting, delegated or braked)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
   @DELEGATE <session> | <paths> | <task>          hands those files (entries of your scope) and a task to that session at once, with your uncommitted work in them; its footer says INHERITED
-  @SPLIT <name> | <aim> | <paths> | <brief>       sets up an UNCLAIMED session for a new chat and hands it those files the way @DELEGATE does, with the waits on them; the brief (goal, decisions, what is done, code locations, what is left) prints once when a chat claims it with @SESSION <name>
-  @NEW_SESSION <name> | <aim> | <brief>           sets up an UNCLAIMED session with no files, for a new chat to claim with @SESSION <name>
+  @SPLIT <name> | <aim> | <paths> | <brief>       sets up an UNCLAIMED session for a new chat and hands it those files the way @DELEGATE does, with the waits on them (leave <paths> empty for a session with no files); the brief (goal, decisions, what is done, code locations, what is left) prints once when a chat claims it with @SESSION <name>
   @RETURN <session> | <result>                    hands back what that session delegated to you: the files are released, the result goes to it as a note
   @BRAKE <session> | <reason>    @BRAKE_ACK       pause another session's changes until it acknowledges / acknowledge a brake on this session
   @CHAT_LINK [<address>]                          asks the user at the terminal for this chat's address (or sets it when given), replacing any old address on file; at a terminal a new session is asked once and cannot skip it
@@ -6240,6 +6294,7 @@ def print_card(shell, workspace):
   @BORROW <session>                               asks the user at the terminal to lend that session's work to this chat, which keeps its own name and files (or to move an existing loan of it here); the work stays that session's: @RETURN <session> | <result> puts it back in its scope
   @RECLAIM                                        the owner of lent work asks for it back: Enter takes it now with the holder's uncommitted changes, n only asks the holder to return it; after a loan returns, @UNDO of a borrower's script on that work asks the user too
   @UNCLAIM <brief>                                hands this chat's own session to the next chat: it becomes UNCLAIMED with the brief and keeps its files, uncommitted work, notes and messages; the next chat claims it with @SESSION <name>; send nothing more under that name
+  @GUIDE [off]                                    makes this session the project's guide (one at a time, optional): it claims only docs/, never code, and every other chat's footer names it for cross-worker, architecture, data-ownership and direction questions; @GUIDE off ends the role
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*; 'pin *' reaches every chat with a session, those that appear later too); '@NOTE_ADD own | <text>' is the running chat's own to-do, pinned to it and shown as its own, never as the user's; any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_BRIEF <note-id> | <short text>            puts a short version before a note's existing text (footers print only that, with a pointer to @NOTE_LIST <note-id>); a note's old short part is replaced, its audience stays
@@ -6324,7 +6379,7 @@ def handshake(workspace, shell):
     if not os.path.isfile(RULES_PATH):
         print("WARNING: workflow_commands.txt is not next to harness.py (%s); standing rules cannot be printed after runs." % SELF_DIR)
     print_workspace_notes()
-    # Comment (decision): a new chat reads only the handshake before its first script, so the sessions set up for it (@NEW_SESSION, @SPLIT) are listed here, where its @SESSION line is chosen
+    # Comment (decision): a new chat reads only the handshake before its first script, so the sessions set up for it (@SPLIT, @UNCLAIM) are listed here, where its @SESSION line is chosen
     unclaimed = [(n, r) for n, r in sorted(load_json(sessions_path(), {}).items()) if r.get("unclaimed")]
     if unclaimed:
         print("=== UNCLAIMED SESSIONS (set up for a new chat: if the task matches one, name it in the first @SESSION line; when several or none fit, ask the user): %s ===" % "; ".join("%s: %s (set up by %s; brief: %s)" % (n, r.get("aim") or "no aim", r.get("created_by", "?"), (r.get("brief") or "")[:300]) for n, r in unclaimed))
@@ -6663,6 +6718,8 @@ def main():
         borrow_directive(P)
     if P.get("unclaim") is not None:
         unclaim_directive(P)
+    if P.get("guide"):
+        guide_directive(P)
     if P["git_init"]:
         git_init(P["git_init"])
     if P["undo"] and (P["ops"] or P["git"]):

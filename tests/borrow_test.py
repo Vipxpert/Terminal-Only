@@ -112,6 +112,22 @@ def main():
     check("Enter undoes the returned file", "line one of alpha" in text() and "[RESTORED] /a.txt" in out, out)
     out = undo(ec, "")
     check("a borrower's script on its own file is still skipped, with no question", not asked and "belongs to session relief" in out and "charlie changed" in open(os.path.join(ws, "c.txt")).read(), out)
+    for n, t in (("x.txt", "x"), ("y.txt", "y")):
+        with open(os.path.join(ws, n), "w", newline="\n") as f:
+            f.write(t + "\n")
+    run(ws, "lender", "@SCOPE lender aim | x.txt")
+    run(ws, "taker", "@LIST_DIR /")
+    act({"borrow": "lender", "session": "taker"}, "")
+    hh.merge_sessions("lender", "taker")
+    r = reg()
+    check("taking over the owner of borrowed work ends the loan: the files are simply the taker's", "lender" not in r and "x.txt" in paths("taker") and not r["taker"].get("borrowed"), r.get("taker"))
+    run(ws, "pown", "@SCOPE pown aim | y.txt")
+    run(ws, "qhold", "@LIST_DIR /")
+    run(ws, "rnew", "@LIST_DIR /")
+    act({"borrow": "pown", "session": "qhold"}, "")
+    hh.merge_sessions("qhold", "rnew")
+    r = reg()
+    check("merging a borrower moves its loan: the owner's LENT record names the new holder", (r["pown"].get("lent") or {}).get("to") == "rnew" and any(b.get("from") == "pown" for b in r["rnew"].get("borrowed", [])) and "y.txt" in paths("rnew"), (r.get("pown"), r.get("rnew")))
     sys.exit(0 if all(RESULTS) else 1)
 
 

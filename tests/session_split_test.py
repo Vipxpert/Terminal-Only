@@ -26,7 +26,7 @@ def main():
     run(ws, "alpha", "@SCOPE alpha work | a.py, b.py", "@NEW_FILE /a.py", "x = 1", "@END_NEW_FILE", "@NEW_FILE /b.py", "y = 1", "@END_NEW_FILE")
     out = run(ws, "alpha", "@SPLIT beta | beta work | b.py | BRIEF-TEXT finish b.py")
     check("@SPLIT creates an unclaimed session and hands it the file", "[SESSION CREATED] beta (UNCLAIMED)" in out and "[DELEGATED] /b.py -> beta" in out, out)
-    run(ws, "alpha", "@NEW_SESSION gamma | gamma work | GAMMA-BRIEF")
+    run(ws, "alpha", "@SPLIT gamma | gamma work |  | GAMMA-BRIEF")
     out = run(ws, "alpha", "@SESSIONS")
     check("both show as UNCLAIMED in the session list", out.count("UNCLAIMED, set up by alpha") >= 2 and "GAMMA-BRIEF" in out, out)
     out = run(ws, "beta", "@LIST_DIR /")

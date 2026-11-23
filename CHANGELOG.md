@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @GUIDE makes a session the project's optional guide (one at a time): it claims only docs/ (plans, the tree, the backlog) and never code, every other chat's footer names it for cross-worker interfaces, architecture, data ownership and direction, and @GUIDE off ends the role.
+
 - @UNCLAIM <brief> hands a chat's own session to the next chat: it becomes UNCLAIMED with the brief and keeps its files, uncommitted work, notes and messages, the old chat address is cleared, and the next chat claims it by name. [L1-Sessions] tells a borrower that stops before @RETURN to leave the owner a @MESSAGE with what is done and what is left.
 
 - @PLAYBOOK resume: when the user says a chat ran out of room or asks to continue another chat's work, the AI finds the session, claims, borrows or takes it over on the user's answer, reads its Todo note, brief, messages, backlog and uncommitted work in one script, reports what is done and left, and continues only after the user agrees. [L1-Notes] opens it from a one-line request.
@@ -14,7 +16,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 - @BORROW <session> lends another session's work to this chat on the user's answer at the terminal, without merging: the borrower keeps its own name and files, the owner is marked LENT, and borrowing work that is already lent moves the loan (one owner, one holder, no chains). @RETURN <owner> | <result> from a borrower puts the files straight back into the owner's scope; @RECLAIM lets the owner take its work back (Enter) or ask for it (n). The borrower stays the author of its changes in the history.
 
-- @NEW_SESSION <name> | <aim> | <brief> sets up an UNCLAIMED session for a new chat, and @SPLIT <name> | <aim> | <paths> | <brief> does the same while handing it some of this chat's files the way @DELEGATE does (with their uncommitted work and the waits on them). The session list and the footer mark unclaimed sessions; the first chat that names one in @SESSION claims it and gets its brief once. [L1-Sessions] says when to propose a split and how a new chat picks a session.
+- @SPLIT <name> | <aim> | <paths> | <brief> sets up an UNCLAIMED session for a new chat (an empty <paths> for one with no files), handing it some of this chat's files the way @DELEGATE does (with their uncommitted work and the waits on them). The session list and the footer mark unclaimed sessions; the first chat that names one in @SESSION claims it and gets its brief once. [L1-Sessions] says when to propose a split and how a new chat picks a session.
 
 - A tree node that is not found now says where the search looked and lists the names at that level, so a selector is copied instead of guessed. A refused @SCOPE stays all-or-nothing but counts its free and busy paths, names the free ones and suggests claiming them on their own (or @REDO with the @SCOPE line corrected) when that work stands alone.
 
