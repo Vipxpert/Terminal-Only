@@ -39,7 +39,7 @@ These features are automatically run by the AI when needed:
 
 If something should have run and did not, the rules have a gap: simply tell it to take note, activate bug-tracking protocol,... manually.
 
-### Manual
+### Manually run by you
 
 These features require your decisions:
 
@@ -48,7 +48,7 @@ These features require your decisions:
 
 ### New?
 
-Tell the AI you are new to this tool. It walks you through the rest. If you only operate the tool rather than develop it, this may be all you need to know.
+Tell the AI you are new to this tool. It walks you through the rest. The AI know the usage syntax, you don't have to remember. Just communicate by natural languages. If you only operate the tool rather than develop it, this may be all you need to know.
 
 ### Why not agents?
 
