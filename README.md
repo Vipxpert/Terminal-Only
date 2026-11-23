@@ -11,7 +11,7 @@ A chat orchestrator, a code implementation tool that is...
 - Automated code edits, fewer AI turns
 - Undo, and a recycle bin for deleted files
 - Git actions automated
-- Several chats on one project, with conflict prevention
+- Several chats on one project, with conflict prevention. More specific, each chat operate a session has its own purpose and scope!
 - Magically code relations search algorithm [CBM](https://github.com/DeusData/codebase-memory-mcp), along with tree files that explain the code's meaning
 - Code-aware for C, C++, C#, Java, Kotlin, Scala, Go, Rust, Swift, Dart, PHP, Python, JavaScript, TypeScript and Vue; edits any other text file safely (SQL, Lua, CSS, HTML, XML, YAML, shell, PowerShell...)
 
@@ -32,11 +32,19 @@ These features are automatically run by the AI when needed:
 
 - to-do notes
 - a bug-tracking protocol for bugs that persist
+- keep track and lay out detailed plan and architecture
 - chats on the same project can message each other
 - a new chat taking over a dead one's session (you confirm)
 - chat addresses kept as reminders (a wrong one doesn't break the flow, it's just a label)
 
 If something should have run and did not, the rules have a gap: simply tell it to take note, activate bug-tracking protocol,... manually.
+
+### Manual
+
+These features require your decisions:
+
+- sessions can be deleted, created, claimed, unclaimed, merged or borrowed by another chat if confirmed by you that something went wrong with the original chat (token exhaustion, context loss, accidental deletion, offload responsibility to a more capable chat)
+- a session can act advisor-only to send messages and guide other chats (untested)
 
 ### New?
 
