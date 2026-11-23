@@ -27,6 +27,8 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)
 
 ## Gaps
+- setup.cmd printed "Setup successful" after git pull failed on a diverged branch and installed the old files, and gave no instruction; it should say that the pull failed and what the installed version is, and name the way out. Seen on the desktop, 2026-11-23. (2026-11-23)
+- README: several Safety-model bullets pack six to eight mechanics into one paragraph (upstream fetching with accounts, the paste loop with clipboard and loop detection); split them under short sub-headings. Raised by Gemini, confirmed by reading. (2026-11-23)
 
 
 
@@ -58,6 +60,8 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - Unity project Big&Small: no goal pinned, and the checkout is 9 commits behind its remote. (2026-11-22)
 
 ## Ideas
+- Handshake size: workflow_commands.txt carries nine "Why This Exists — Read Once, Do Not Echo" sections that the handshake prints in full; print only the operational rules to the AI and keep the rationale for humans (a doc file), after measuring what it saves. (2026-11-23)
+- Gemini's RunContext idea: group the module-level run state (CURRENT_SESSION, CURRENT_SCRIPT and the like) in one object; declined for now, since no failure comes from it. (2026-11-23)
 
 
 - A manual step the user must do BEFORE the script (an authentication, say) belongs in the first line of Talk, never only in the checklist after the script: reported by Gemini, where it was run in the wrong order. One short clause in [L1-Harness]. (2026-11-22)

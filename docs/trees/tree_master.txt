@@ -95,6 +95,7 @@
     ├── note_pin_switch_test.py (A note pinned with * reaches a chat that appears later; @NOTE_EDIT narrows it to named chats and widens it back; a plain edit keeps the pin)
     ├── note_pin_action_test.py (@NOTE_PIN changes only a note's audience: *, names, all, own; a note's text before || is all a footer prints, and @NOTE_LIST <id> prints it whole)
     ├── note_pin_current_test.py (@NOTE_PIN current pins the chats that exist now and not later ones; * brings later chats in again and current takes them out again)
+    ├── note_brief_test.py (@NOTE_BRIEF puts a short part before a note's text: the footer prints it with a pointer, @NOTE_LIST <id> prints it all, a new short part replaces the old one and the pin stays)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)
