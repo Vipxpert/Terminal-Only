@@ -48,9 +48,11 @@ I prefer cheap subscription usage than most agents.
 
 I can't stand preparing a careful plan first due to trust issues then leave an agent running for 15 minutes on a task, constantly printing out jargons that I can't understand, at the speed I can't even read, then failed at somewhere I can't capture mid-way, then run out of tokens.
 
-I prefer the way the chat webs are made to output something that people can read by default. I don't prefer the way the agents are aligned to overwhelm people by default. It traps people in a loop of spending more tokens until it works. The cost of aligning the agents back to be normal would definitely be something (unmeasured).
+I prefer the way the chat webs are made to output something that people can read by default. I don't prefer the way the agents are aligned to overwhelm people by default. It traps people in a loop of spending more tokens until it works.
 
-Some people could operate it, maybe agents could just operate this harness naturally. I simply don't have the budget for that research yet.
+The cost of aligning the agents back to be normal would definitely be something (unmeasured) but for sure is not as simple, singular as this entire code base, which benefits debugs, instant updates and eliminate compatibility issues. Training an agent requires dozens of plugins and orchestrators to make it reaches this state. For me it's an obvious burden but there is a trade-off, those dedicated plugin might have standardized implementations over this demand-adaptive design.
+
+Some people could operate it, maybe agents could just operate this harness naturally. I simply don't have the time and resources for that research yet.
 
 ---
 
