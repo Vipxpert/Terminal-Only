@@ -325,6 +325,36 @@ def indent_of(line):
 def norm_ws(s):
     return " ".join(s.split())
 
+_CODE_STRIP = re.compile(r"(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|/\*.*?\*/|//.*$)")
+_CODE_STRIP_HASH = re.compile(r"(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|/\*.*?\*/|#.*$|//.*$)")
+
+def code_only(ln, hash_comments=True):
+    """A line without its strings and comments (escaped quotes, backtick strings and one-line /* */ handled), so names and braces inside them are not counted."""
+    return (_CODE_STRIP_HASH if hash_comments else _CODE_STRIP).sub(" ", ln)
+
+def brace_block_end(lines, i):
+    """For a brace-language definition (its header reaches a line ending in an opening or closing brace within 8 lines, with no line ending in ':' or ';' before it) the line after its matching closing brace; None for anything else (Python, or braces that never balance), so the indentation rule decides there."""
+    n, opened = len(lines), False
+    for j in range(i, min(i + 8, n)):
+        s = code_only(lines[j], False).rstrip()
+        if s.endswith(("{", "}")):
+            opened = True
+            break
+        if s.endswith((":", ";")):
+            return None
+    if not opened:
+        return None
+    depth, seen = 0, False
+    for j in range(i, n):
+        for ch in code_only(lines[j], False):
+            if ch == "{":
+                depth, seen = depth + 1, True
+            elif ch == "}":
+                depth -= 1
+        if seen and depth <= 0:
+            return j + 1
+    return None
+
 def block_bounds(lines, i, anchor):
     """Line range [start, end) of the block opened at line i (a definition, or a '# Stage' style anchor)."""
     n, base = len(lines), indent_of(lines[i])
@@ -335,7 +365,11 @@ def block_bounds(lines, i, anchor):
                 return i, j + 1
         return i, n
     end = n
-    for j in range(i + 1, n):
+    # Comment (decision): in a brace language a line at the definition's own indent can continue its header (a C# where clause) or sit in its body (a C label), so the indentation rule ended the block too early; the matching closing brace decides there, and the indentation rule stays for Python and for braces that never balance
+    braced = None if anchor else brace_block_end(lines, i)
+    if braced:
+        end = braced
+    for j in range(i + 1, i + 1 if braced else n):
         s = lines[j].strip()
         if not s:
             continue
@@ -349,7 +383,7 @@ def block_bounds(lines, i, anchor):
             break
     start = i
     if not anchor:
-        while end - 1 > i and (not lines[end - 1].strip() or (indent_of(lines[end - 1]) <= base and (lines[end - 1].strip().startswith(SKIPPABLE + ("@",)) or ATTR_LINE.match(lines[end - 1].strip())))):
+        while not braced and end - 1 > i and (not lines[end - 1].strip() or (indent_of(lines[end - 1]) <= base and (lines[end - 1].strip().startswith(SKIPPABLE + ("@",)) or ATTR_LINE.match(lines[end - 1].strip())))):
             end -= 1
         while start > 0 and (lines[start - 1].strip().startswith(SKIPPABLE + ("@", "*")) or ATTR_LINE.match(lines[start - 1].strip())) and 0 <= indent_of(lines[start - 1]) - base <= 1:
             start -= 1
@@ -690,7 +724,7 @@ def check_files(changed, pre):
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
-              "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
+              "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
@@ -891,6 +925,12 @@ def parse_payload(txt):
             else:
                 who, text, own = note_audience(nm.group(2))
                 P["notes"].append({"action": "edit", "id": nm.group(1).upper(), "text": text, "for": who, "own": own})
+        elif d == "NOTE_BRIEF":
+            bm = re.match(r"^(N\d+)\s*\|?\s*(.+)$", arg, re.IGNORECASE)
+            if not bm:
+                P["warnings"].append("expected '@NOTE_BRIEF <note-id> | <short text>'")
+            else:
+                P["notes"].append({"action": "brief", "id": bm.group(1).upper(), "short": bm.group(2).strip()})
         elif d == "NOTE_PIN":
             pm = re.match(r"^(N\d+)\s+(.+)$", arg, re.IGNORECASE)
             if not pm:
@@ -2567,7 +2607,7 @@ def run_grep(arg):
 # ---------------------------------------------------------------- Stage: Running commands
 
 # Comment (decision): 'git tag' alone, 'git tag --list' and the other listing forms, and 'git stash list' or 'show' only read; the same words with a name, -d, -a or -f still write, so they stay refused
-GIT_WRITE_RE = re.compile(r"(^|[;&|(]\s*)git(\.exe)?\s+(commit|push|pull|reset|rebase|merge|cherry-pick|revert|checkout|switch|stash(?!\s+(?:list|show)\b)|clean|restore|am|apply|tag(?!\s*(?:$|[;&|)]|-l\b|--list\b|-n\d*\b|--contains\b|--points-at\b|--merged\b|--no-merged\b|--sort\b))|branch\s+-[dDmM])\b", re.I)
+GIT_WRITE_RE = re.compile(r"(^|[;&|(]\s*)git(\.exe)?\s+(commit|push|pull|reset|rebase|merge|cherry-pick|revert|checkout|switch|stash(?!\s+(?:list|show)\b)|clean|restore|am|apply|tag(?!\s*(?:$|[;&|)]|-l\b|--list\b|-n\d*\b|--contains\b|--points-at\b|--merged\b|--no-merged\b|--sort\b))|branch\s+-[dDmM]|worktree(?!\s+list\b)|update-ref|symbolic-ref(?=\s+\S+\s+\S)|filter-branch)\b", re.I)
 
 def kill_tree(proc):
     """Stop a command and every process it started."""
@@ -3010,7 +3050,7 @@ def refs_in_scope(rel, lines, target):
     uses, external = {}, {}
     for i in range(lo, min(hi, len(lines))):
         ln = lines[i]
-        code = re.sub(r"(\"[^\"]*\"|'[^']*'|#.*$|//.*$)", " ", ln)
+        code = code_only(ln)
         for m in IDENT_RE.finditer(code):
             name = m.group(0)
             if own and name == own[0] and i == lo:
@@ -5495,6 +5535,20 @@ def execute_note_ops(ops):
                 write_workspace_notes(notes, next_id)
                 print("  [NOTE PINNED] %s -> %s" % (op["id"], shown))
 
+            elif action == "brief":
+                found = next((n for n in notes if n["id"] == op["id"]), None)
+                if found is None:
+                    print("  [NOTE ERROR] note ID not found: %s" % op["id"])
+                    continue
+                if " || " in op["short"] or not op["short"]:
+                    print("  [NOTE ERROR] the short text must be non-empty and must not contain ' || '")
+                    continue
+                # Comment (decision): the existing text is kept whole behind the new short part (an old short part is replaced), so briefing a long note never means retyping it; audience, pin and own mark are untouched
+                full = found["text"].split(" || ", 1)[1] if " || " in found["text"] else found["text"]
+                found["text"] = op["short"] + " || " + full
+                write_workspace_notes(notes, next_id)
+                print("  [NOTE BRIEFED] %s" % op["id"])
+
             elif action == "remove":
                 kept = [n for n in notes if n["id"] != op["id"]]
                 if len(kept) == len(notes):
@@ -5917,6 +5971,7 @@ def print_card(shell, workspace):
   @TAKEOVER <session>                             asks the user at the terminal to let this chat take over what another chat holds (its write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; use it to continue a dead or finished chat's work
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*; 'pin *' reaches every chat with a session, those that appear later too); '@NOTE_ADD own | <text>' is the running chat's own to-do, pinned to it and shown as its own, never as the user's; any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
+  @NOTE_BRIEF <note-id> | <short text>            puts a short version before a note's existing text (footers print only that, with a pointer to @NOTE_LIST <note-id>); a note's old short part is replaced, its audience stays
   @NOTE_PIN <note-id> <*|names|all|own>           changes only who sees a note, never its text: * every chat with a session (new ones too), current = only the chats that exist now (not later ones), names or patterns, all = a plain note (also for runs without a session), own = this chat's own to-do; a note's text before ' || ' is all footers print, '@NOTE_LIST <note-id>' prints it whole
   @NOTE_REMOVE <note-id>                          removes an existing note
   @NOTE_LIST [words]                              prints all workspace notes, or those whose category, pins or text contain every word

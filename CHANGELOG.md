@@ -4,6 +4,14 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- [L1-Notes] tells the AI to brief a note whose detail is not needed on most turns, with a short part before " || " that says what the note is for: it briefs its own notes itself and only suggests @NOTE_BRIEF for the user's notes.
+
+- @NOTE_BRIEF <id> | <short text> puts a short version before an existing note's text without retyping it: footers print only the short part with "(more: @NOTE_LIST <id>)", @NOTE_LIST <id> prints it all, an old short part is replaced and the note's pin stays.
+
+- Fix: a definition in a brace language (C#, C, C++, Java, Go, Rust, JS...) now ends at its matching closing brace; before, a line at the definition's own indent, such as a C# where clause or a C label, ended its scope early, so a scope, a hunk or a verdict covered only part of the method. Python and unbalanced braces keep the indentation rule.
+- Fix: the Refs search strips strings and comments with escaped quotes, backtick strings and one-line block comments handled, so a name inside them is not read as code.
+- Fix: the @RUN safety rule also refuses git worktree (except list), update-ref, symbolic-ref with two arguments and filter-branch.
+
 - @NOTE_PIN <id> current pins a note to the chats registered right now and not to chats that appear later (a snapshot of their names); @NOTE_PIN <id> * switches it back to every chat with a session, new ones too, and neither touches the note's text.
 
 - @NOTE_PIN <id> <*|names|all|own> changes only who sees a note, never its text (* = every chat with a session, new ones too; all = a plain note; own = the chat's own to-do), so a pin no longer means resending the note. A note's text before " || " is all the footers print, followed by "(more: @NOTE_LIST <id>)", and @NOTE_LIST <id> prints one note whole; a note without " || " prints in full as before.

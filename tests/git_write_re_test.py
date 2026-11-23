@@ -17,8 +17,8 @@ def main():
     spec = importlib.util.spec_from_file_location("harness_under_test", HARNESS)
     hh = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(hh)
-    refused = ["git tag v1.0", "git tag -a v1.0 -m x", "git tag -d v1.0", "git commit -m x", "git push origin main", "git checkout main"]
-    allowed = ["git tag", "git tag -l", "git tag --list", "git tag -n", "git tag -n1 --list", "git tag -n5", "git tag --contains abc123", "git status", "git log --oneline"]
+    refused = ["git tag v1.0", "git tag -a v1.0 -m x", "git tag -d v1.0", "git commit -m x", "git push origin main", "git checkout main", "git worktree remove --force x", "git update-ref -d HEAD", "git symbolic-ref HEAD refs/heads/x", "git filter-branch -f"]
+    allowed = ["git tag", "git tag -l", "git tag --list", "git tag -n", "git tag -n1 --list", "git tag -n5", "git tag --contains abc123", "git status", "git log --oneline", "git worktree list", "git symbolic-ref HEAD"]
     wrongly_allowed = [c for c in refused if not hh.GIT_WRITE_RE.search(c)]
     wrongly_refused = [c for c in allowed if hh.GIT_WRITE_RE.search(c)]
     check("writes are refused", not wrongly_allowed, wrongly_allowed)
