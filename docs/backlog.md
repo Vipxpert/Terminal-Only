@@ -27,6 +27,8 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - The halagames knowledge file says a synchronous def /health route keeps answering while the ASGI event loop is frozen; that looks wrong, since the loop still receives the request. Owner to confirm what was observed. (2026-11-22)
 
 ## Gaps
+- A script whose only directive is @BORROW or @RECLAIM may count as read-only for replay and side checks (the functions near the read_only and side_allowed checks list @TAKEOVER but were not changed for these); the terminal question still guards them. Read those two functions and add borrow and reclaim. (2026-11-23)
+- After a loan returns, the owner sees the borrower's scripts in the history but cannot undo them as its own; the borrower can undo them before returning. Decide whether the owner needs that. (2026-11-23)
 - tree_master.txt lists brief_rules_test.py twice under /tests (seen in the node list a missing-node message printed); find and remove the duplicate line. (2026-11-23)
 - setup.cmd printed "Setup successful" after git pull failed on a diverged branch and installed the old files, and gave no instruction; it should say that the pull failed and what the installed version is, and name the way out. Seen on the desktop, 2026-11-23. (2026-11-23)
 - README: several Safety-model bullets pack six to eight mechanics into one paragraph (upstream fetching with accounts, the paste loop with clipboard and loop detection); split them under short sub-headings. Raised by Gemini, confirmed by reading. (2026-11-23)

@@ -100,6 +100,8 @@
     ├── code_only_test.py (Strings and comments are stripped from a line, with escaped quotes, backtick strings and one-line block comments handled)
     ├── redo_hint_test.py (A refused or malformed script's recovery hint names @REDO with corrections when nothing was applied)
     ├── scope_hint_test.py (A missing tree node lists the names at that level; a refused @SCOPE counts its free and busy paths and names the free ones)
+    ├── session_split_test.py (@SPLIT and @NEW_SESSION set up UNCLAIMED sessions, the list marks them, the first chat that names one claims it with its brief and files, and a split whose files cannot move creates nothing)
+    ├── borrow_test.py (@BORROW lends work on the user's answer, LENT blocks the owner, the borrower stays author, a second borrower takes over the loan, @RETURN puts files back in the owner's scope, @RECLAIM n asks and Enter takes)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
     ├── replay_footer_test.py (A re-pasted script replays its saved execution output, but the footer shows the latest goal, notes and other sessions' scopes)
