@@ -4,6 +4,10 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @BORROW <session> lends another session's work to this chat on the user's answer at the terminal, without merging: the borrower keeps its own name and files, the owner is marked LENT, and borrowing work that is already lent moves the loan (one owner, one holder, no chains). @RETURN <owner> | <result> from a borrower puts the files straight back into the owner's scope; @RECLAIM lets the owner take its work back (Enter) or ask for it (n). The borrower stays the author of its changes in the history.
+
+- @NEW_SESSION <name> | <aim> | <brief> sets up an UNCLAIMED session for a new chat, and @SPLIT <name> | <aim> | <paths> | <brief> does the same while handing it some of this chat's files the way @DELEGATE does (with their uncommitted work and the waits on them). The session list and the footer mark unclaimed sessions; the first chat that names one in @SESSION claims it and gets its brief once. [L1-Sessions] says when to propose a split and how a new chat picks a session.
+
 - A tree node that is not found now says where the search looked and lists the names at that level, so a selector is copied instead of guessed. A refused @SCOPE stays all-or-nothing but counts its free and busy paths, names the free ones and suggests claiming them on their own (or @REDO with the @SCOPE line corrected) when that work stands alone.
 
 - The recovery hints for a refused or malformed script, and the out-of-scope refusal, now say to send @REDO <number> with corrections when nothing in the script was applied, instead of only "resend"; a failing large script was being resent whole. [L1-Sessions] names the hand-over commands (@SCOPE_END handover, @SESSION_END handover).
