@@ -1,6 +1,6 @@
 # /llm_harness/tests/borrow_test.py
 """Borrow test for llm_harness: @BORROW lends a session's work to another chat only on the user's answer at the terminal (no terminal, no change), the owner is marked LENT and cannot change the lent files, the borrower stays the author of its changes, borrowing work that is already lent moves the loan (the owner stays the owner, the earlier holder keeps its own files and is told), @RETURN puts the files back in the owner's scope with the result, and @RECLAIM with n only asks while Enter takes the work back. The console is replaced by a fake, since a real prompt needs a terminal."""
-import contextlib, importlib.util, io, os, subprocess, sys, tempfile
+import contextlib, glob, importlib.util, io, os, subprocess, sys, tempfile
 
 HARNESS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser("~"), ".llm_harness", "harness.py")
 RESULTS = []
@@ -83,6 +83,35 @@ def main():
     still = (reg()["owner"].get("lent") or {}).get("to")
     out2 = act({"reclaim": True, "session": "owner"}, "")
     check("@RECLAIM: n only asks, Enter takes the work back at once", still == "relief" and set(paths("owner")) >= {"a.txt", "b.txt"} and not reg()["owner"].get("lent") and paths("relief") == ["c.txt"], (out1, out2, reg()))
+    base = {"ops": [], "notes": [], "goal": None, "git": [], "undo": None, "runs": [], "git_init": None, "scope": None, "scope_end": None, "session_end": None, "msgs": [], "brake_ack": None, "verdicts": [], "campaigns": []}
+    check("a script with @BORROW or @RECLAIM is never read-only and never allowed in @SIDE", hh.read_only(base) and not hh.read_only(dict(base, borrow="owner")) and not hh.read_only(dict(base, reclaim=True)) and not hh.side_allowed(dict(base, borrow="owner")) and not hh.side_allowed(dict(base, reclaim=True)))
+    run(ws, "relief", "@TEXT_REPLACE /c.txt | expect 1 | edit c", "--- [OLD TEXT] ---", "line one of charlie", "+++ [NEW TEXT] +++", "charlie changed", "=== [END TEXT] ===")
+
+    def entry(session, name):
+        for hp in sorted(glob.glob(os.path.join(hh.HISTORY_DIR, "*.json"))):
+            e = hh.load_json(hp, None)
+            if isinstance(e, dict) and e.get("session") == session and name in e.get("files", {}):
+                return e
+
+    def undo(e, value):
+        def fake(prompt):
+            asked.append(prompt)
+            return value
+        hh.ask_console = fake
+        asked.clear()
+        hh.CURRENT_SESSION = "owner"
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            hh.run_undo(str(e["num"]), hh.load_state())
+        return buf.getvalue()
+
+    ea, ec = entry("relief", "a.txt"), entry("relief", "c.txt")
+    out = undo(ea, "n")
+    check("the owner's undo of a borrower's script on returned work asks the user, and n leaves it", len(asked) == 1 and "relief was here" in text() and "answered no" in out, out)
+    out = undo(ea, "")
+    check("Enter undoes the returned file", "line one of alpha" in text() and "[RESTORED] /a.txt" in out, out)
+    out = undo(ec, "")
+    check("a borrower's script on its own file is still skipped, with no question", not asked and "belongs to session relief" in out and "charlie changed" in open(os.path.join(ws, "c.txt")).read(), out)
     sys.exit(0 if all(RESULTS) else 1)
 
 

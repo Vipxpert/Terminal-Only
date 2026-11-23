@@ -1410,6 +1410,25 @@ def recover_to(rel, fl, entry, dest, matches):
         restore_pre(target, encode_text(fixed, meta) if fixed != text else raw, fl["mode"])
         print("  [RECOVERED] /%s -> /%s (as it was before [%s])" % (rel, target, entry["id"]))
 
+def loan_undo_allowed(e):
+    """For an undo of a script another session ran: None when that session never borrowed this session's work (or the script touched none of it), so the usual skip applies; otherwise the user is asked at the terminal, naming the script, the borrower and the returned files, and the answer gives the files to undo (Enter) or False (n, or no terminal)."""
+    if not CURRENT_SESSION:
+        return None
+    rec = load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}
+    holder = e.get("session")
+    loans = [ln for ln in rec.get("returned_loans", []) if ln.get("holder") == holder]
+    files = [r for r in e.get("files", {}) if any(path_in(r, p) for ln in loans for p in ln.get("paths", []))]
+    if not files:
+        return None
+    ans = ask_console("\nSession %s asks to undo [%s] (%s), which %s ran while it borrowed this session's work; it changed %s.\nPress Enter to undo those files, or type n to leave them: " % (CURRENT_SESSION, e.get("id"), e.get("title", ""), holder, ", ".join("/" + r for r in files)))
+    if ans is None:
+        print("\n  [UNDO SKIPPED] [%s] was run by %s while it borrowed this work; undoing it needs the user's answer at a terminal" % (e.get("id"), holder))
+        return False
+    if ans.strip().lower() not in ("", "y", "yes"):
+        print("\n  [UNDO SKIPPED] [%s]: the user answered no" % e.get("id"))
+        return False
+    return files
+
 def run_undo(spec, state):
     """Reverse journaled scripts newest-first: exact snapshot restore when the file is unchanged since, else reverse-diff."""
     spec, _, only = spec.partition("|")
@@ -1429,9 +1448,15 @@ def run_undo(spec, state):
         e = load_json(path, None)
         if not e or not (lo <= e.get("num", -1) <= hi):
             continue
+        limit = None
         if CURRENT_SESSION and e.get("session") and e.get("session") != CURRENT_SESSION:
-            print("\n  [UNDO SKIPPED] [%s] belongs to session %s; undo it from that session." % (e["id"], e["session"]))
-            continue
+            # Comment (decision): another chat's script stays out of reach, except a borrower's script on work it gave back: its owner may undo that, only on the user's own answer at the terminal, and only the returned files
+            allowed = loan_undo_allowed(e)
+            if not allowed:
+                if allowed is None:
+                    print("\n  [UNDO SKIPPED] [%s] belongs to session %s; undo it from that session." % (e["id"], e["session"]))
+                continue
+            limit = allowed
         if only and not any(path_in(r, s) for s, _ in only for r in e.get("files", {})):
             continue
         seen += 1
@@ -1440,6 +1465,9 @@ def run_undo(spec, state):
             print("  NOTE: this script was already committed; undo only edits the working tree.")
         for rel, fl in e["files"].items():
             if only and not any(path_in(rel, s) for s, _ in only):
+                continue
+            if limit is not None and rel not in limit:
+                print("  [UNDO SKIPPED] /%s is %s's own file, not part of the returned work" % (rel, e.get("session")))
                 continue
             holder = scope_owner(rel, CURRENT_SESSION)[0] if CURRENT_SESSION else None
             if holder:
@@ -4388,6 +4416,7 @@ def return_loan(reg, holder, owner, result, force=False):
     hrec["borrowed"] = [b for b in hrec.get("borrowed", []) if b.get("from") != owner]
     if owner in reg:
         reg[owner].pop("lent", None)
+        reg[owner].setdefault("returned_loans", []).append({"holder": holder, "paths": paths, "time": time.time()})
     scripts = loan_scripts(holder, paths)
     files = ", ".join("/" + p for p in paths)
     log_event({"session": holder, "kind": "loan returned", "to": owner, "paths": paths, "text": "%s your work (%s), back in your scope: %s%s" % ("had to give back" if force else "gave back", files, result, " | its scripts on them: " + ", ".join(scripts[-10:]) if scripts else "")})
@@ -5306,7 +5335,7 @@ def expand_text_ops(P):
 
 def side_allowed(P):
     """A @SIDE script may only read, search and @RUN: no file, note, goal, git or undo actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover"))
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim"))
 
 def side_run_path(raw_txt):
     return os.path.join(runs_dir(), "side_%s.json" % payload_key(raw_txt)[:16])
@@ -5374,7 +5403,7 @@ def idle_script(P):
 
 def read_only(P):
     """True when a script only reads: no file, note, goal, git, undo or @RUN actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover"))
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim"))
 
 def load_state():
     """Numbering and shell from the machine-local state file; the goal from .llm_harness/goal.md, which travels with the project."""
@@ -6184,7 +6213,7 @@ def print_card(shell, workspace):
   @STEWARD [on | off]                             asks the user at the terminal to switch the opt-in backlog-and-review rule (the footer's [L1-Steward]) on or off for this project on this machine: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; alone it reports the state
   @TAKEOVER <session>                             asks the user at the terminal to let this chat take over what another chat holds (its write scope, grants, notes, verdicts, queues and unread messages), the same as the user's --merge: one question, Enter agrees, and with no terminal, or in a @SIDE or @REPEATABLE script, nothing changes; use it to continue a dead or finished chat's work
   @BORROW <session>                               asks the user at the terminal to lend that session's work to this chat, which keeps its own name and files (or to move an existing loan of it here); the work stays that session's: @RETURN <session> | <result> puts it back in its scope
-  @RECLAIM                                        the owner of lent work asks for it back: Enter takes it now with the holder's uncommitted changes, n only asks the holder to return it
+  @RECLAIM                                        the owner of lent work asks for it back: Enter takes it now with the holder's uncommitted changes, n only asks the holder to return it; after a loan returns, @UNDO of a borrower's script on that work asks the user too
   @NOTE_ADD <text>                                adds a persistent workspace note; '@NOTE_ADD pin <session>, <pattern> | <text>' pins it to those chats' footers only (patterns like migration-*; 'pin *' reaches every chat with a session, those that appear later too); '@NOTE_ADD own | <text>' is the running chat's own to-do, pinned to it and shown as its own, never as the user's; any chat can still list it; a leading 'Category: ' (Bug:, Decision:, Env:, Todo:...) makes it searchable
   @NOTE_EDIT <note-id> <text>                     edits an existing note
   @NOTE_BRIEF <note-id> | <short text>            puts a short version before a note's existing text (footers print only that, with a pointer to @NOTE_LIST <note-id>); a note's old short part is replaced, its audience stays

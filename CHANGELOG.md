@@ -4,6 +4,10 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- After a loan returns, its owner may @UNDO a script the borrower ran on that work, only after the user's answer at the terminal (Enter undoes the returned files, n or no terminal leaves them); every other script of another chat is skipped as before.
+
+- A script with @BORROW or @RECLAIM never counts as read-only (no harmless replay) and cannot ride in a @SIDE script, the same as @TAKEOVER.
+
 - @BORROW <session> lends another session's work to this chat on the user's answer at the terminal, without merging: the borrower keeps its own name and files, the owner is marked LENT, and borrowing work that is already lent moves the loan (one owner, one holder, no chains). @RETURN <owner> | <result> from a borrower puts the files straight back into the owner's scope; @RECLAIM lets the owner take its work back (Enter) or ask for it (n). The borrower stays the author of its changes in the history.
 
 - @NEW_SESSION <name> | <aim> | <brief> sets up an UNCLAIMED session for a new chat, and @SPLIT <name> | <aim> | <paths> | <brief> does the same while handing it some of this chat's files the way @DELEGATE does (with their uncommitted work and the waits on them). The session list and the footer mark unclaimed sessions; the first chat that names one in @SESSION claims it and gets its brief once. [L1-Sessions] says when to propose a split and how a new chat picks a session.
