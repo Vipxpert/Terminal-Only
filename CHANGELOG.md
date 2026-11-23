@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Optional, off by default and not mentioned in any rule or card: harness.py --workspace <folder> --auto on adds a last footer line, AUTO: CONTINUE (a numbered script that purely read, with nothing refused) or AUTO: PAUSE (<reason>), decided by code; @ASK_USER <line> makes the AI's request for the user a PAUSE, and the tenth read-only script in a row pauses. Nothing is sent anywhere.
+
 - setup.sh, like setup.cmd, no longer says "Setup successful" after a failed git pull and prints the way to get level. The README's Safety model is split under short headings, with its three longest bullets cut into labelled ones.
 
 - setup.cmd no longer ends with "Setup successful" after a failed git pull: it says the harness was not updated, that the files already in the folder were installed, and how to get level (git status -sb, then git reset --hard origin/main when nothing needs keeping).

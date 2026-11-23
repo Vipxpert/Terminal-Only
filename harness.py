@@ -735,7 +735,7 @@ def check_files(changed, pre):
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
-              "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
+              "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @ASK_USER @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
 
@@ -807,6 +807,8 @@ def parse_payload(txt):
                 P["warnings"].append("expected '@PART <i>/<n>', e.g. @PART 1/2")
         elif d == "REPEATABLE":
             P["repeatable"] = True
+        elif d == "ASK_USER":
+            P["ask_user"] = arg.strip() or "(no message)"
         elif d == "BRAKE_ACK":
             P["brake_ack"] = True
         elif d == "GOAL":
@@ -3720,7 +3722,7 @@ def name_session(P):
 def print_footer(state):
     # Comment (decision): every early exit ends with print_footer, while a normal run prints the session state before it; the flag set by print_sessions keeps a normal run from printing it twice
     show_state_if_missing()
-    return print_footer_body(state)
+    result = print_footer_body(state); print_auto_line(state); return result
 
 def events_path():
     return os.path.join(HARNESS_DIR, "scope_events.json")
@@ -4359,6 +4361,73 @@ def session_cli(flag):
         save_json(sessions_path(), reg)
         log_event({"session": sess, "kind": kind})
     print("%s: %s" % (kind.upper(), sess))
+
+AUTO_LINE = [""]
+AUTO_MAX = 10
+_AUTO_BAD = re.compile(r"(?m)^\s*(?:-> )?\[(?:REFUSED|SCOPE REFUSED|SCOPE ALERT|SHARED FILE|BRAKED|NOT SENT|RELEASE REFUSED|MALFORMED|ROLLED BACK)\b")
+
+def auto_path():
+    return os.path.join(HARNESS_DIR, "auto.json")
+
+def auto_on():
+    """True when the user switched the AUTO status line on for this project on this machine (--auto on); off by default, and anything unreadable counts as off."""
+    if not HARNESS_DIR:
+        return False
+    try:
+        return bool((load_json(auto_path(), {}) or {}).get("on"))
+    except (TypeError, AttributeError, OSError):
+        return False
+
+def auto_cli():
+    """User-only command: harness.py --workspace <folder> --auto [on | off]. Switches the last footer line (AUTO: CONTINUE or PAUSE) on or off for this project on this machine only; a script can never run it."""
+    args = sys.argv[1:]
+    i = args.index("--auto")
+    word = args[i + 1].lower() if len(args) > i + 1 and not args[i + 1].startswith("--") else ""
+    err = enter_workspace(arg_value("--workspace"))
+    if err or word not in ("", "on", "off"):
+        print("usage: harness.py --workspace <project folder> --auto [on | off]" + ((" | " + err) if err else ""))
+        return
+    if word:
+        os.makedirs(HARNESS_DIR, exist_ok=True)
+        save_json(auto_path(), {"on": word == "on"})
+    print("THE AUTO STATUS LINE IS %s for %s on this machine: the last footer line says AUTO: CONTINUE (a pure read) or AUTO: PAUSE (<reason>), decided by code. Nothing is sent anywhere, the switch is kept outside the project, and a script cannot change it." % ("ON" if auto_on() else "OFF", os.path.abspath(".")))
+
+def auto_verdict(P, out):
+    """Decides this run's AUTO line from the parsed script and what the run printed, never from the AI's prose: CONTINUE only for a numbered script that purely read; PAUSE for anything else, for @ASK_USER, and on the AUTO_MAX-th read in a row."""
+    if not auto_on():
+        return
+    me, why = P.get("session"), ""
+    if P.get("ask_user"):
+        why = "the AI asks for you: %s" % P["ask_user"][:200]
+    elif not me:
+        why = "no @SESSION line"
+    elif P.get("repeatable"):
+        why = "a @REPEATABLE script"
+    elif idle_script(P):
+        why = "the script did nothing"
+    elif not read_only(P) or RUN_FAILED:
+        why = "the script changed something, ran a command or touched git or sessions"
+    elif _AUTO_BAD.search(out or ""):
+        why = "the run refused or flagged something"
+    if me:
+        with state_lock():
+            reg = load_json(sessions_path(), {})
+            rec = reg.setdefault(me, {})
+            if not why and rec.get("brake"):
+                why = "this session is braked"
+            n = 0 if why else rec.get("auto_reads", 0) + 1
+            if n >= AUTO_MAX:
+                why, n = "%d read-only scripts in a row" % AUTO_MAX, 0
+            rec["auto_reads"] = n
+            save_json(sessions_path(), reg)
+    AUTO_LINE[0] = ("=== AUTO: PAUSE (%s) ===" % why) if why else "=== AUTO: CONTINUE ==="
+
+def print_auto_line(state):
+    """The last footer line while the switch is on; a run that never reached the verdict (a replay, a refusal, an undo) pauses."""
+    if state is None or not auto_on() or (CURRENT_PART and CURRENT_PART[0] < CURRENT_PART[1]):
+        return
+    print(AUTO_LINE[0] or "=== AUTO: PAUSE (this run ended early: a replay, a refusal or an undo) ===")
+    AUTO_LINE[0] = ""
 
 def steward_path():
     return os.path.join(HARNESS_DIR, "steward.json")
@@ -5644,10 +5713,10 @@ def print_footer_body(state):
             pass
     used = set((load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("used", [])) if CURRENT_SESSION and state is not None else set()
     if used:
-        rest = [d for d in DIRECTIVES.split() if d not in used]
+        rest = [d for d in DIRECTIVES.split() if d not in used and (d != "@ASK_USER" or auto_on())]
         print("[L1-Commands] not used yet in this chat: %s | %d already used | full list: @HELP COMMANDS | syntax of any one: @HELP <name>" % (" ".join(rest) or "(none: every command has been used)", len(used)))
     else:
-        print("[L1-Commands] " + " ".join(DIRECTIVES.split()) + " | syntax of any one: @HELP <name>")
+        print("[L1-Commands] " + " ".join(d for d in DIRECTIVES.split() if d != "@ASK_USER" or auto_on()) + " | syntax of any one: @HELP <name>")
 
 def enter_workspace(path):
     """chdir into the project a script names. Returns an error message, or None on success."""
@@ -6581,6 +6650,8 @@ def main():
         return check_cli()
     if "--steward" in sys.argv[1:]:
         return steward_cli()
+    if "--auto" in sys.argv[1:]:
+        return auto_cli()
     if "--link" in sys.argv[1:]:
         return link_cli()
     if "--merge" in sys.argv[1:]:
@@ -6787,6 +6858,7 @@ def main():
         print("\n  -> this script only did git work: put the next known change, test or probe in the same script as the commit, so no turn is spent on git alone.")
     announce_scope_changes(P["session"], not (P["side"] or P["repeatable"]))
     print_sessions(P["session"])
+    auto_verdict(P, tee.text()[start:])
     print("\n=== RUN TIME: %.1fs ===" % (time.time() - t_start))
     print_footer(state)
 
