@@ -62,6 +62,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - Unity project Big&Small: no goal pinned, and the checkout is 9 commits behind its remote. (2026-11-22)
 
 ## Ideas
+- The AUTO status line and @ASK_USER are built but off and hidden: switch on with harness.py --workspace <folder> --auto on (off to hide again). Not built: a desktop notification on PAUSE (could ride the same switch) and any runner. A runner for the chat websites (Playwright) is declined: the services generally forbid bots on consumer accounts; use a provider API, or an agent product, if a loop is ever wanted. @HELP COMMANDS may still list @ASK_USER. (2026-11-23)
 - Gemini's RunContext idea: group the module-level run state (CURRENT_SESSION, CURRENT_SCRIPT and the like) in one object; declined for now, since no failure comes from it. (2026-11-23)
 
 
