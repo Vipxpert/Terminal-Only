@@ -61,7 +61,6 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - Unity project Big&Small: no goal pinned, and the checkout is 9 commits behind its remote. (2026-11-22)
 
 ## Ideas
-- Handshake size: workflow_commands.txt carries nine "Why This Exists — Read Once, Do Not Echo" sections that the handshake prints in full; print only the operational rules to the AI and keep the rationale for humans (a doc file), after measuring what it saves. (2026-11-23)
 - Gemini's RunContext idea: group the module-level run state (CURRENT_SESSION, CURRENT_SCRIPT and the like) in one object; declined for now, since no failure comes from it. (2026-11-23)
 
 
