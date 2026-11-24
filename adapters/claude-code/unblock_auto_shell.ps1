@@ -9,6 +9,12 @@ function Test-Ours($hook) {
     foreach ($m in $marks) { if ($text -like "*$m*") { return $true } }
     return $false
 }
+$ocBase = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $env:USERPROFILE '.config' }
+$ocPlugin = Join-Path $ocBase 'opencode\plugins\terminal-only\index.ts'
+if (Test-Path -LiteralPath $ocPlugin) {
+    Move-Item -LiteralPath $ocPlugin -Destination ($ocPlugin + '.disabled') -Force
+    Write-Output "OpenCode: the Terminal-Only plugin was switched off ($ocPlugin renamed to .disabled). Restart OpenCode. Run setup.cmd again to switch it back on."
+}
 if (-not (Test-Path -LiteralPath $Settings)) {
     Write-Output "No Claude Code user settings at $Settings, so there was nothing to remove."
     exit 0

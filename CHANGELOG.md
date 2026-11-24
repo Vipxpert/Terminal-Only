@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- OpenCode adapter reaches parity with Claude Code's auto-shell: the plugin detects a Terminal-Only project from the session folder (silent elsewhere), briefs on each prompt there, and a tool guard allows only the exact harness call through the shell tool and rejects every other tool; setup.cmd installs it globally where OpenCode is set up (respecting XDG_CONFIG_HOME), and the emergency exit switches it off by renaming its file. Not yet tried in OpenCode.
+
 - The auto-shell hooks start with auto_shell_hook.cmd, which finds a Terminal-Only project from the working folder and its parents without PowerShell or Python, so ordinary projects pay almost nothing; when the working folder is home or temp (Claude Code's fallback when the real folder is gone) it hands over to the PowerShell launcher, which reads the real cwd. A replay now explains itself to the AI: the same paste arrived twice, nothing ran, and what to do.
 
 - Auto-shell hooks run through a PowerShell launcher (auto_shell_hook.ps1) that recognises a Terminal-Only project without Python, so a missing or failing Python blocks only Terminal-Only projects and never other ones; unblock_auto_shell.cmd, installed by setup, removes only Terminal-Only's hooks from Claude Code's settings without Python (with a backup), and setup.cmd puts them back.
