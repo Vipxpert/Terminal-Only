@@ -27,7 +27,7 @@ A chat orchestrator, a code implementation tool that is...
 
 The AI'll give you a script, you give the AI the output, and it'll give you another until everything is done.
 
-If you're tired of copy-paste, use a chat client that runs PowerShell itself, like OpenCode or Claude Code. It runs the scripts in its own tool loop, one after another, until the work is finished, without disrupting your flow. Claude Code has a guarded setup (agent mode: the rules arrive once per prompt and the harness is the only command it may run), see `adapters/claude-code/README.md`; OpenCode works without that guard for now.
+If you're tired of copy-paste, use a chat client that runs PowerShell itself, like OpenCode or Claude Code. It runs the scripts in its own tool loop, one after another, until the work is finished, without disrupting your flow. Claude Code switches into a guarded auto-shell by itself in Terminal-Only projects once setup has run (the rules arrive once per prompt and the harness is the only command it may run); OpenCode works without that guard for now.
 
 ### Runs by itself
 
@@ -63,7 +63,7 @@ I prefer the way the chat webs are made to output something that people can read
 
 The cost of aligning the agents back to be normal would definitely be something (unmeasured) but for sure is not as simple, singular as this entire code base, which benefits debugs, instant updates and eliminate compatibility issues. Configuring an agent takes dozens of plugins and orchestrators to make it reach this state. For me it's an obvious burden, but there is a trade-off: those dedicated plugins might have standardized implementations over this demand-adaptive design.
 
-It turns out agents can operate this harness naturally: clients like Claude Code or OpenCode run its scripts themselves, so you keep readable replies without the copy-paste, and agent mode keeps them inside its rules.
+It turns out agents can operate this harness naturally: clients like Claude Code or OpenCode run its scripts themselves, so you keep readable replies without the copy-paste, and auto-shell keeps them inside its rules.
 
 ---
 
@@ -193,15 +193,15 @@ Script numbering, undo history, saved run outputs, the session list and the rere
 
 The syntax card printed by the handshake is the authoritative reference.
 
-## Agent mode (Claude Code)
+## Auto-shell (Claude Code; OpenCode untried)
 
-AI clients that run commands themselves (Claude Code, OpenCode) can drive the harness without the paste loop: the AI pipes each script into `harness.py`, reads the output and answers you in plain prose. Without any setup this works like the chat flow, with the full rules after every run and nothing stopping the client from running other commands. Agent mode adds the guard; it is on only where `LLM_HARNESS_AGENT` is set, so the chat flow is unchanged.
+AI clients that run commands themselves (Claude Code, OpenCode) can drive the harness without the paste loop: the AI pipes each script into `harness.py`, reads the output and answers you in plain prose. Without any setup this works like the chat flow, with the full rules after every run and nothing stopping the client from running other commands. Auto-shell adds the guard. Setup installs it once per computer; Claude Code then switches into it by itself in any Terminal-Only project (a folder with `.llm_harness/`) and stays normal Claude Code everywhere else, so the chat flow and your other projects are unchanged.
 
 - **Rules once per prompt:** a prompt hook calls `harness.py --workspace <folder> --new-turn <prompt id>`; the first run in that prompt prints the full rules, later runs only new, changed or newly triggered ones. Rule lines tagged `(chat)` or `(agent)` print only in that flow.
 - **Host identity:** each session records the client and its own session id beside the chat address, and the hook tells the agent which harness session it works as.
 - **Refusals in code:** terminal questions get no answer, so nothing waits on a hidden console and nothing that needs your approval happens; `@RUN` runs only programs on your per-project allowlist (`--agent-allow <program> [<argument pattern>]`, `list`, `clear`, typed at your own terminal; programs named without a path, arguments matched in full, run with no shell); every git change is refused, so commits stay in the chat flow or your own terminal.
-- **The Claude Code adapter** (`adapters/claude-code/`): the prompt hook (it fails closed: if the turn cannot start, the prompt is held back), a PowerShell-only settings sample that allows exactly one command, the harness call, and denies the client's own file, web and MCP tools, and a bypass trial to run once. An OpenCode adapter (`adapters/opencode/`, a V2 plugin with a config sample and the same kind of trial) is written but not yet tried; until its trial passes, OpenCode counts as unguarded.
-- The client's permissions are not an operating-system sandbox, which is why the harness keeps its own refusals. Agent mode has not yet been tried live in Claude Code.
+- **The Claude Code adapter** (`adapters/claude-code/`): the prompt hook (it fails closed: if the turn cannot start, the prompt is held back), a tool guard that, in a Terminal-Only project, allows exactly one command, the harness call, and denies the client's own file, shell, web, MCP and subagent tools, and a bypass trial to run once. An OpenCode adapter (`adapters/opencode/`, a V2 plugin with a config sample and the same kind of trial) is written but not yet tried; until its trial passes, OpenCode counts as unguarded.
+- The client's permissions are not an operating-system sandbox, which is why the harness keeps its own refusals. Auto-shell has not yet been tried live in Claude Code.
 
 ## Safety model
 
@@ -280,7 +280,7 @@ Install codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp) to enable 
 - `knowledge/`: the shared library of pitfalls, one file per technology, searched with `@KB`.
 - `playbooks/`: the planning, review and newcomer-introduction procedures printed by `@PLAYBOOK`.
 - `setup.cmd`, `setup.sh`: installers.
-- `adapters/claude-code/`: the agent-mode prompt hook, settings sample and setup guide for Claude Code.
+- `adapters/claude-code/`: the auto-shell hooks, their installer (run by setup) and a guide for Claude Code.
 - `adapters/opencode/`: the agent-mode V2 plugin, config sample and setup guide for OpenCode (not yet tried).
 - `docs/trees/tree_master.txt`: this project's architecture tree.
 - `docs/backlog.md`: what is known to be missing, deferred, unverified or worth doing.
@@ -295,7 +295,7 @@ Work on this repository through the harness itself, with this folder as the work
 
 ## Limitations
 
-- In the chat flow you are in the loop for every step: one script per turn, pasted by hand (agent mode removes the pasting; see Agent mode).
+- In the chat flow you are in the loop for every step: one script per turn, pasted by hand (auto-shell removes the pasting; see Auto-shell).
 - Day-to-day use is on Windows PowerShell; Linux is covered by the test suites (the included GitHub Actions workflow runs them on Linux and Windows where Actions is enabled) but exercised less by hand, and macOS is untested.
 - Graph searches pay CBM's start-up cost, a few seconds per run.
 

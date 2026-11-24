@@ -56,6 +56,7 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - @TEXT_REPLACE refuses old text under 12 characters, so renaming .sql to .csv in one test took 15 whole-line replacements, and a three-character token in the pull test needed whole statements again; a short token with a stated count could be allowed. (2026-11-22)
 
 ## Deferred
+- A MODE: chat line in the chat flow's handshake waits for the desktop's P-323 merge, which adds its states line at the same place in the handshake. The hook-without-shell mismatch warning is dropped: inside Claude Code the harness now switches to auto-shell by itself. Code comments still say agent mode; the AGENT TURN marker stays because the hooks read it. (2026-11-24)
 - OpenCode adapter (adapters/opencode, V2 plugin for 2.4.1) is written but untried: run its bypass trial; inferred, to confirm there: where the session's subpath sits, and whether @opencode/plugin resolves for a plugin loaded from outside the project. (2026-11-24)
 - Work desktop: P-323 (borrower milestones, the handshake states line, milestone_test, the resume playbook line, changelog, backlog and tree) is uncommitted there; commit it on the desktop, then bring in the laptop's commits (the two will have diverged: the owner decides how), then build @HISTORY (its script never ran). (2026-11-24)
 
