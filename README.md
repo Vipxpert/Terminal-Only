@@ -10,21 +10,24 @@ A chat orchestrator, a code implementation tool that is...
 - Anti-drift context
 - Automated code edits, fewer AI turns
 - Undo, and a recycle bin for deleted files
-- Git actions automated
-- Several chats on one project, with conflict prevention. More specific, each chat operate a session has its own purpose and scope!
-- Magically code relations search algorithm [CBM](https://github.com/DeusData/codebase-memory-mcp), along with tree files that explain the code's meaning
+- Git actions done by the AI once you confirm
+- Several chats on one project, with conflict prevention. More specifically, each chat runs a session with its own purpose and file scope!
+- A code-relations search engine, [CBM](https://github.com/DeusData/codebase-memory-mcp), along with tree files that explain the code's meaning
 - Code-aware for C, C++, C#, Java, Kotlin, Scala, Go, Rust, Swift, Dart, PHP, Python, JavaScript, TypeScript and Vue; edits any other text file safely (SQL, Lua, CSS, HTML, XML, YAML, shell, PowerShell...)
+- New: works both in a normal chat interface and inside AI clients that run PowerShell themselves (Claude Code, OpenCode)!
 
 ### Get started
 
 1.  You are likely a Windows user: just download and extract this whole repo folder, and trigger `setup.cmd` for both installation and updates (on Linux, run `setup.sh` instead).
 2.  After that, from any PowerShell window (Windows Terminal, VS Code, Visual Studio's Developer PowerShell), paste this:
 
-        python "$HOME\.llm_harness\harness.py" --workspace "pathtoyourproject"
+        python "$HOME\.llm_harness\harness.py" --workspace "path\to\your\project"
 
 3.  Bring the output to the AI with your needs laid out. Tada~ you can work on your project. Remember to read the Talk section of the AI.
 
 The AI'll give you a script, you give the AI the output, and it'll give you another until everything is done.
+
+If you're tired of copy-paste, use a chat client that runs PowerShell itself, like OpenCode or Claude Code. It runs the scripts in its own tool loop, one after another, until the work is finished, without disrupting your flow. Claude Code has a guarded setup (agent mode: the rules arrive once per prompt and the harness is the only command it may run), see `adapters/claude-code/README.md`; OpenCode works without that guard for now.
 
 ### Runs by itself
 
@@ -43,28 +46,28 @@ If something should have run and did not, the rules have a gap: simply tell it t
 
 These features require your decisions:
 
-- sessions can be deleted, created, claimed, unclaimed, merged or borrowed by another chat if confirmed by you that something went wrong with the original chat (token exhaustion, context loss, accidental deletion, offload responsibility to a more capable chat)
-- a session can act advisor-only to send messages and guide other chats (untested)
+- a chat taking over (merging) or borrowing another chat's session needs your answer at the terminal, for when something went wrong with the original chat (token exhaustion, context loss, accidental deletion, or offloading the work to a more capable chat); creating, splitting, claiming and unclaiming sessions the AI does by itself when the rules call for it
+- a session can act advisor-only to send messages and guide other chats (not yet tried in real work)
 
 ### New?
 
-Tell the AI you are new to this tool. It walks you through the rest. The AI know the usage syntax, you don't have to remember. Just communicate by natural languages. If you only operate the tool rather than develop it, this may be all you need to know.
+Tell the AI you are new to this tool. It walks you through the rest. The AI knows the usage syntax, so you don't have to remember it. Just talk in natural language. If you only operate the tool rather than develop it, this may be all you need to know.
 
-### Why not agents?
+### Why not just agents?
 
-I prefer cheap subscription usage than most agents.
+I prefer cheap subscription usage over most traditional agents.
 
-I can't stand preparing a careful plan first due to trust issues then leave an agent running for 15 minutes on a task, constantly printing out jargons that I can't understand, at the speed I can't even read, then failed at somewhere I can't capture mid-way, then run out of tokens.
+I can't stand preparing a careful plan first due to trust issues then leave an agent running for 15 minutes on a task, constantly printing out jargon that I can't understand, at a speed I can't even read, then fails somewhere I can't catch mid-way, then runs out of tokens.
 
 I prefer the way the chat webs are made to output something that people can read by default. I don't prefer the way the agents are aligned to overwhelm people by default. It traps people in a loop of spending more tokens until it works.
 
-The cost of aligning the agents back to be normal would definitely be something (unmeasured) but for sure is not as simple, singular as this entire code base, which benefits debugs, instant updates and eliminate compatibility issues. Training an agent requires dozens of plugins and orchestrators to make it reaches this state. For me it's an obvious burden but there is a trade-off, those dedicated plugin might have standardized implementations over this demand-adaptive design.
+The cost of aligning the agents back to be normal would definitely be something (unmeasured) but for sure is not as simple, singular as this entire code base, which benefits debugs, instant updates and eliminate compatibility issues. Configuring an agent takes dozens of plugins and orchestrators to make it reach this state. For me it's an obvious burden, but there is a trade-off: those dedicated plugins might have standardized implementations over this demand-adaptive design.
 
-Some people could operate it, maybe agents could just operate this harness naturally. I simply don't have the time and resources for that research yet.
+It turns out agents can operate this harness naturally: clients like Claude Code or OpenCode run its scripts themselves, so you keep readable replies without the copy-paste, and agent mode keeps them inside its rules.
 
 ---
 
-*Below are the professionally structured jargons made by the AI that explain further details.*
+_Below is the professionally structured jargon made by the AI that explain further details._
 
 ## Why a chat-interface harness
 
@@ -176,19 +179,29 @@ Script numbering, undo history, saved run outputs, the session list and the rere
 
 ## What the AI can do
 
-| Purpose                | Directives                                                                                                                                                                                                                                                                                                                                                                            |
-| --- | --- |
-| Change files           | `@FILE` + `@HUNK` (with `+++ [LINE EDITS] +++` for a few lines inside a long block), `@NEW_FILE`, `@DELETE_FILE` (files, folders or globs; every file stays recoverable with `@UNDO`), `@RENAME` (a file or a whole folder, undoable), `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder), `@REDO <n>` (rerun a failed script with small corrections) |
-| Read code              | `@PROBE <file> \| Scope / Lines / TOC`, `@PROBE <file> \| Refs \| <scope>` (what a scope uses and where each piece is defined)                                                                                                                                                                                                                                                        |
-| Search | `@FIND` (files by name), `@GREP` (text or regex), both with an optional `\| depth N` and a path filter (a fragment, a glob, or `re:<regex>`), `@XREF <name>` (references), `@XREF <name> \| callers / callees / impact` (code graph) |
-| Architecture tree      | `@PROBE <tree> \| Tree \| <node> \| <depth>`, `@PROBE <tree> \| Check` (drift check)                                                                                                                                                                                                                                                                                                  |
-| Dead code              | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence)                                                                                                                                                                                                                                                                                                              |
-| Run anything else      | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once                                                                                                                                                                                                                 |
-| Project memory         | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST / PIN / BRIEF` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG`                                                                                                                                                                                                                                       |
-| History | `@UNDO` (whole scripts, or only some files with `\| /path, /other, /ye\*`; `/old -> /new` recovers a file to another path), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG`, `@GIT_PUSH`, `@GIT_PULL`, `@GIT_ACCOUNT`, `@GIT_REMOTE` (add a remote or change its address: https or ssh, no password or token inside, never removed) |
-| Knowledge and planning | `@KB <words>` (pitfalls for the technologies the project uses), `@PLAYBOOK [name]` (`plan-first`, `plan-project`, `review`)                                                                                                                                                                                                                                                           |
+| Purpose                | Directives                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Change files           | `@FILE` + `@HUNK` (with `+++ [LINE EDITS] +++` for a few lines inside a long block), `@NEW_FILE`, `@DELETE_FILE` (files, folders or globs; every file stays recoverable with `@UNDO`), `@RENAME` (a file or a whole folder, undoable), `@TEXT_REPLACE` (count-locked text edits inside a line, a scope or a whole folder), `@REDO <n>` (rerun a failed script with small corrections)                    |
+| Read code              | `@PROBE <file> \| Scope / Lines / TOC`, `@PROBE <file> \| Refs \| <scope>` (what a scope uses and where each piece is defined)                                                                                                                                                                                                                                                                           |
+| Search                 | `@FIND` (files by name), `@GREP` (text or regex), both with an optional `\| depth N` and a path filter (a fragment, a glob, or `re:<regex>`), `@XREF <name>` (references), `@XREF <name> \| callers / callees / impact` (code graph)                                                                                                                                                                     |
+| Architecture tree      | `@PROBE <tree> \| Tree \| <node> \| <depth>`, `@PROBE <tree> \| Check` (drift check)                                                                                                                                                                                                                                                                                                                     |
+| Dead code              | `@PROBE <file> \| Unused` (candidates with call-graph and text evidence)                                                                                                                                                                                                                                                                                                                                 |
+| Run anything else      | `@RUN [--timeout <s>] <command>` (tests, builds, installs, CLI tools); `@PART i/n` keeps a long run apart from many inspections, with the standing rules printed once                                                                                                                                                                                                                                    |
+| Project memory         | `@GOAL`, `@NOTE_ADD / EDIT / REMOVE / LIST / PIN / BRIEF` (pin to chats, search by category or content), `@VERDICT` / `@VERDICTS`, `@CAMPAIGN`, `@INIT_DEBUG`                                                                                                                                                                                                                                            |
+| History                | `@UNDO` (whole scripts, or only some files with `\| /path, /other, /ye\*`; `/old -> /new` recovers a file to another path), `@GIT_INIT`, `@GIT_STATUS`, `@GIT_COMMIT` (message checked), `@GIT_FOLD`, `@GIT_BRANCH`, `@GIT_WORKTREE`, `@GIT_TAG`, `@GIT_PUSH`, `@GIT_PULL`, `@GIT_ACCOUNT`, `@GIT_REMOTE` (add a remote or change its address: https or ssh, no password or token inside, never removed) |
+| Knowledge and planning | `@KB <words>` (pitfalls for the technologies the project uses), `@PLAYBOOK [name]` (`plan-first`, `plan-project`, `review`)                                                                                                                                                                                                                                                                              |
 
 The syntax card printed by the handshake is the authoritative reference.
+
+## Agent mode (Claude Code)
+
+AI clients that run commands themselves (Claude Code, OpenCode) can drive the harness without the paste loop: the AI pipes each script into `harness.py`, reads the output and answers you in plain prose. Without any setup this works like the chat flow, with the full rules after every run and nothing stopping the client from running other commands. Agent mode adds the guard; it is on only where `LLM_HARNESS_AGENT` is set, so the chat flow is unchanged.
+
+- **Rules once per prompt:** a prompt hook calls `harness.py --workspace <folder> --new-turn <prompt id>`; the first run in that prompt prints the full rules, later runs only new, changed or newly triggered ones. Rule lines tagged `(chat)` or `(agent)` print only in that flow.
+- **Host identity:** each session records the client and its own session id beside the chat address, and the hook tells the agent which harness session it works as.
+- **Refusals in code:** terminal questions get no answer, so nothing waits on a hidden console and nothing that needs your approval happens; `@RUN` runs only programs on your per-project allowlist (`--agent-allow <program> [<argument pattern>]`, `list`, `clear`, typed at your own terminal; programs named without a path, arguments matched in full, run with no shell); every git change is refused, so commits stay in the chat flow or your own terminal.
+- **The Claude Code adapter** (`adapters/claude-code/`): the prompt hook (it fails closed: if the turn cannot start, the prompt is held back), a PowerShell-only settings sample that allows exactly one command, the harness call, and denies the client's own file, web and MCP tools, and a bypass trial to run once. An OpenCode adapter (`adapters/opencode/`, a V2 plugin with a config sample and the same kind of trial) is written but not yet tried; until its trial passes, OpenCode counts as unguarded.
+- The client's permissions are not an operating-system sandbox, which is why the harness keeps its own refusals. Agent mode has not yet been tried live in Claude Code.
 
 ## Safety model
 
@@ -203,6 +216,7 @@ The syntax card printed by the handshake is the authoritative reference.
 - Failures and refusals end with a `->` line saying what to rebuild or check next; `[TIP]` lines point out cheaper edit forms. Neither blocks anything.
 - Script numbers are assigned by the harness under a cross-process lock, so several chats can paste at the same time, and its state files are replaced whole, so no chat ever reads one half-written.
 - Folders emptied by a rename or delete are removed up to the workspace root (a folder holding only `__pycache__` counts as empty); one that cannot be removed is named, with the process holding it when the optional `psutil` package is installed. Nothing is ever stopped for you.
+
 ### Git
 
 - In a git project the harness commits its own project memory (`.llm_harness` goal, notes, verdicts and `git.json`) after each script that changes it, except on a protected branch; if `.gitignore` hides those files, it says so.
@@ -211,10 +225,12 @@ The syntax card printed by the handshake is the authoritative reference.
 - **Pull:** `@GIT_PULL` fast-forwards a clean checkout and bookmarks where it was; when the branches have diverged it only says whether a merge would be clean or would conflict, and changes nothing. `@GIT_PULL` and `@GIT_PUSH` may still ask you to sign in.
 - **Accounts:** with several accounts signed in, `@GIT_ACCOUNT` lists them and lets you pin the one this project uses (a number at the terminal, or by name): it is kept in this clone's git config, so git passes that username to Git Credential Manager and stops showing the account chooser; `@GIT_ACCOUNT clear` removes it, and pressing A in the list signs another account in first (Git Credential Manager's own `github login`).
 - **First push or pull:** the first time a push or pull you asked for finds several accounts and none pinned, the harness asks once (one key) instead of letting the chooser appear, and the choice is kept for that project on that machine only (it lives in the clone's `.git/config`, which is not committed), so another project or another machine asks once for itself.
+
 ### The paste loop and several chats
 
 - After three scripts in a row that did nothing, the footer says `LOOP CHECK`: the AI then drops its manifest and script and replies in one or two short lines. The same short, discardable reply is asked for an accidental paste (an output the chat already answered, or one with no new information and no words from you): it says so and reminds what is pending.
 - At a terminal the harness waits for a key after a run: C or Enter copies the whole output to the clipboard (the Windows clipboard, with PowerShell as a fallback; `pbcopy`, `wl-copy`, `xclip` or `xsel` elsewhere); X skips it (other keys are ignored; after a replay, or on Windows while the terminal is still in front, it copies at once without asking; `LLM_HARNESS_COPY=ask` always asks), and `LLM_HARNESS_NO_COPY=1` turns the prompt off.
+
 ### Commits, branches and worktrees
 
 - **Commits** happen only through git directives, after you confirm the change works. The harness aborts during a merge or rebase, pushes only through `@GIT_PUSH` (never forced), and refuses `@RUN git commit` and similar commands. Commit messages must have the form `type(scope): subject` with a conventional type.
@@ -264,6 +280,8 @@ Install codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp) to enable 
 - `knowledge/`: the shared library of pitfalls, one file per technology, searched with `@KB`.
 - `playbooks/`: the planning, review and newcomer-introduction procedures printed by `@PLAYBOOK`.
 - `setup.cmd`, `setup.sh`: installers.
+- `adapters/claude-code/`: the agent-mode prompt hook, settings sample and setup guide for Claude Code.
+- `adapters/opencode/`: the agent-mode V2 plugin, config sample and setup guide for OpenCode (not yet tried).
 - `docs/trees/tree_master.txt`: this project's architecture tree.
 - `docs/backlog.md`: what is known to be missing, deferred, unverified or worth doing.
 - `.llm_harness/goal.md`, `.llm_harness/notes.md`: this project's memory.
@@ -277,7 +295,7 @@ Work on this repository through the harness itself, with this folder as the work
 
 ## Limitations
 
-- You are in the loop for every step: one script per turn, pasted by hand.
+- In the chat flow you are in the loop for every step: one script per turn, pasted by hand (agent mode removes the pasting; see Agent mode).
 - Day-to-day use is on Windows PowerShell; Linux is covered by the test suites (the included GitHub Actions workflow runs them on Linux and Windows where Actions is enabled) but exercised less by hand, and macOS is untested.
 - Graph searches pay CBM's start-up cost, a few seconds per run.
 

@@ -3,6 +3,7 @@
 What is known to be missing, deferred, unverified or worth doing, so that nothing lives only in a chat. The AI adds a line in the same script that leaves something undone; whoever finishes an item removes it in the commit that finishes it. The owner reorders, rewrites or deletes lines at will. Kinds: unverified (built but never proven where it matters), question (waiting on someone), gap (a known shortcoming), friction (the same manual step, workaround or reminder more than once), deferred (decided to do later), idea (speculative: no evidence yet).
 
 ## Unverified
+- Agent mode in Claude Code itself: the settings sample (adapters/claude-code/settings.local.json.example) and the bypass trial in adapters/claude-code/README.md have not run in Claude Code yet; only the hook and the harness side are tested. Setup does not install new_turn_hook.py yet (copied by hand). (2026-11-24)
 - setup.cmd's failed-pull message (PULL_FAILED) has not run on a checkout whose pull really fails; only :getver is tested. Try it on the next diverged checkout. (2026-11-23)
 - The gh provider for @GIT_ACCOUNT (JSON list, switch, setup-git hint) has been tested only against a fake gh, built from ChatGPT's reading of GitHub's docs; try it once with the real gh on a machine with two accounts. SSH-key selection per account stays unsupported by design. (2026-11-23)
 - The setup.cmd version lines (the :getver subroutine, a PowerShell call inside a batch file) have not run on Windows; setup.sh's are tested. Run setup.cmd once and read the "Harness version" and "Installed version now" lines. (2026-11-22)
@@ -55,6 +56,9 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - @TEXT_REPLACE refuses old text under 12 characters, so renaming .sql to .csv in one test took 15 whole-line replacements, and a three-character token in the pull test needed whole statements again; a short token with a stated count could be allowed. (2026-11-22)
 
 ## Deferred
+- OpenCode adapter (adapters/opencode, V2 plugin for 2.4.1) is written but untried: run its bypass trial; inferred, to confirm there: where the session's subpath sits, and whether @opencode/plugin resolves for a plugin loaded from outside the project. (2026-11-24)
+- Work desktop: P-323 (borrower milestones, the handshake states line, milestone_test, the resume playbook line, changelog, backlog and tree) is uncommitted there; commit it on the desktop, then bring in the laptop's commits (the two will have diverged: the owner decides how), then build @HISTORY (its script never ran). (2026-11-24)
+- docs/trees/tree_master.txt has no nodes yet for the agent-mode functions in harness.py (agent_mode, new_turn_cli, agent_quiet, host_session_id, host_name, record_host, agent_allow_cli, agent_run_args); read how the tree lists harness.py functions and add them with the agent-mode commit. (2026-11-24)
 
 - Desktop: run setup.cmd (many commits behind), send @STEWARD on for this repository (one question at its terminal), end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
 - halagames-tools: pin the HalaGames account with @GIT_ACCOUNT; add !.llm_harness/git.json to .gitignore with the git.json branch policy; add the .gitattributes merge lines. (2026-11-22)
