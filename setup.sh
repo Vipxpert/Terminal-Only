@@ -181,6 +181,10 @@ if [ -d "$TEMP_DIR/playbooks" ]; then
     fi
     mv "$TEMP_DIR/playbooks" "$TARGET_DIR/playbooks"
 fi
+if [ -d "$SOURCE_DIR/adapters/claude-code" ]; then
+    cp "$SOURCE_DIR"/adapters/claude-code/*.py "$TARGET_DIR/"
+    python3 "$TARGET_DIR/install_hooks.py" || python "$TARGET_DIR/install_hooks.py" || echo "WARNING: the Claude Code auto-shell hooks could not be installed."
+fi
 chmod 644 "$TARGET_DIR/harness.py" "$TARGET_DIR/workflow_commands.txt"
 
 # Comment (workaround): Linux terminal output copy needs wl-copy, xclip, or xsel; install one best-effort without aborting setup under set -eu

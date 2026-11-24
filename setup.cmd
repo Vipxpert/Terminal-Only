@@ -114,6 +114,10 @@ if exist "%TEMP_DIR%\playbooks\" (
     xcopy "%TEMP_DIR%\playbooks" "%TARGET_DIR%\playbooks\" /e /i /y /q >nul
     if errorlevel 1 goto :failed
 )
+if exist "%SOURCE_DIR%adapters\claude-code\" (
+    copy /y "%SOURCE_DIR%adapters\claude-code\*.py" "%TARGET_DIR%\" >nul & copy /y "%SOURCE_DIR%adapters\claude-code\*.ps1" "%TARGET_DIR%\" >nul & copy /y "%SOURCE_DIR%adapters\claude-code\*.cmd" "%TARGET_DIR%\" >nul
+    python "%TARGET_DIR%\install_hooks.py"
+)
 rd /s /q "%TEMP_DIR%" 2>nul
 
 echo.

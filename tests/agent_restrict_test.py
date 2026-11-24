@@ -50,7 +50,7 @@ def main():
     out = run(ws, AGENT, "@RUN python -V; echo hi")
     check("shell operators are refused even after an allowlisted program", "shell operators" in out, out)
     out = run(ws, AGENT, "@GIT_COMMIT feat: x", "/a.txt", "@END_GIT_COMMIT")
-    check("agent mode refuses git changes", "[REFUSED] agent mode: git changes" in out, out)
+    check("agent mode refuses git changes", "[REFUSED] auto-shell: git changes" in out, out)
     sys.exit(0 if all(RESULTS) else 1)
 
 

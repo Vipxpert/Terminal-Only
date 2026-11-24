@@ -30,6 +30,7 @@ def context(out):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-hook-")
+    os.makedirs(os.path.join(ws, ".llm_harness"))
     prompt = {"session_id": "s9", "prompt_id": "p1", "cwd": ws, "hook_event_name": "UserPromptSubmit", "prompt": "hello"}
     code, out, err = hook(prompt)
     ctx = context(out)
@@ -38,6 +39,9 @@ def main():
     check("the same prompt_id again does not start a second turn", code == 0 and "continues" in context(out), (out, err))
     code, out, err = hook(dict(prompt, prompt_id="p2"), harness=os.path.join(ws, "missing", "harness.py"))
     check("when the turn cannot start, the hook exits 2 and says why, so the prompt is held back", code == 2 and "held back" in err and not out.strip(), (code, out, err))
+    plain = tempfile.mkdtemp(prefix="harness-hook-plain-")
+    code, out, err = hook(dict(prompt, cwd=plain, prompt_id="p3"))
+    check("in an ordinary folder the prompt hook says nothing", code == 0 and not out.strip(), (out, err))
     sys.exit(0 if all(RESULTS) else 1)
 
 

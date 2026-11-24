@@ -47,6 +47,10 @@ def main():
     oc.update(LLM_HARNESS_AGENT="1", OPENCODE_SESSION_ID="oc1")
     out = run(ws, oc)
     check("an OpenCode shell (LLM_HARNESS_AGENT=1 with OPENCODE_SESSION_ID) is recorded as host opencode", "| host: opencode session oc1" in out, out[-1500:])
+    cc = {k: v for k, v in os.environ.items() if k not in ("LLM_HARNESS_AGENT", "LLM_HARNESS_HOST", "LLM_HARNESS_HOST_SESSION", "OPENCODE_SESSION_ID")}
+    cc["CLAUDE_CODE_SESSION_ID"] = "cc1"
+    out = run(ws, cc)
+    check("inside Claude Code (CLAUDE_CODE_SESSION_ID alone) the run is auto-shell for host claude-code", "| host: claude-code session cc1" in out, out[-1500:])
     sys.exit(0 if all(RESULTS) else 1)
 
 

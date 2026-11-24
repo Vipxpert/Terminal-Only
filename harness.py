@@ -2685,7 +2685,7 @@ def run_command(cmd, timeout, shell):
         # Comment (decision): host permissions are not a sandbox, so in agent mode the harness itself is the gate: only an allowlisted program, named without a path, with arguments matching its pattern in full, run directly with no shell (so no operators, no cd, no second command)
         args, why = agent_run_args(cmd)
         if args is None:
-            print("  [REFUSED] agent mode runs only commands on this project's allowlist, as a program and its arguments with no shell: %s. Nothing was run." % why)
+            print("  [REFUSED] auto-shell runs only commands on this project's allowlist, as a program and its arguments with no shell: %s. Nothing was run." % why)
             print("  -> tell the user what you need to run; only they can allow it, at their terminal: harness.py --workspace <folder> --agent-allow <program> [<argument pattern>]")
             return
     elif shell == "powershell":
@@ -5605,7 +5605,7 @@ def rule_hash(body):
 
 def agent_mode():
     """True when a host app (Claude Code first) runs the harness as its tool and sets LLM_HARNESS_AGENT; unset, the chat-browser flow is exactly as before."""
-    return bool(os.environ.get("LLM_HARNESS_AGENT", "").strip())
+    return bool(os.environ.get("LLM_HARNESS_AGENT", "").strip() or os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip())
 
 def agent_allow_path():
     return os.path.join(HARNESS_DIR, "agent_allow.json")
@@ -5685,7 +5685,7 @@ def host_session_id():
 def host_name():
     """The host app's name for the session list: the LLM_HARNESS_AGENT value, or claude-code when it is only switched on (1, true, on) inside Claude Code."""
     v = os.environ.get("LLM_HARNESS_HOST", "").strip() or os.environ.get("LLM_HARNESS_AGENT", "").strip()
-    if v.lower() in ("1", "true", "yes", "on"):
+    if not v or v.lower() in ("1", "true", "yes", "on"):
         return "claude-code" if os.environ.get("CLAUDE_CODE_SESSION_ID") else "opencode" if os.environ.get("OPENCODE_SESSION_ID") else "agent"
     return v
 
@@ -5865,7 +5865,7 @@ def print_footer_body(state):
                 continue
             print("%s%s %s" % (mark, tag, body.strip().strip("`").strip()))
         if hidden:
-            print("  (agent turn: %d standing rule%s already in this prompt's briefing and unchanged, not repeated; @HELP L1-<name> prints one)" % (hidden, "" if hidden == 1 else "s"))
+            print("  (auto-shell turn: %d standing rule%s already in this prompt's briefing and unchanged, not repeated; @HELP L1-<name> prints one)" % (hidden, "" if hidden == 1 else "s"))
     if state is not None:
         try:
             kb_hint()
@@ -6863,7 +6863,7 @@ def main():
             return print_footer(state)
         prior = None if P["repeatable"] else load_json(side_run_path(raw_txt), None)
         if prior:
-            print("  [REPLAY] this @SIDE script already ran and this paste is identical, so nothing was run again. Its saved output:")
+            print("  [REPLAY] this @SIDE script already ran and this paste is identical, so nothing was run again (the same paste arrived twice, usually a duplicated copy). For the AI: if you already answered this script, reply in one or two lines and remind what is pending; if this output is new to you, read it as that script's result and continue. Its saved output:")
             AUTO_COPY.append(True)
             print(prior.get("output", "").rstrip("\n"))
             return print_footer(state)
@@ -6880,7 +6880,7 @@ def main():
             print("  [EXECUTE AGAIN] [%s] runs again under a new number" % prior.get("id"))
             prior, P["again"] = None, True
         if prior:
-            print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again. Its saved output:" % prior.get("id"))
+            print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again (the same paste arrived twice, usually a duplicated copy). For the AI: if you already answered this script, reply in one or two lines and remind what is pending; if this output is new to you, read it as that script's result and continue. Its saved output:" % prior.get("id"))
             AUTO_COPY.append(True)
             print(prior.get("output", "").rstrip("\n"))
             print("\n  -> to run it again on purpose, change its title; at a terminal the user is asked instead: replay, undo, or execute again.")
@@ -6902,7 +6902,7 @@ def main():
             assigned = True
             print("  [ASSIGNED] " + P["id"])
         elif same:
-            print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again. Its saved output:" % P["id"])
+            print("  [REPLAY] [%s] already ran and this paste is identical, so nothing was run again (the same paste arrived twice, usually a duplicated copy). For the AI: if you already answered this script, reply in one or two lines and remind what is pending; if this output is new to you, read it as that script's result and continue. Its saved output:" % P["id"])
             AUTO_COPY.append(True)
             print(prior.get("output", "").rstrip("\n"))
             return print_footer(state)
@@ -6962,7 +6962,7 @@ def main():
         print("  [REFUSED] @UNDO must be in its own script (probes, searches, notes and @RUN may ride along). No changes were made.")
         print("  -> resend the undo and the other changes as separate scripts with consecutive numbers.")
     elif (P["git"] or P["git_init"]) and agent_mode():
-        print("  [REFUSED] agent mode: git changes (commit, fold, push, pull, branch, tag, account, remote, init) need an approval the user gives in the conversation, which the harness cannot receive yet; @GIT_STATUS still works. No changes were made.")
+        print("  [REFUSED] auto-shell: git changes (commit, fold, push, pull, branch, tag, account, remote, init) need an approval the user gives in the conversation, which the harness cannot receive yet; @GIT_STATUS still works. No changes were made.")
         print("  -> finish the work, then tell the user what to commit; they send that commit from the chat-browser flow or their own terminal.")
     elif P["git"] and MODE != "git":
         print("  [REFUSED] git directives in a no-git workspace. No changes were made.")

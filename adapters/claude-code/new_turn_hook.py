@@ -5,6 +5,9 @@ Claude Code passes the hook a JSON object on stdin; this script uses only sessio
 """
 import json, os, subprocess, sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from harness_project import harness_root
+
 
 def main():
     try:
@@ -19,7 +22,11 @@ def main():
     sid = str(data.get("session_id") or env.get("CLAUDE_CODE_SESSION_ID") or "")
     if sid:
         env["LLM_HARNESS_HOST_SESSION"] = sid
-    args = [sys.executable, harness, "--workspace", str(data.get("cwd") or os.getcwd()), "--new-turn"]
+    root = harness_root(str(data.get("cwd") or os.getcwd()))
+    if not root:
+        # Comment (decision): not a Terminal-Only project, so stay silent and leave Claude Code as it is there
+        return 0
+    args = [sys.executable, harness, "--workspace", root, "--new-turn"]
     if data.get("prompt_id"):
         args.append(str(data["prompt_id"]))
     try:
@@ -32,7 +39,7 @@ def main():
         # Comment (decision): fail closed: exit 2 holds this prompt back (the settings add onFailure block for crashes and timeouts), so the agent never works a prompt without the harness rules
         sys.stderr.write("llm_harness: the prompt turn could not start, so this prompt is held back rather than run without the harness rules: %s\n" % out[-500:])
         return 2
-    context = out + "\nWork only through the harness: every terminal action is ONE script piped into it, exactly as  @'<script>'@ | python '%s'  (the only command allowed: no other command and no $OutputEncoding prefix). Its first output in this prompt prints the full standing rules; follow them, and answer the user in plain prose." % harness
+    context = "MODE: auto-shell (this folder is a Terminal-Only project: %s)\n" % root + out + "\nWork only through the harness: every terminal action is ONE script piped into it, exactly as  @'<script>'@ | python '%s'  (the only command allowed: no other command and no $OutputEncoding prefix). Its first output in this prompt prints the full standing rules; follow them, and answer the user in plain prose." % harness
     json.dump({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}, sys.stdout)
     return 0
 

@@ -4,6 +4,14 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- The auto-shell hooks start with auto_shell_hook.cmd, which finds a Terminal-Only project from the working folder and its parents without PowerShell or Python, so ordinary projects pay almost nothing; when the working folder is home or temp (Claude Code's fallback when the real folder is gone) it hands over to the PowerShell launcher, which reads the real cwd. A replay now explains itself to the AI: the same paste arrived twice, nothing ran, and what to do.
+
+- Auto-shell hooks run through a PowerShell launcher (auto_shell_hook.ps1) that recognises a Terminal-Only project without Python, so a missing or failing Python blocks only Terminal-Only projects and never other ones; unblock_auto_shell.cmd, installed by setup, removes only Terminal-Only's hooks from Claude Code's settings without Python (with a backup), and setup.cmd puts them back.
+
+- Setup installs the Claude Code auto-shell once per computer (Windows): it copies the hooks into ~/.llm_harness and registers the prompt hook and the PreToolUse guard in ~/.claude/settings.json, keeping every other setting, backing the file up, never duplicating its own entries and skipping a file it cannot read; install_hooks.py --uninstall removes them. No per-project setup.
+
+- Auto-shell (formerly called agent mode) recognises a Terminal-Only project by itself: the Claude Code hooks find the nearest folder with .llm_harness/ or .git/llm_harness/ (never the install folder or the home folder), stay silent in other projects, and open with MODE: auto-shell in harness projects; a new PreToolUse hook allows only the harness call there (one here-string piped into python and the installed harness.py) and denies every other tool; a run inside Claude Code counts as auto-shell without LLM_HARNESS_AGENT.
+
 - Agent mode: adapters/opencode adds an OpenCode V2 plugin (a prompt hook that starts a harness turn per prompt through a direct child process, appends the briefing and fails closed; a shell hook that sets the agent environment), a config sample (one primary agent, no subagents, deny-all with only the harness call allowed) and a README with setup and a bypass trial; the harness recognises OpenCode's session id. Not yet tried in OpenCode.
 
 - Agent mode, step 5b: the Claude Code hook hands the turn briefing back as hookSpecificOutput.additionalContext and fails closed (exit 2 holds the prompt back when the turn cannot start); adapters/claude-code adds a PowerShell-only settings sample (dontAsk, one exact allow rule for the harness, explicit denials, the hook with onFailure block) and a README with setup steps and a bypass trial.
