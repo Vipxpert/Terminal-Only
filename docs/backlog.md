@@ -58,7 +58,6 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 ## Deferred
 - OpenCode adapter (adapters/opencode, V2 plugin for 2.4.1) is written but untried: run its bypass trial; inferred, to confirm there: where the session's subpath sits, and whether @opencode/plugin resolves for a plugin loaded from outside the project. (2026-11-24)
 - Work desktop: P-323 (borrower milestones, the handshake states line, milestone_test, the resume playbook line, changelog, backlog and tree) is uncommitted there; commit it on the desktop, then bring in the laptop's commits (the two will have diverged: the owner decides how), then build @HISTORY (its script never ran). (2026-11-24)
-- docs/trees/tree_master.txt has no nodes yet for the agent-mode functions in harness.py (agent_mode, new_turn_cli, agent_quiet, host_session_id, host_name, record_host, agent_allow_cli, agent_run_args); read how the tree lists harness.py functions and add them with the agent-mode commit. (2026-11-24)
 
 - Desktop: run setup.cmd (many commits behind), send @STEWARD on for this repository (one question at its terminal), end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
 - halagames-tools: pin the HalaGames account with @GIT_ACCOUNT; add !.llm_harness/git.json to .gitignore with the git.json branch policy; add the .gitattributes merge lines. (2026-11-22)
