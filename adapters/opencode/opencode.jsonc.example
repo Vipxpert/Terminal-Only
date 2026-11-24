@@ -1,0 +1,20 @@
+// Copy to <project>\.opencode\opencode.jsonc and replace <USER> (twice). Run the bypass trial in README.md before trusting it.
+// The shell resource is the raw command string OpenCode's scanner sees: it must match the harness call exactly; never widen it to python *.
+{
+  "default_agent": "terminal-only",
+  "agents": {
+    "terminal-only": {
+      "mode": "primary",
+      "permissions": [
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "build": { "disabled": true },
+    "plan": { "disabled": true }
+  },
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "deny" },
+    { "action": "external_directory", "resource": "C:/Users/<USER>/.llm_harness/*", "effect": "allow" },
+    { "action": "shell", "resource": "python 'C:/Users/<USER>/.llm_harness/harness.py'", "effect": "allow" }
+  ]
+}

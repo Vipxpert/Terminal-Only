@@ -4,6 +4,20 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Agent mode: adapters/opencode adds an OpenCode V2 plugin (a prompt hook that starts a harness turn per prompt through a direct child process, appends the briefing and fails closed; a shell hook that sets the agent environment), a config sample (one primary agent, no subagents, deny-all with only the harness call allowed) and a README with setup and a bypass trial; the harness recognises OpenCode's session id. Not yet tried in OpenCode.
+
+- Agent mode, step 5b: the Claude Code hook hands the turn briefing back as hookSpecificOutput.additionalContext and fails closed (exit 2 holds the prompt back when the turn cannot start); adapters/claude-code adds a PowerShell-only settings sample (dontAsk, one exact allow rule for the harness, explicit denials, the hook with onFailure block) and a README with setup steps and a bypass trial.
+
+- Agent mode, step 5a: adapters/claude-code/new_turn_hook.py, a UserPromptSubmit hook that starts a harness prompt turn on every prompt (keyed by the hook's prompt_id, for the host session in session_id, in the project folder cwd) and never blocks the prompt.
+
+- Agent mode, step 4: standing rules can be tagged (chat) or (agent); [L1-Harness] keeps today's text as its (chat) version, and an (agent) version tells a host-run AI to use only the harness, answer in plain prose with no manifest, and ask the user in its reply for anything that needs approval.
+
+- Agent mode, step 3: terminal questions get no answer at once (so nothing waits on a hidden console and nothing the user must approve can happen); @RUN runs only programs on a per-project allowlist the user keeps with harness.py --workspace <folder> --agent-allow <program> [<argument pattern>] (list, clear), named without a path, with arguments matching in full, directly and without a shell; git changes are refused. The chat-browser flow is unchanged.
+
+- Agent mode, step 2: each agent run records the host app and its session id (CLAUDE_CODE_SESSION_ID, or LLM_HARNESS_HOST_SESSION) beside the chat address, the session line shows it when there is no address, turns are counted per host session, and --new-turn names the harness session that host session works as.
+
+- Agent mode, step 1: when a host app sets LLM_HARNESS_AGENT, the first harness run of each prompt turn briefs the full standing rules and later runs in that turn print only new, changed or newly triggered ones; harness.py --workspace <folder> --new-turn [<event id>] starts a turn (the same event id counts once). Without the variable the chat-browser flow is unchanged.
+
 - Optional, off by default and not mentioned in any rule or card: harness.py --workspace <folder> --auto on adds a last footer line, AUTO: CONTINUE (a numbered script that purely read, with nothing refused) or AUTO: PAUSE (<reason>), decided by code; @ASK_USER <line> makes the AI's request for the user a PAUSE, and the tenth read-only script in a row pauses. Nothing is sent anywhere.
 
 - setup.sh, like setup.cmd, no longer says "Setup successful" after a failed git pull and prints the way to get level. The README's Safety model is split under short headings, with its three longest bullets cut into labelled ones.

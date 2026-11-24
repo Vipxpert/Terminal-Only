@@ -1,0 +1,49 @@
+{
+  "env": {
+    "LLM_HARNESS_AGENT": "1",
+    "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1"
+  },
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "PowerShell(python 'C:\\Users\\<USER>\\.llm_harness\\harness.py')"
+    ],
+    "deny": [
+      "Bash",
+      "Read",
+      "Grep",
+      "Glob",
+      "LSP",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+      "Skill",
+      "Monitor",
+      "AskUserQuestion",
+      "SendMessage",
+      "ListMcpResourcesTool",
+      "ReadMcpResourceTool",
+      "mcp__*"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "C:\\Users\\<USER>\\.llm_harness\\new_turn_hook.py"
+            ],
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}

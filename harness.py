@@ -1343,7 +1343,7 @@ def drain_console(fi):
 
 def ask_console(prompt):
     """Ask the person at the terminal while the script itself arrives on stdin; None when no one is there (output captured, no console, or prompts turned off)."""
-    if os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
+    if os.environ.get("LLM_HARNESS_NO_PROMPT") or agent_mode() or not os.isatty(1):
         return None
     was_tracking = bool(TTY_FOCUS.get("active"))
     if was_tracking:
@@ -2678,10 +2678,17 @@ def run_command(cmd, timeout, shell):
     if GIT_WRITE_RE.search(cmd):
         print("  [REFUSED] git commands that change history or the working tree go through @GIT_COMMIT / @GIT_FOLD; publishing goes through @GIT_PUSH.")
         return
-    if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake|merge|check|link|steward)\b", cmd, re.I):
+    if re.search(r"harness\.py\b.*--(grant|revoke|release|unbrake|merge|check|link|steward|auto|agent-allow)\b", cmd, re.I):
         print("  [REFUSED] --grant, --revoke, --release, --unbrake, --merge, --check, --link and --steward are the user's own commands, typed in their terminal; a script never runs them.")
         return
-    if shell == "powershell":
+    if agent_mode():
+        # Comment (decision): host permissions are not a sandbox, so in agent mode the harness itself is the gate: only an allowlisted program, named without a path, with arguments matching its pattern in full, run directly with no shell (so no operators, no cd, no second command)
+        args, why = agent_run_args(cmd)
+        if args is None:
+            print("  [REFUSED] agent mode runs only commands on this project's allowlist, as a program and its arguments with no shell: %s. Nothing was run." % why)
+            print("  -> tell the user what you need to run; only they can allow it, at their terminal: harness.py --workspace <folder> --agent-allow <program> [<argument pattern>]")
+            return
+    elif shell == "powershell":
         prefix = "$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
         args = [shutil.which("powershell") or shutil.which("pwsh") or "powershell", "-NoProfile", "-NonInteractive", "-Command", prefix + cmd]
     else:
@@ -3471,7 +3478,7 @@ def touch_session(P):
 def chat_link(name):
     """' (chat: <address>)' for a session whose chat address is known, else ''."""
     rec = load_json(sessions_path(), {}).get(name) or {}
-    return " (chat: %s)" % rec["link"] if valid_link(rec.get("link")) else ""
+    return " (chat: %s)" % rec["link"] if valid_link(rec.get("link")) else (" (host: %s session %s)" % (rec.get("host") or "agent", rec["host_session_id"]) if rec.get("host_session_id") else "")
 
 def valid_link(link):
     return bool(link) and re.match(r"^https?://\S+$", link.strip()) is not None
@@ -3667,7 +3674,7 @@ def print_sessions(current, full=False):
         sc = rec.get("scope")
         scope = "%s (%s)" % (sc.get("aim") or "no aim", ", ".join(sc.get("paths", []))) if sc else "none"
         brake = " | BRAKED by %s" % rec["brake"]["from"] if rec.get("brake") else ""
-        link = " | chat: %s" % rec["link"] if valid_link(rec.get("link")) else ""
+        link = " | chat: %s" % rec["link"] if valid_link(rec.get("link")) else (" | host: %s session %s" % (rec.get("host") or "agent", rec["host_session_id"]) if rec.get("host_session_id") else "")
         return ("UNCLAIMED, set up by %s, brief: %s | " % (rec.get("created_by", "?"), (rec.get("brief") or "")[:200]) if rec.get("unclaimed") else "") + "aim: %s | write scope: %s | last %s, %s%s%s" % (rec.get("aim") or "not set", scope, rec.get("last_script", "?"), when, brake, link)
     if current in reg:
         print("=== THIS SESSION: %s | %s ===" % (current, describe(reg[current])))
@@ -5117,7 +5124,7 @@ AUTO_COPY = []
 
 def ask_key(prompt, keys, aliases=None):
     """Wait at the terminal for one of the keys in `keys` (lowercase letters), without needing Enter, and return it; `aliases` maps other characters to a key (Enter to "c", say); Esc and Ctrl-C return the last key of `keys` (the way out) and every other key is ignored. None when no one is there (output captured, no console, or prompts turned off)."""
-    if os.environ.get("LLM_HARNESS_NO_PROMPT") or not os.isatty(1):
+    if os.environ.get("LLM_HARNESS_NO_PROMPT") or agent_mode() or not os.isatty(1):
         return None
     way_out, key, aliases = keys[-1], None, aliases or {}
     try:
@@ -5596,6 +5603,151 @@ def print_footer_notes():
 def rule_hash(body):
     return hashlib.sha1(body.strip().strip("`").strip().encode("utf-8")).hexdigest()[:12]
 
+def agent_mode():
+    """True when a host app (Claude Code first) runs the harness as its tool and sets LLM_HARNESS_AGENT; unset, the chat-browser flow is exactly as before."""
+    return bool(os.environ.get("LLM_HARNESS_AGENT", "").strip())
+
+def agent_allow_path():
+    return os.path.join(HARNESS_DIR, "agent_allow.json")
+
+def agent_allow_cli():
+    """User-only command: harness.py --workspace <folder> --agent-allow <program> [<argument pattern>] | list | clear. Keeps this project's agent-mode @RUN allowlist on this machine, outside the project; a script can never run it."""
+    args = sys.argv[1:]
+    i = args.index("--agent-allow")
+    rest, j = [], i + 1
+    while j < len(args):
+        if args[j] == "--workspace":
+            j += 2
+            continue
+        rest.append(args[j])
+        j += 1
+    err = enter_workspace(arg_value("--workspace"))
+    if err or not rest:
+        print("usage: harness.py --workspace <project folder> --agent-allow <program> [<argument pattern>] | list | clear" + ((" | " + err) if err else ""))
+        return
+    os.makedirs(HARNESS_DIR, exist_ok=True)
+    data = load_json(agent_allow_path(), {"entries": []}) or {"entries": []}
+    if rest[0].lower() == "clear":
+        data["entries"] = []
+        save_json(agent_allow_path(), data)
+    elif rest[0].lower() != "list":
+        exe, pattern = rest[0], " ".join(rest[1:])
+        if "/" in exe or "\\" in exe:
+            print("  [REFUSED] give the program by name (for example pytest), not by path. Nothing changed.")
+            return
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            print("  [REFUSED] the argument pattern is not a valid regular expression (%s). Nothing changed." % e)
+            return
+        name = exe.lower()[:-4] if exe.lower().endswith(".exe") else exe.lower()
+        data["entries"] = [e for e in data.get("entries", []) if (e.get("exe"), e.get("args")) != (name, pattern)] + [{"exe": name, "args": pattern}]
+        save_json(agent_allow_path(), data)
+    print("AGENT-MODE @RUN ALLOWLIST for %s on this machine (the whole argument string must match the pattern; no shell, no shell operators; runs in the project folder):" % os.path.abspath("."))
+    for e in data.get("entries", []) or []:
+        print("  %s  %s" % (e.get("exe"), e.get("args") or "(no arguments)"))
+    if not data.get("entries"):
+        print("  (empty: agent mode refuses every @RUN)")
+
+def agent_run_args(cmd):
+    """Agent mode: the program and arguments to run directly (no shell) when the command has no shell operators, names its program without a path, and matches an allowlist entry in full; else None and the reason."""
+    import shlex
+    if re.search(r"[|&;<>`\r\n]|\$\(", cmd):
+        return None, "shell operators (| & ; < > backtick, $( and newlines) are not allowed"
+    try:
+        toks = shlex.split(cmd, posix=(os.name != "nt"))
+    except ValueError as e:
+        return None, "the command could not be split into a program and arguments (%s)" % e
+    if os.name == "nt":
+        toks = [t[1:-1] if len(t) > 1 and t[0] == t[-1] and t[0] in "\"'" else t for t in toks]
+    if not toks:
+        return None, "the command is empty"
+    if "/" in toks[0] or "\\" in toks[0]:
+        return None, "name the program, not a path to it"
+    name = toks[0].lower()[:-4] if toks[0].lower().endswith(".exe") else toks[0].lower()
+    rest = " ".join(toks[1:])
+    for e in (load_json(agent_allow_path(), {}) or {}).get("entries", []) or []:
+        try:
+            ok = e.get("exe") == name and re.fullmatch(e.get("args") or "", rest) is not None
+        except re.error:
+            ok = False
+        if ok:
+            path = shutil.which(toks[0])
+            if not path:
+                return None, "%s is allowed but was not found on this machine" % toks[0]
+            return [path] + toks[1:], ""
+    return None, "'%s' is not on this project's allowlist" % cmd.strip()
+
+def host_session_id():
+    """The host app's own session id in agent mode: LLM_HARNESS_HOST_SESSION when a host adapter sets it, else Claude Code's CLAUDE_CODE_SESSION_ID (given to its shell tools and hooks, and new after /clear); empty outside agent mode."""
+    return (os.environ.get("LLM_HARNESS_HOST_SESSION") or os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("OPENCODE_SESSION_ID") or "").strip() if agent_mode() else ""
+
+def host_name():
+    """The host app's name for the session list: the LLM_HARNESS_AGENT value, or claude-code when it is only switched on (1, true, on) inside Claude Code."""
+    v = os.environ.get("LLM_HARNESS_HOST", "").strip() or os.environ.get("LLM_HARNESS_AGENT", "").strip()
+    if v.lower() in ("1", "true", "yes", "on"):
+        return "claude-code" if os.environ.get("CLAUDE_CODE_SESSION_ID") else "opencode" if os.environ.get("OPENCODE_SESSION_ID") else "agent"
+    return v
+
+def record_host(P):
+    """Agent mode: keep the host app and its session id beside the chat address (never in it), and map that host session to this harness session, so the next prompt's briefing can name it."""
+    hid, me = host_session_id(), P.get("session")
+    if not hid or not me or P.get("side"):
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        if me in reg:
+            reg[me]["host"], reg[me]["host_session_id"] = host_name(), hid
+            save_json(sessions_path(), reg)
+        data = load_json(agent_turn_path(), {}) or {}
+        data.setdefault("hosts", {}).setdefault(hid, {"turn": 0, "events": []})["session"] = me
+        save_json(agent_turn_path(), data)
+
+def agent_turn_path():
+    return os.path.join(HARNESS_DIR, "agent_turn.json")
+
+def new_turn_cli():
+    """Host-hook command: harness.py --workspace <folder> --new-turn [<event id>]. Starts a new prompt turn, so the next harness run in agent mode briefs the full standing rules once; the same event id twice counts once, so a retried hook never starts two turns."""
+    args = sys.argv[1:]
+    i = args.index("--new-turn")
+    event = args[i + 1] if len(args) > i + 1 and not args[i + 1].startswith("--") else ""
+    err = enter_workspace(arg_value("--workspace"))
+    if err:
+        print("usage: harness.py --workspace <project folder> --new-turn [<event id>] | " + err)
+        return
+    hid = host_session_id()
+    os.makedirs(HARNESS_DIR, exist_ok=True)
+    with state_lock():
+        data = load_json(agent_turn_path(), {}) or {}
+        t = data.setdefault("hosts", {}).setdefault(hid, {"turn": 0, "events": []})
+        if event and event in t.get("events", []):
+            print("AGENT TURN %d continues (event %s was already counted)" % (t.get("turn", 0), event))
+            return
+        t["turn"] = t.get("turn", 0) + 1
+        if event:
+            t["events"] = (t.get("events", []) + [event])[-50:]
+        save_json(agent_turn_path(), data)
+    print("AGENT TURN %d starts%s: the next harness run in it briefs the full standing rules once | harness session: %s" % (
+        t["turn"], " for host session " + hid if hid else "", t.get("session") or "none yet: name one with @SESSION <name> | <aim> (@SESSIONS lists them)"))
+
+def agent_quiet(rules, briefs):
+    """Agent mode only: the tags of standing rules this prompt turn already briefed and that have not changed or newly triggered since, so the footer does not repeat them. The first run of a turn for a session records the briefing (rule fingerprint and why it is expanded) and hides nothing; the chat flow always gets an empty set."""
+    if not agent_mode() or not CURRENT_SESSION:
+        return set()
+    hid = host_session_id(); turn = "%s:%d" % (hid, (((load_json(agent_turn_path(), {}) or {}).get("hosts") or {}).get(hid) or {}).get("turn", 0))
+    now = {tag: rule_hash(body) + "|" + (brief_reason(briefs[tag][0]) if tag in briefs else "") for tag, body in rules}
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        rec = reg.get(CURRENT_SESSION)
+        if rec is None:
+            return set()
+        if rec.get("turn_seen") != turn:
+            rec["turn_seen"], rec["turn_rules"] = turn, now
+            save_json(sessions_path(), reg)
+            return set()
+        snap = rec.get("turn_rules") or {}
+    return {tag for tag, v in now.items() if snap.get(tag) == v}
+
 def rules_seen(rules):
     """(rule fingerprints this chat saw last time, the mode it saw them in), replaced by the current ones; after a switch to git the no-git record is read once. Without a session nothing is kept."""
     if not CURRENT_SESSION:
@@ -5670,7 +5822,7 @@ def print_footer_body(state):
         found = re.findall(r"(?m)^- \*\*L1 Rule\W*(\[[^\]]+\])`?\s*(?:\(([\w-]+)\))?[`:*\s]*(.*)$", rules_text)
         briefs = {tag: ([c.strip().lower() for c in conds.split(",")], brief) for tag, conds, brief in re.findall(r"(?m)^- \*\*L1 Brief\W*(\[[^\]]+\])`?\s*\(([^)]*)\)[`:*\s]*(.*)$", rules_text)}
         modes = {"git": "git", "nogit": "nogit", "no-git": "nogit"}
-        rules = [(tag, body) for tag, cond, body in found if not cond or (bool(active_campaigns()) if cond.lower() == "campaign" else steward_on() if cond.lower() == "steward" else modes.get(cond.lower(), MODE) == MODE)]
+        rules = [(tag, body) for tag, cond, body in found if not cond or (bool(active_campaigns()) if cond.lower() == "campaign" else steward_on() if cond.lower() == "steward" else agent_mode() if cond.lower() == "agent" else (not agent_mode()) if cond.lower() == "chat" else modes.get(cond.lower(), MODE) == MODE)]
     except OSError:
         print("=== L1 CONTRACT: workflow_commands.txt not found next to harness.py (%s); no standing rules printed ===" % SELF_DIR)
         return
@@ -5696,8 +5848,14 @@ def print_footer_body(state):
             print("  (this project now uses git: @GIT_* directives are on, and the rules marked [NEW] apply from here)")
         elif changed or new:
             print("  (rules marked [CHANGED] or [NEW] differ from what this chat saw last time: read them again)")
+        # Comment (decision): in agent mode a host runs many harness calls per user prompt, so a rule already in this prompt's briefing is not repeated unless it changed or its trigger did; the chat flow (no LLM_HARNESS_AGENT) prints every rule as before
+        quiet = agent_quiet(rules, briefs)
+        hidden = 0
         for tag, body in rules:
             mark = "[CHANGED] " if tag in changed else ("[NEW] " if tag in new else "")
+            if tag in quiet and not mark:
+                hidden += 1
+                continue
             if tag in briefs:
                 why = brief_reason(briefs[tag][0])
                 if not why:
@@ -5706,6 +5864,8 @@ def print_footer_body(state):
                 print("%s%s (expanded: %s) %s" % (mark, tag, why, body.strip().strip("`").strip()))
                 continue
             print("%s%s %s" % (mark, tag, body.strip().strip("`").strip()))
+        if hidden:
+            print("  (agent turn: %d standing rule%s already in this prompt's briefing and unchanged, not repeated; @HELP L1-<name> prints one)" % (hidden, "" if hidden == 1 else "s"))
     if state is not None:
         try:
             kb_hint()
@@ -6652,6 +6812,10 @@ def main():
         return steward_cli()
     if "--auto" in sys.argv[1:]:
         return auto_cli()
+    if "--new-turn" in sys.argv[1:]:
+        return new_turn_cli()
+    if "--agent-allow" in sys.argv[1:]:
+        return agent_allow_cli()
     if "--link" in sys.argv[1:]:
         return link_cli()
     if "--merge" in sys.argv[1:]:
@@ -6759,6 +6923,7 @@ def main():
         known = set(DIRECTIVES.split())
         P["used"] = sorted(d for d in P.get("seen", ()) if d in known)
         touch_session(P)
+        record_host(P)
         check_waiting(P["session"], not (P["side"] or P["repeatable"]))
         if P.get("chat_link") is not None:
             set_chat_link(P["session"], P["chat_link"])
@@ -6791,11 +6956,14 @@ def main():
         unclaim_directive(P)
     if P.get("guide"):
         guide_directive(P)
-    if P["git_init"]:
+    if P["git_init"] and not agent_mode():
         git_init(P["git_init"])
     if P["undo"] and (P["ops"] or P["git"]):
         print("  [REFUSED] @UNDO must be in its own script (probes, searches, notes and @RUN may ride along). No changes were made.")
         print("  -> resend the undo and the other changes as separate scripts with consecutive numbers.")
+    elif (P["git"] or P["git_init"]) and agent_mode():
+        print("  [REFUSED] agent mode: git changes (commit, fold, push, pull, branch, tag, account, remote, init) need an approval the user gives in the conversation, which the harness cannot receive yet; @GIT_STATUS still works. No changes were made.")
+        print("  -> finish the work, then tell the user what to commit; they send that commit from the chat-browser flow or their own terminal.")
     elif P["git"] and MODE != "git":
         print("  [REFUSED] git directives in a no-git workspace. No changes were made.")
         print("  -> drop the @GIT_* lines, or start the script with @GIT_INIT to make this folder a git repository, and resend.")
