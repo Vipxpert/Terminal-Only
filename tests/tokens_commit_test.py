@@ -42,6 +42,7 @@ def bump(n):
 
 def main():
     git("init", "-q")
+    subprocess.run([sys.executable, HARNESS, "--workspace", WS, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     git("checkout", "-q", "-b", "main")
     with open(os.path.join(WS, "a.txt"), "w") as f:
         f.write("first line\n")

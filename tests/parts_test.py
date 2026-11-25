@@ -23,6 +23,7 @@ def check(name, ok, out=""):
 
 
 def main():
+    subprocess.run([sys.executable, HARNESS, "--workspace", WS, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     with open(os.path.join(WS, "a.txt"), "w") as f:
         f.write("some searchable text\n")
     out = run("@PART 1/2", "@GREP searchable")

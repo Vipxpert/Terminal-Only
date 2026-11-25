@@ -733,7 +733,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_MERGE @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @HISTORY @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_MERGE @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @HISTORY @L1_REFRESH @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @ASK_USER @MILESTONE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -763,7 +763,7 @@ def parse_payload(txt):
 
     while i < n:
         ln = lines[i]
-        m = re.match(r"^@([A-Z_]+)(?:[ \t]+(.*))?$", ln)
+        m = re.match(r"^@([A-Z0-9_]+)(?:[ \t]+(.*))?$", ln)
         if not m:
             if ln.strip() and not ln.startswith("#"):
                 stray.append(i + 1)
@@ -970,6 +970,8 @@ def parse_payload(txt):
             P["helps"].append("SESSIONS")
         elif d == "HISTORY":
             P["helps"].append("HISTORY " + arg)
+        elif d == "L1_REFRESH":
+            P["l1_refresh"] = True
         elif d == "XREF":
             P["xrefs"].append(arg)
         elif d == "LIST_DIR":
@@ -4509,6 +4511,35 @@ def auto_on():
     except (TypeError, AttributeError, OSError):
         return False
 
+L1_REFRESH = False
+
+def compact_path():
+    return os.path.join(HARNESS_DIR, "compact.json")
+
+def compact_on():
+    """Compaction-aware L1 is ON by default; --compact off opts out for this project on this machine."""
+    if not HARNESS_DIR:
+        return True
+    try:
+        data = load_json(compact_path(), None)
+        return True if not isinstance(data, dict) or "on" not in data else bool(data.get("on"))
+    except (TypeError, AttributeError, OSError):
+        return True
+
+def compact_cli():
+    """User-only command: harness.py --workspace <folder> --compact [on | off]. Switches compaction-aware L1 on (default) or off for this project on this machine."""
+    args = sys.argv[1:]
+    i = args.index("--compact")
+    word = args[i + 1].lower() if len(args) > i + 1 and not args[i + 1].startswith("--") else ""
+    err = enter_workspace(arg_value("--workspace"))
+    if err or word not in ("", "on", "off"):
+        print("usage: harness.py --workspace <project folder> --compact [on | off]" + ((" | " + err) if err else ""))
+        return
+    if word:
+        os.makedirs(HARNESS_DIR, exist_ok=True)
+        save_json(compact_path(), {"on": word == "on"})
+    print("COMPACTION-AWARE L1 IS %s for %s on this machine: normal chat turns omit unchanged standing rules and keep [L1-Compact] + [L1-Syntax] visible; @L1_REFRESH restores full L1." % ("ON" if compact_on() else "OFF", os.path.abspath(".")))
+
 def auto_cli():
     """User-only command: harness.py --workspace <folder> --auto [on | off]. Switches the last footer line (AUTO: CONTINUE or PAUSE) on or off for this project on this machine only; a script can never run it."""
     args = sys.argv[1:]
@@ -5974,13 +6005,20 @@ def print_footer_body(state):
             print("  (this project now uses git: @GIT_* directives are on, and the rules marked [NEW] apply from here)")
         elif changed or new:
             print("  (rules marked [CHANGED] or [NEW] differ from what this chat saw last time: read them again)")
-        # Comment (decision): in agent mode a host runs many harness calls per user prompt, so a rule already in this prompt's briefing is not repeated unless it changed or its trigger did; the chat flow (no LLM_HARNESS_AGENT) prints every rule as before
+        # Comment (decision): in agent mode a host runs many harness calls per user prompt, so a rule already in this prompt's briefing is not repeated unless it changed or its trigger did; in chat mode with compaction-aware L1 (ON by default, --compact off to opt out), turns after the first omit unchanged untriggered rules unless @L1_REFRESH or a failure occurred
         quiet = agent_quiet(rules, briefs)
-        hidden = 0
+        compact_active = (not agent_mode()) and bool(CURRENT_SESSION) and compact_on()
+        compact_skip = set()
+        if compact_active and before and not L1_REFRESH and not brief_reason(["failed"]):
+            compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new and not (tag in briefs and brief_reason(briefs[tag][0]))}
+        hidden, compact_hidden = 0, 0
         for tag, body in rules:
             mark = "[CHANGED] " if tag in changed else ("[NEW] " if tag in new else "")
             if tag in quiet and not mark:
                 hidden += 1
+                continue
+            if tag in compact_skip and not mark:
+                compact_hidden += 1
                 continue
             if tag in briefs:
                 why = brief_reason(briefs[tag][0])
@@ -5992,6 +6030,12 @@ def print_footer_body(state):
             print("%s%s %s" % (mark, tag, body.strip().strip("`").strip()))
         if hidden:
             print("  (auto-shell turn: %d standing rule%s already in this prompt's briefing and unchanged, not repeated; @HELP L1-<name> prints one)" % (hidden, "" if hidden == 1 else "s"))
+        if compact_active:
+            if compact_hidden:
+                print("[L1-Compact] %d unchanged standing rule%s omitted; if your context was compacted, send @L1_REFRESH to restore full L1 (@HELP L1-<name> prints any rule)" % (compact_hidden, "" if compact_hidden == 1 else "s"))
+            else:
+                print("[L1-Compact] full L1 printed; later clean turns omit unchanged rules (send @L1_REFRESH after compaction to restore full L1)")
+            print("[L1-Syntax] @PROBE /file | Scope | symbol  |  @PROBE /tree | Tree | node | depth  |  @XREF symbol | callers")
     if state is not None:
         try:
             kb_hint()
@@ -6684,6 +6728,7 @@ def print_card(shell, workspace):
   @MESSAGE <session> | <text>                     a note for another session, shown in its footers until its next numbered script (labelled as from an AI, not the user)
   @SESSIONS                                       lists every session with its aim, write scope and chat address (the footer shows only a count of the others unless this chat is waiting, delegated or braked)
   @HISTORY <session> [| files] [| n]              read-only list of a session's recent journaled scripts (id, title, age, status; '| files' adds changed paths; default 10)
+  @L1_REFRESH                                     prints the full L1 standing rules on this run (use after chat compaction when compaction-aware L1 is on)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
   @DELEGATE <session> | <paths> | <task>          hands those files (entries of your scope) and a task to that session at once, with your uncommitted work in them; its footer says INHERITED
   @SPLIT <name> | <aim> | <paths> | <brief>       sets up an UNCLAIMED session for a new chat and hands it those files the way @DELEGATE does, with the waits on them (leave <paths> empty for a session with no files); the brief (goal, decisions, what is done, code locations, what is left) prints once when a chat claims it with @SESSION <name>
@@ -6986,6 +7031,8 @@ def main():
         return steward_cli()
     if "--auto" in sys.argv[1:]:
         return auto_cli()
+    if "--compact" in sys.argv[1:]:
+        return compact_cli()
     if "--new-turn" in sys.argv[1:]:
         return new_turn_cli()
     if "--agent-allow" in sys.argv[1:]:
@@ -7118,6 +7165,7 @@ def main():
     globals()["CURRENT_SESSION"] = P["session"]
     globals()["CURRENT_SCRIPT"], globals()["CURRENT_RUN"] = P["id"], "%s@%.6f" % (P["id"], time.time())
     globals()["CURRENT_PART"] = P.get("part")
+    globals()["L1_REFRESH"] = bool(P.get("l1_refresh"))
     enforce_brake(P)
     send_messages(P)
     if P["scope"] is not None:

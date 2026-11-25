@@ -35,6 +35,7 @@ def main():
                 "- **L1 Brief \u2014 `[L1-Alpha]` (failed, ledger):** `short alpha`\n")
     with open(os.path.join(WS, "a.txt"), "w") as f:
         f.write("some text here\n")
+    subprocess.run([sys.executable, os.path.join(INSTALL, "harness.py"), "--workspace", WS, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     out = footer(run("@GREP some"))
     check("normally the brief replaces the full rule", "[L1-Alpha] (brief; full rule: @HELP L1-Alpha) short alpha" in out and "every detail" not in out and "beta always in full" in out, out)
     out = footer(run("@FILE /a.txt", "@HUNK TOP | e", "--- [OLD CODE] ---", "text that is not there", "+++ [NEW CODE] +++", "x", "=== [END HUNK] ==="))

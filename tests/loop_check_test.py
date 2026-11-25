@@ -23,6 +23,7 @@ def check(name, ok, out=""):
 
 
 def main():
+    subprocess.run([sys.executable, HARNESS, "--workspace", WS, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     with open(os.path.join(WS, "a.txt"), "w") as f:
         f.write("something\n")
     out1, out2 = run("alpha"), run("alpha")

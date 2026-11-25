@@ -29,6 +29,7 @@ def turn(ws, event):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-turn-")
+    subprocess.run([sys.executable, HARNESS, "--workspace", ws, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     a, b = run(ws, CHAT), run(ws, CHAT)
     check("the chat flow prints the full standing rules on every run", "[L1-Scope]" in a and "[L1-Scope]" in b and "agent turn" not in b, b[-600:])
     turn(ws, "e1")
