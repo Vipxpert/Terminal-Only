@@ -6247,7 +6247,7 @@ def print_footer_body(state):
         proof_failed = bool(compact_active and before and not L1_REFRESH and not brief_reason(["failed"]) and not proof_ok)
         compact_skip = set()
         if compact_active and before and proof_ok and not L1_REFRESH and not brief_reason(["failed"]):
-            compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new and not (tag in briefs and brief_reason(briefs[tag][0]))}
+            compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new}
         hidden, compact_hidden = 0, 0
         for tag, body in rules:
             mark = "[CHANGED] " if tag in changed else ("[NEW] " if tag in new else "")
