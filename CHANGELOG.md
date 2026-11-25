@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- @MILESTONE <what is done>, shown only to a session that borrows work (its BORROWING footer line says so; the command is in no rule, card or command list for anyone else): the last 20 are kept on the owner's record, survive a return, a second borrow and a takeover, and the owner's footer shows the latest three for a week; @PLAYBOOK resume reads them. The handshake prints one HARNESS STATES line (stewardship, auto-copy, upstream fetch).
+
 - Optional, off by default and not mentioned in any rule or card: harness.py --workspace <folder> --auto on adds a last footer line, AUTO: CONTINUE (a numbered script that purely read, with nothing refused) or AUTO: PAUSE (<reason>), decided by code; @ASK_USER <line> makes the AI's request for the user a PAUSE, and the tenth read-only script in a row pauses. Nothing is sent anywhere.
 
 - setup.sh, like setup.cmd, no longer says "Setup successful" after a failed git pull and prints the way to get level. The README's Safety model is split under short headings, with its three longest bullets cut into labelled ones.

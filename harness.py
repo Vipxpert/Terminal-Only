@@ -735,7 +735,7 @@ def check_files(changed, pre):
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
-              "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @ASK_USER @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
+              "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @ASK_USER @MILESTONE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
 (replace: exact discrepancy between observed behavior and required state)
 
@@ -809,6 +809,8 @@ def parse_payload(txt):
             P["repeatable"] = True
         elif d == "ASK_USER":
             P["ask_user"] = arg.strip() or "(no message)"
+        elif d == "MILESTONE":
+            P["milestone"] = arg.strip()
         elif d == "BRAKE_ACK":
             P["brake_ack"] = True
         elif d == "GOAL":
@@ -3690,7 +3692,10 @@ def print_sessions(current, full=False):
         lt = mine["lent"]
         print("=== LENT (this session's work is held by %s%s since %s: %s; it stays yours, so do not change those files; @RECLAIM takes it back after the user's answer at the terminal) ===" % (lt["to"], chat_link(lt["to"]), lt.get("since") or "?", ", ".join("/" + p for p in lt.get("paths", [])[:6])))
     for b in mine.get("borrowed", []):
-        print("=== BORROWING (this chat holds %s's work: %s; it stays %s's: when done, @RETURN %s | <what was done>) ===" % (b["from"], ", ".join("/" + p for p in b.get("paths", [])[:6]), b["from"], b["from"]))
+        print("=== BORROWING (this chat holds %s's work: %s; it stays %s's: after each finished step record it with @MILESTONE <what is done>, so a lost chat leaves a trail; when done, @RETURN %s | <what was done>) ===" % (b["from"], ", ".join("/" + p for p in b.get("paths", [])[:6]), b["from"], b["from"]))
+    recent = [m for m in mine.get("milestones", []) if time.time() - m.get("time", 0) < 7 * 86400][-3:]
+    if recent:
+        print("=== MILESTONES (what chats that held this session's work recorded as done, a week at most): %s ===" % "; ".join("%s at %s: %s" % (m.get("by"), m.get("script") or "?", m.get("text", "")) for m in recent))
     others = sorted(((n, r) for n, r in reg.items() if n != current), key=lambda kv: -kv[1].get("last_active", 0))
     if others:
         # Comment (decision): every footer used to list every registered session with its scope and address, a cost that grows with the number of chats and never shrinks (idle ones stayed); now a count and the names, and the full list only on request (@SESSIONS) or when this chat waits, holds delegated or inherited work, or is braked
@@ -4366,6 +4371,53 @@ AUTO_LINE = [""]
 AUTO_MAX = 10
 _AUTO_BAD = re.compile(r"(?m)^\s*(?:-> )?\[(?:REFUSED|SCOPE REFUSED|SCOPE ALERT|SHARED FILE|BRAKED|NOT SENT|RELEASE REFUSED|MALFORMED|ROLLED BACK)\b")
 
+def is_borrower():
+    """True when the running session currently holds another session's lent work (the only chats that are shown @MILESTONE)."""
+    try:
+        return bool(CURRENT_SESSION and (load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("borrowed"))
+    except Exception:
+        return False
+
+def milestone_directive(P):
+    """@MILESTONE <what is done>: a borrower records a finished step on the session whose work it holds (<owner> | <text> when it borrows from several); the last 20 are kept on the owner's record, so they survive a return, a second borrow and a takeover, and the owner's footer shows the latest."""
+    me, text = P.get("session"), (P.get("milestone") or "").strip()
+    if P.get("side") or P.get("repeatable") or not me:
+        print("  [MILESTONE REFUSED] it needs a numbered script with an @SESSION line (not @SIDE or @REPEATABLE). Nothing recorded.")
+        return
+    if not text:
+        print("  [MILESTONE REFUSED] say what is done: @MILESTONE <what is done>. Nothing recorded.")
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        owners = [b["from"] for b in (reg.get(me) or {}).get("borrowed", []) if b.get("from") in reg]
+        target = owners[0] if len(owners) == 1 else None
+        if len(owners) > 1:
+            head, _, rest = text.partition("|")
+            if head.strip() in owners and rest.strip():
+                target, text = head.strip(), rest.strip()
+        if not target:
+            print("  [MILESTONE REFUSED] %s. Nothing recorded." % ("this session borrows no work" if not owners else "it borrows from several sessions (%s): write @MILESTONE <owner> | <what is done>" % ", ".join(owners)))
+            return
+        log = reg[target].setdefault("milestones", [])
+        log.append({"by": me, "script": CURRENT_SCRIPT, "text": text[:300], "time": time.time()})
+        reg[target]["milestones"] = log[-20:]
+        save_json(sessions_path(), reg)
+    print("  [MILESTONE] recorded on %s's session: %s" % (target, text[:120]))
+
+def harness_states_line():
+    """One handshake line with the switches that change how the harness behaves on this machine for this project; the hidden AUTO line is named only while it is on."""
+    env = os.environ
+    if env.get("LLM_HARNESS_NO_COPY") or env.get("LLM_HARNESS_NO_PROMPT"):
+        copy = "off"
+    elif env.get("LLM_HARNESS_COPY", "").lower() == "auto":
+        copy = "always at once"
+    elif env.get("LLM_HARNESS_COPY", "").lower() == "ask":
+        copy = "always asks"
+    else:
+        copy = "at once while the terminal is in front, otherwise asks"
+    fetch = env.get("LLM_HARNESS_FETCH", "60").strip().lower()
+    return "=== HARNESS STATES (this machine, this project): stewardship %s | auto-copy of the output: %s | upstream fetch: %s%s ===" % ("on" if steward_on() else "off", copy, "off" if fetch == "off" else "at most every %s s" % fetch, " | AUTO status line ON" if auto_on() else "")
+
 def auto_path():
     return os.path.join(HARNESS_DIR, "auto.json")
 
@@ -4770,6 +4822,8 @@ def merge_sessions(src, dst):
             return
         drec = reg[dst]
         drec["merged_from"] = sorted(set(drec.get("merged_from", [])) | {src})
+        if (src_rec or {}).get("milestones"):
+            drec["milestones"] = (drec.get("milestones", []) + src_rec["milestones"])[-20:]
         if src_grants:
             d_grants = grants.get(dst, [])
             grants[dst] = d_grants + [p for p in src_grants if p not in d_grants]
@@ -5484,7 +5538,7 @@ def expand_text_ops(P):
 
 def side_allowed(P):
     """A @SIDE script may only read, search and @RUN: no file, note, goal, git or undo actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim") or P.get("guide"))
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim") or P.get("guide") or P.get("milestone"))
 
 def side_run_path(raw_txt):
     return os.path.join(runs_dir(), "side_%s.json" % payload_key(raw_txt)[:16])
@@ -5552,7 +5606,7 @@ def idle_script(P):
 
 def read_only(P):
     """True when a script only reads: no file, note, goal, git, undo or @RUN actions."""
-    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim") or P.get("guide"))
+    return not (P["ops"] or P["notes"] or P["goal"] or P["git"] or P["undo"] or P["runs"] or P["git_init"] or P["scope"] is not None or P["scope_end"] or P["session_end"] or P["msgs"] or P["brake_ack"] or P["verdicts"] or P["campaigns"] or P.get("steward") or P.get("takeover") or P.get("borrow") or P.get("reclaim") or P.get("unclaim") or P.get("guide") or P.get("milestone"))
 
 def load_state():
     """Numbering and shell from the machine-local state file; the goal from .llm_harness/goal.md, which travels with the project."""
@@ -5713,10 +5767,10 @@ def print_footer_body(state):
             pass
     used = set((load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}).get("used", [])) if CURRENT_SESSION and state is not None else set()
     if used:
-        rest = [d for d in DIRECTIVES.split() if d not in used and (d != "@ASK_USER" or auto_on())]
+        rest = [d for d in DIRECTIVES.split() if d not in used and (d != "@ASK_USER" or auto_on()) and (d != "@MILESTONE" or is_borrower())]
         print("[L1-Commands] not used yet in this chat: %s | %d already used | full list: @HELP COMMANDS | syntax of any one: @HELP <name>" % (" ".join(rest) or "(none: every command has been used)", len(used)))
     else:
-        print("[L1-Commands] " + " ".join(d for d in DIRECTIVES.split() if d != "@ASK_USER" or auto_on()) + " | syntax of any one: @HELP <name>")
+        print("[L1-Commands] " + " ".join(d for d in DIRECTIVES.split() if (d != "@ASK_USER" or auto_on()) and (d != "@MILESTONE" or is_borrower())) + " | syntax of any one: @HELP <name>")
 
 def enter_workspace(path):
     """chdir into the project a script names. Returns an error message, or None on success."""
@@ -6452,6 +6506,7 @@ def handshake(workspace, shell):
     unclaimed = [(n, r) for n, r in sorted(load_json(sessions_path(), {}).items()) if r.get("unclaimed")]
     if unclaimed:
         print("=== UNCLAIMED SESSIONS (set up for a new chat: if the task matches one, name it in the first @SESSION line; when several or none fit, ask the user): %s ===" % "; ".join("%s: %s (set up by %s; brief: %s)" % (n, r.get("aim") or "no aim", r.get("created_by", "?"), (r.get("brief") or "")[:300]) for n, r in unclaimed))
+    print(harness_states_line())
     print_card(shell, os.path.abspath("."))
     # Comment (decision): the owner pasted workflow_commands.txt beside the handshake at the start of every chat; printing it here makes one paste start a chat, and the footers keep the standing rules in view after that
     print_rules_file()
@@ -6791,6 +6846,8 @@ def main():
         unclaim_directive(P)
     if P.get("guide"):
         guide_directive(P)
+    if P.get("milestone") is not None:
+        milestone_directive(P)
     if P["git_init"]:
         git_init(P["git_init"])
     if P["undo"] and (P["ops"] or P["git"]):
