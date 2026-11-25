@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Auto-shell hardening and adaptive L1: `agent_mode` in `harness.py` refuses file-mutation directives (`@FILE`, `@NEW_FILE`, `@DELETE_FILE`, `@RENAME`, `@TEXT_REPLACE`) and session-management directives (`@SESSIONS`, `@SPLIT`, `@BORROW`, etc.), mirrored in the OpenCode plugin's `harnessCallProblem()` body check; `[L1-Sessions]` is tagged `(chat)` and `[L1-Harness] (agent)` tells auto-shell agents to inspect/plan only and hand ready-to-paste scripts to the user (using `@HUNK` for multi-line edits and `@TEXT_REPLACE` for single-line edits only).
+
 - @MILESTONE <what is done>, shown only to a session that borrows work (its BORROWING footer line says so; the command is in no rule, card or command list for anyone else): the last 20 are kept on the owner's record, survive a return, a second borrow and a takeover, and the owner's footer shows the latest three for a week; @PLAYBOOK resume reads them. The handshake prints one HARNESS STATES line (stewardship, auto-copy, upstream fetch).
 
 - OpenCode adapter reaches parity with Claude Code's auto-shell: the plugin detects a Terminal-Only project from the session folder (silent elsewhere), briefs on each prompt there, and a tool guard allows only the exact harness call through the shell tool and rejects every other tool; setup.cmd installs it globally where OpenCode is set up (respecting XDG_CONFIG_HOME), and the emergency exit switches it off by renaming its file. Not yet tried in OpenCode.

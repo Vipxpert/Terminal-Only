@@ -6957,6 +6957,12 @@ def main():
     raw_txt = decode_payload(sys.stdin.buffer.read())
     start_tty_focus()
     P = parse_payload(raw_txt)
+    if agent_mode():
+        _blocked_session_ops = {"@SESSIONS", "@SPLIT", "@BORROW", "@RECLAIM", "@UNCLAIM", "@TAKEOVER", "@CHAT_LINK", "@GUIDE", "@DELEGATE", "@SCOPE_REQUEST", "@MESSAGE", "@RETURN", "@BRAKE", "@BRAKE_ACK", "@SIDE"}
+        _hit = (P.get("seen") or set()) & _blocked_session_ops
+        if _hit:
+            print("  [REFUSED] session operation %s is not allowed in auto-shell (Terminal-Only) mode. Nothing was run." % ", ".join(sorted(_hit)))
+            return
     tee = sys.stdout = OutputTee(sys.stdout)
     t_start = time.time()
     print("=== llm_harness v%s | EXECUTING [%s: %s] ===" % (VERSION, P["id"] or "UNKNOWN", P["title"]))

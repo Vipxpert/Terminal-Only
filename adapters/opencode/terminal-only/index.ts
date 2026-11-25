@@ -71,6 +71,9 @@ function harnessCallProblem(cmd: string): string {
   if (body.split("\n").some((l) => l.replace(/\r$/, "").startsWith("'@"))) return "a line inside the script starts with '@, which would end the here-string early";
   if (["python", "python3"].indexOf(exe.toLowerCase()) < 0) return "Python must be named python (found on the PATH), not given by path";
   if (path.resolve(target).toLowerCase() !== path.resolve(HARNESS).toLowerCase()) return "that is not the installed harness";
+  // Comment (invariant): mirror harness.py's agent_mode session-op block at the plugin boundary so blocked directives fail fast before spawning Python
+  const blocked = body.match(/^[ \t]*@(?:SESSIONS|SPLIT|BORROW|RECLAIM|UNCLAIM|TAKEOVER|CHAT_LINK|GUIDE|DELEGATE|SCOPE_REQUEST|MESSAGE|RETURN|BRAKE|BRAKE_ACK|SIDE)\b/m);
+  if (blocked) return "session directive " + blocked[0].trim() + " is not allowed in auto-shell mode";
   return "";
 }
 
