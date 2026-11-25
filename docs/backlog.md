@@ -58,7 +58,6 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 ## Deferred
 - A MODE: chat line in the chat flow's handshake waits for the desktop's P-323 merge, which adds its states line at the same place in the handshake. The hook-without-shell mismatch warning is dropped: inside Claude Code the harness now switches to auto-shell by itself. Code comments still say agent mode; the AGENT TURN marker stays because the hooks read it. (2026-11-24)
 - OpenCode adapter (adapters/opencode, V2 plugin for 2.4.1) has project detection, the tool guard and a global install from setup, but none of it has run in OpenCode: run the trial in its README (main agent, subagent, Code Mode, Batch, ordinary project); to confirm there: where the session's subpath sits, that @opencode/plugin resolves from the global plugin folder, and that the here-string pipeline matches the exact-command check. (2026-11-24)
-- Work desktop: P-323 (borrower milestones, the handshake states line, milestone_test, the resume playbook line, changelog, backlog and tree) is uncommitted there; commit it on the desktop, then bring in the laptop's commits (the two will have diverged: the owner decides how), then build @HISTORY (its script never ran). (2026-11-24)
 
 - Desktop: run setup.cmd (many commits behind), send @STEWARD on for this repository (one question at its terminal), end its old harness-dev session, decide what to do with its local-only v3.10.0 tag. (2026-11-22)
 - halagames-tools: pin the HalaGames account with @GIT_ACCOUNT; add !.llm_harness/git.json to .gitignore with the git.json branch policy; add the .gitattributes merge lines. (2026-11-22)
@@ -66,7 +65,6 @@ What is known to be missing, deferred, unverified or worth doing, so that nothin
 - Unity project Big&Small: no goal pinned, and the checkout is 9 commits behind its remote. (2026-11-22)
 
 ## Ideas
-- @HISTORY <session> [| files] [| n]: a read-only list of a session's recent scripts (id, title, age, status) and optionally the files each changed, from the undo journal (journal_entries keeps each script's session); a script that changed no file may not be journaled, so a pure read may not appear. Owner's request, queued behind reading how @SESSIONS is parsed. (2026-11-23)
 - Milestones cannot be cleared by the owner and only the last three show for a week; if the footer line gets noisy, add a way to acknowledge them. @MILESTONE has no card line on purpose (the card is printed to everyone). (2026-11-23)
 - The AUTO status line and @ASK_USER are built but off and hidden: switch on with harness.py --workspace <folder> --auto on (off to hide again). Not built: a desktop notification on PAUSE (could ride the same switch) and any runner. A runner for the chat websites (Playwright) is declined: the services generally forbid bots on consumer accounts; use a provider API, or an agent product, if a loop is ever wanted. @HELP COMMANDS may still list @ASK_USER. (2026-11-23)
 - Gemini's RunContext idea: group the module-level run state (CURRENT_SESSION, CURRENT_SCRIPT and the like) in one object; declined for now, since no failure comes from it. (2026-11-23)

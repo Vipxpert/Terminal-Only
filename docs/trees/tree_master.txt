@@ -118,6 +118,7 @@
     ├── unblock_test.py (Windows: the emergency exit removes only Terminal-Only's hooks with a backup, and a reinstall puts them back while another tool's hook survives both)
     ├── cmd_front_test.py (Windows: the cmd front answers ordinary folders at once and reports the time, guards a project from its root, a nested folder and the home-fallback case, and ignores the install folder)
     ├── replay_note_test.py (A repeated paste gives a replay that explains itself to the AI)
+    ├── history_test.py (@HISTORY <session> [| files] [| n] lists a session's recent journaled scripts, filters by session, supports '| files' and '| n', and reflects @UNDO status)
     ├── borrow_test.py (@BORROW lends work on the user's answer, LENT blocks the owner, the borrower stays author, a second borrower takes over the loan, @RETURN puts files back in the owner's scope, @RECLAIM n asks and Enter takes; the owner's undo of a borrower's script on returned work asks the user; @BORROW is never read-only)
     ├── runs_prune_test.py (Only the newest RUNS_KEEP numbered runs are kept, and a flood of @SIDE runs never pushes numbered runs out, because numbered and side runs are pruned separately)
     ├── pull_tokens_test.py (@GIT_PULL fast-forwards a checkout whose only local change is the harness's own tokens.json, even when the incoming commits changed it too, and merges the local and incoming counts)
