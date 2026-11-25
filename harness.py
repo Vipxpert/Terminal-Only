@@ -6737,6 +6737,7 @@ def handshake(workspace, shell):
     unclaimed = [(n, r) for n, r in sorted(load_json(sessions_path(), {}).items()) if r.get("unclaimed")]
     if unclaimed:
         print("=== UNCLAIMED SESSIONS (set up for a new chat: if the task matches one, name it in the first @SESSION line; when several or none fit, ask the user): %s ===" % "; ".join("%s: %s (set up by %s; brief: %s)" % (n, r.get("aim") or "no aim", r.get("created_by", "?"), (r.get("brief") or "")[:300]) for n, r in unclaimed))
+    print("MODE: chat (human-pasted scripts; full standing rules arrive in every footer)")
     print(harness_states_line())
     print_card(shell, os.path.abspath("."))
     # Comment (decision): the owner pasted workflow_commands.txt beside the handshake at the start of every chat; printing it here makes one paste start a chat, and the footers keep the standing rules in view after that

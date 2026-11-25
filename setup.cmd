@@ -8,6 +8,11 @@ if /i "%~1"=="--pulled" goto :start
 if not exist "%~dp0.git" goto :start
 where git >nul 2>&1
 if errorlevel 1 goto :start
+if exist "%~dp0.git\MERGE_HEAD" (
+    echo WARNING: a git merge is in progress in %~dp0. Skipping git pull; finish it with @GIT_MERGE --continue or undo with @GIT_MERGE --abort.
+    set "PULL_FAILED=1"
+    goto :start
+)
 echo Pulling the latest harness from its repository...
 git -C "%~dp0." pull --ff-only
 if errorlevel 1 (

@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- `MODE: chat` handshake line (symmetric with `MODE: auto-shell`) and a `MERGE_HEAD` guard in `setup.cmd` that skips `git pull --ff-only` mid-merge with a `@GIT_MERGE --continue/--abort` hint.
+
 - Auto-shell hardening and adaptive L1: `agent_mode` in `harness.py` refuses file-mutation directives (`@FILE`, `@NEW_FILE`, `@DELETE_FILE`, `@RENAME`, `@TEXT_REPLACE`) and session-management directives (`@SESSIONS`, `@SPLIT`, `@BORROW`, etc.), mirrored in the OpenCode plugin's `harnessCallProblem()` body check; `[L1-Sessions]` is tagged `(chat)` and `[L1-Harness] (agent)` tells auto-shell agents to inspect/plan only and hand ready-to-paste scripts to the user (using `@HUNK` for multi-line edits and `@TEXT_REPLACE` for single-line edits only).
 
 - @MILESTONE <what is done>, shown only to a session that borrows work (its BORROWING footer line says so; the command is in no rule, card or command list for anyone else): the last 20 are kept on the owner's record, survive a return, a second borrow and a takeover, and the owner's footer shows the latest three for a week; @PLAYBOOK resume reads them. The handshake prints one HARNESS STATES line (stewardship, auto-copy, upstream fetch).
