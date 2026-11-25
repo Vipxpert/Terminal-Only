@@ -406,6 +406,8 @@ def split_scope(scope):
 
 def resolve_code_scope(lines, scope):
     """Scope path -> (start, end, note). note is None when every segment resolved to exactly one block."""
+    if scope.strip().lower() in ("<top>", "top"):
+        return 0, len(lines), None
     segs = split_scope(scope)
     lo, hi, n, k = 0, len(lines), len(lines), 0
     while k < len(segs):
@@ -420,6 +422,9 @@ def resolve_code_scope(lines, scope):
                     k += 2
                     continue
             hits = [j for j in range(lo, hi) if (def_info(lines[j]) or (None,))[0] == name]
+            if not hits and k > 0:
+                py_re = re.compile(r"^\s*(?:async\s+)?def\s+" + re.escape(name) + r"\s*\(")
+                hits = [j for j in range(lo, hi) if py_re.match(lines[j])]
             anchor = False
         else:
             key = norm_ws(seg)
@@ -732,7 +737,7 @@ def check_files(changed, pre):
 
 # ---------------------------------------------------------------- Stage: Payload parser
 
-DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
+DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN @RUN_ALWAYS @RUN_BLOCK "
               "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_MERGE @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @HISTORY @L1_REFRESH @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @MSG_ACK @WAIT_MSG @PING @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @ASK_USER @MILESTONE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
@@ -818,17 +823,38 @@ def parse_payload(txt):
                 P["goal"] = arg
             else:
                 P["warnings"].append("@GOAL needs the goal text, e.g. '@GOAL Port every Python service to Go'")
-        elif d == "RUN":
+        elif d in ("RUN", "RUN_ALWAYS"):
             mt = re.match(r"^--timeout\s+(\d+)\s+(.*)$", arg)
             cmd, limit = (mt.group(2), min(3600, int(mt.group(1)))) if mt else (arg, RUN_TIMEOUT)
             nxt = lines[i + 1] if i + 1 < n else ""
             # Comment (invariant): an @RUN is one line, so a line after it that is not blank, not a # comment and not a directive means the command was probably broken across lines (a multi-line python -c, say); running the first line alone could do something else than was meant, so the command is not run
-            if cmd.strip() and nxt.strip() and not nxt.startswith("#") and not re.match(r"^@([A-Z_]+)(?:[ \t]+(.*))?$", nxt):
-                P["warnings"].append("@RUN at payload line %d is directly followed by a line that is not a directive, so the command was probably cut off at the line break and was not run (an @RUN is one line: put a longer program in a @NEW_FILE and run it with @RUN python <file>)" % (i + 1))
+            if cmd.strip() and nxt.strip() and not nxt.startswith("#") and not re.match(r"^@([A-Z0-9_]+)(?:[ \t]+(.*))?$", nxt):
+                P["warnings"].append("@RUN at payload line %d is directly followed by a line that is not a directive, so the command was probably cut off at the line break and was not run (an @RUN is one line: use @RUN_BLOCK ... @END_RUN_BLOCK for multi-line commands, or @NEW_FILE + @RUN python <file>)" % (i + 1))
             elif cmd.strip():
-                P["runs"].append({"cmd": cmd.strip(), "timeout": max(1, limit)})
+                P["runs"].append({"cmd": cmd.strip(), "timeout": max(1, limit), "always": d == "RUN_ALWAYS"})
             else:
-                P["warnings"].append("@RUN needs a command")
+                P["warnings"].append("@%s needs a command" % d)
+        elif d == "RUN_BLOCK":
+            at, always, limit = i, False, RUN_TIMEOUT
+            for tok in arg.split():
+                if tok.lower() == "always":
+                    always = True
+            mt = re.search(r"--timeout\s+(\d+)", arg)
+            if mt:
+                limit = min(3600, int(mt.group(1)))
+            i += 1
+            body = []
+            while i < n and lines[i].strip() != "@END_RUN_BLOCK":
+                body.append(lines[i])
+                i += 1
+            if i >= n:
+                P["warnings"].append("@RUN_BLOCK at payload line %d is missing @END_RUN_BLOCK" % (at + 1))
+                continue
+            cmd = "\n".join(body).strip()
+            if cmd:
+                P["runs"].append({"cmd": cmd, "timeout": max(1, limit), "always": always})
+            else:
+                P["warnings"].append("@RUN_BLOCK at payload line %d is empty" % (at + 1))
         elif d == "FIND":
             P["finds"].append(arg)
         elif d == "GREP":
@@ -6953,7 +6979,8 @@ def print_card(shell, workspace):
   @LIST_DIR /<path>    @LIST_RECURSIVE /<path>
   (@FIND, @GREP, @LIST_RECURSIVE and @TEXT_REPLACE take a last '| depth N': at most N folder levels below the fixed part of the path, 1 = directly inside. @LIST_DIR and @LIST_RECURSIVE count instead of list what .gitignore excludes and binary or media files; add '| all' to list them (a recursive listing in a git project never shows ignored files: use @LIST_DIR <folder> | all).
    Globs: with a '/' they start at the workspace root and * stays in one folder, ** crosses folders; without a '/' they match file names at any depth.)
-  @RUN [--timeout <s>] <command>                  any other command (tests, builds, installs, CLI tools) in the workspace; default limit 300s; not undoable
+  @RUN [--timeout <s>] <command>                  any other command (tests, builds, installs, CLI tools) in the workspace; default limit 300s; skipped if an earlier @GIT_COMMIT or @FILE failed; use @RUN_ALWAYS to run anyway
+  @RUN_BLOCK [always] [--timeout <s>] ... @END_RUN_BLOCK   multi-line command block without temp files
   @INIT_DEBUG <slug>                              creates docs/debug/bug_<slug>.txt with its four sections and prints it
   @UNDO <hi>..<lo>  or  @UNDO <number>            reverses journaled scripts, newest first; add '| /path, /other, /ye*' to restore only those files (e.g. @UNDO 117 | /bot.py), the rest of those scripts stays; '/old -> /new' (or '-> /folder/') copies the file as it was to another path; several @UNDO lines may share a script
   @REDO <number>                                  runs that script's saved text again under this script's number; follow it with --- [OLD TEXT] --- / +++ [NEW TEXT] +++ / === [END TEXT] === corrections (each old text found once, may span lines) and any extra directives, instead of resending the whole script
@@ -7403,8 +7430,13 @@ def main():
     if P["notes"]:
         execute_note_ops(P["notes"])
     run_shell = state.get("shell") or shell
+    prior_failed = (bool(P["git"]) and not git_ok) or (bool(P["ops"]) and RUN_FAILED)
     watched = watch_other_scopes(P["session"]) if P["runs"] else None
     for r in P["runs"]:
+        if prior_failed and not r.get("always"):
+            first_line = r["cmd"].splitlines()[0][:80]
+            print("\n=== RUN: %s ===\n  [SKIPPED] earlier @GIT_COMMIT or @FILE failed in this script (use @RUN_ALWAYS to run anyway)" % first_line)
+            continue
         run_command(r["cmd"], r["timeout"], run_shell)
     if watched:
         report_scope_changes(watched)
