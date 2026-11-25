@@ -738,7 +738,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN @RUN_ALWAYS @RUN_BLOCK "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_MERGE @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @HISTORY @L1_REFRESH @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_MERGE @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @HISTORY @L1_REFRESH @L1_PROOF @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @MSG_ACK @WAIT_MSG @PING @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @ASK_USER @MILESTONE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -998,6 +998,8 @@ def parse_payload(txt):
             P["helps"].append("HISTORY " + arg)
         elif d == "L1_REFRESH":
             P["l1_refresh"] = True
+        elif d == "L1_PROOF":
+            P["l1_proof"] = arg.strip().lower()
         elif d == "MSG_ACK":
             P["msg_acks"].append(arg)
         elif d == "WAIT_MSG":
@@ -4705,7 +4707,43 @@ def auto_on():
         return False
 
 L1_REFRESH = False
+L1_PROOF = ""
 PING_ONLY = False
+
+def session_l1_token(rotate=False):
+    """Read or rotate the 6-hex compaction proof token stored on CURRENT_SESSION."""
+    if not CURRENT_SESSION or not HARNESS_DIR:
+        return ""
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        rec = reg.get(CURRENT_SESSION)
+        if not isinstance(rec, dict):
+            return ""
+        if rotate or not rec.get("l1_token"):
+            raw = "%s|%.6f|%d|%s" % (CURRENT_SESSION, time.time(), os.getpid(), rec.get("l1_token", ""))
+            rec["l1_token"] = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:6]
+            save_json(sessions_path(), reg)
+        return rec.get("l1_token", "")
+
+def compacted_cli():
+    """Host-hook / user command: harness.py --workspace <folder> --compacted [<session>]. Clears l1_token and turn_seen so the next run prints full L1."""
+    args = sys.argv[1:]
+    i = args.index("--compacted")
+    target = args[i + 1].strip() if len(args) > i + 1 and not args[i + 1].startswith("--") else ""
+    err = enter_workspace(arg_value("--workspace"))
+    if err:
+        print("usage: harness.py --workspace <project folder> --compacted [<session>] | " + err)
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        names = [target] if target and target in reg else (list(reg.keys()) if not target else [])
+        for n in names:
+            if isinstance(reg.get(n), dict):
+                reg[n].pop("l1_token", None)
+                reg[n].pop("turn_seen", None)
+        if names:
+            save_json(sessions_path(), reg)
+    print("COMPACTED: cleared L1 proof/turn cache for %s; next run will print full L1." % (", ".join(names) if names else "no matching session"))
 
 def compact_path():
     return os.path.join(HARNESS_DIR, "compact.json")
@@ -6204,8 +6242,11 @@ def print_footer_body(state):
         # Comment (decision): in agent mode a host runs many harness calls per user prompt, so a rule already in this prompt's briefing is not repeated unless it changed or its trigger did; in chat mode with compaction-aware L1 (ON by default, --compact off to opt out), turns after the first omit unchanged untriggered rules unless @L1_REFRESH or a failure occurred
         quiet = agent_quiet(rules, briefs)
         compact_active = (not agent_mode()) and bool(CURRENT_SESSION) and compact_on()
+        expected_tok = session_l1_token(rotate=False) if compact_active and before else ""
+        proof_ok = bool(expected_tok and L1_PROOF == expected_tok)
+        proof_failed = bool(compact_active and before and not L1_REFRESH and not brief_reason(["failed"]) and not proof_ok)
         compact_skip = set()
-        if compact_active and before and not L1_REFRESH and not brief_reason(["failed"]):
+        if compact_active and before and proof_ok and not L1_REFRESH and not brief_reason(["failed"]):
             compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new and not (tag in briefs and brief_reason(briefs[tag][0]))}
         hidden, compact_hidden = 0, 0
         for tag, body in rules:
@@ -6228,9 +6269,13 @@ def print_footer_body(state):
             print("  (auto-shell turn: %d standing rule%s already in this prompt's briefing and unchanged, not repeated; @HELP L1-<name> prints one)" % (hidden, "" if hidden == 1 else "s"))
         if compact_active:
             if compact_hidden:
-                print("[L1-Compact] %d unchanged standing rule%s omitted; if your context was compacted, send @L1_REFRESH to restore full L1 (@HELP L1-<name> prints any rule)" % (compact_hidden, "" if compact_hidden == 1 else "s"))
+                print("[L1-Compact] %d unchanged standing rule%s omitted (proof %s verified; keep echoing @L1_PROOF %s, or send @L1_REFRESH after compaction)" % (compact_hidden, "" if compact_hidden == 1 else "s", expected_tok, expected_tok))
             else:
-                print("[L1-Compact] full L1 printed; later clean turns omit unchanged rules (send @L1_REFRESH after compaction to restore full L1)")
+                new_tok = session_l1_token(rotate=True)
+                if proof_failed:
+                    print("[L1-Compact] proof missing or mismatched (possible compaction) -> full L1 restored (new proof: %s); echo @L1_PROOF %s on your next script" % (new_tok, new_tok))
+                else:
+                    print("[L1-Compact] full L1 printed (proof: %s); echo @L1_PROOF %s on your next script to keep compact mode, or send @L1_REFRESH after compaction" % (new_tok, new_tok))
             print("[L1-Syntax] @PROBE /file | Scope | symbol  |  @PROBE /tree | Tree | node | depth  |  @XREF symbol | callers")
     if state is not None:
         try:
@@ -6928,6 +6973,7 @@ def print_card(shell, workspace):
   @SESSIONS                                       lists every session with its aim, write scope and chat address (the footer shows only a count of the others unless this chat is waiting, delegated or braked)
   @HISTORY <session> [| files] [| n]              read-only list of a session's recent journaled scripts (id, title, age, status; '| files' adds changed paths; default 10)
   @L1_REFRESH                                     prints the full L1 standing rules on this run (use after chat compaction when compaction-aware L1 is on)
+  @L1_PROOF <token>                               echoes the rotating 6-hex proof token from [L1-Compact] so the harness verifies L1 is still in context (missing/wrong proof auto-restores full L1)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
   @DELEGATE <session> | <paths> | <task>          hands those files (entries of your scope) and a task to that session at once, with your uncommitted work in them; its footer says INHERITED
   @SPLIT <name> | <aim> | <paths> | <brief>       sets up an UNCLAIMED session for a new chat and hands it those files the way @DELEGATE does, with the waits on them (leave <paths> empty for a session with no files); the brief (goal, decisions, what is done, code locations, what is left) prints once when a chat claims it with @SESSION <name>
@@ -7233,6 +7279,8 @@ def main():
         return auto_cli()
     if "--compact" in sys.argv[1:]:
         return compact_cli()
+    if "--compacted" in sys.argv[1:]:
+        return compacted_cli()
     if "--new-turn" in sys.argv[1:]:
         return new_turn_cli()
     if "--agent-allow" in sys.argv[1:]:
@@ -7366,6 +7414,7 @@ def main():
     globals()["CURRENT_SCRIPT"], globals()["CURRENT_RUN"] = P["id"], "%s@%.6f" % (P["id"], time.time())
     globals()["CURRENT_PART"] = P.get("part")
     globals()["L1_REFRESH"] = bool(P.get("l1_refresh"))
+    globals()["L1_PROOF"] = P.get("l1_proof") or ""
     globals()["PING_ONLY"] = bool(P.get("ping")) and not (P["ops"] or P["runs"] or P["probes"] or P["xrefs"] or P["greps"] or P["finds"] or P["list_dir"] or P["list_rec"] or P["notes"] or P["helps"] or P["git"] or P["git_status"] or P["msgs"] or P["msg_acks"] or P["wait_msgs"])
     enforce_brake(P)
     send_messages(P)
