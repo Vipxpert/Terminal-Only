@@ -1675,7 +1675,8 @@ def repo_guard(what, clean=True, alone=True):
             return "this checkout has uncommitted or untracked changes (%s%s); commit them (or ask the user) first" % (", ".join(dirty[:4]), " +%d more" % (len(dirty) - 4) if len(dirty) > 4 else "")
     if alone:
         now = time.time()
-        busy = [nm for nm, rec in load_json(sessions_path(), {}).items() if nm != CURRENT_SESSION and (rec.get("scope") or now - rec.get("last_active", 0) < ACTIVE_S)]
+        # Comment (decision): a session lent to the current chat is paused while borrowed, so it must not block the borrower's repo ops (pull/merge/branch)
+        busy = [nm for nm, rec in load_json(sessions_path(), {}).items() if nm != CURRENT_SESSION and (rec.get("lent") or {}).get("to") != CURRENT_SESSION and (rec.get("scope") or now - rec.get("last_active", 0) < ACTIVE_S)]
         if busy:
             return "other chats are active in this checkout (%s), and %s would change the files under them; give each branch its own folder with @GIT_WORKTREE add instead" % (", ".join(sorted(busy)), what)
     return ""
