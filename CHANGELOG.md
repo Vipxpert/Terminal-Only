@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Cross-session message lifecycle & live waiting: `@MESSAGE` assigns stable idempotent IDs (`M-###`) and supports broadcast `@MESSAGE * | <text>` with per-recipient receipts (`queued -> delivered -> ack -> accepted/rejected -> completed`); `@MSG_ACK <id> [| ack|accept|reject|done] [| <note>]` updates receipts; auto-shell `@WAIT_MSG <id> [| delivered|ack|accepted|done] [| <sec>]` polls up to 90s (default); chat-mode `@PING` (compatible with `@REPEATABLE`) checks messages and receipts without printing the L1 footer.
+
 - Compaction-aware L1 (ON by default; opt out per project with `--compact off`): normal chat turns after the first omit unchanged, untriggered standing rules while keeping `[L1-Compact]` (prompting `@L1_REFRESH` after compaction) and a permanent `[L1-Syntax]` line (`@PROBE /file | Scope | symbol`, `@PROBE /tree | Tree | node | depth`, `@XREF symbol | callers`) visible; `[NEW]`, `[CHANGED]`, triggered rules, failures, and `@L1_REFRESH` still print full L1.
 
 - `@HISTORY <session> [| files] [| n]`: read-only list of a session's recent journaled scripts (id, title, age, status — `applied`, `partially undone`, or `undone`), with optional `| files` for changed paths and `| n` to cap the count (default 10).
