@@ -733,7 +733,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_MERGE @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_MERGE @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @HISTORY @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @ASK_USER @MILESTONE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -968,6 +968,8 @@ def parse_payload(txt):
             P["helps"].append("PLAYBOOK " + arg)
         elif d == "SESSIONS":
             P["helps"].append("SESSIONS")
+        elif d == "HISTORY":
+            P["helps"].append("HISTORY " + arg)
         elif d == "XREF":
             P["xrefs"].append(arg)
         elif d == "LIST_DIR":
@@ -6558,6 +6560,46 @@ def sessions_listing():
         return
     print_sessions(CURRENT_SESSION, full=True)
 
+def history_listing(arg):
+    """@HISTORY <session> [| files] [| n]: read-only list of a session's recent journaled scripts."""
+    parts = [p.strip() for p in arg.split("|") if p.strip()]
+    session = parts[0] if parts else (CURRENT_SESSION or "")
+    show_files, limit = False, 10
+    for p in parts[1:]:
+        if p.lower() == "files":
+            show_files = True
+        elif p.isdigit() and int(p) > 0:
+            limit = int(p)
+    if not session:
+        print("\n=== HISTORY ===\n  expected '@HISTORY <session> [| files] [| n]'")
+        return
+    print("\n=== HISTORY: %s ===" % session)
+    shown = 0
+    for hp in sorted(glob.glob(os.path.join(HISTORY_DIR, "*.json")), reverse=True):
+        rec = load_json(hp, None)
+        if not rec or (rec.get("session") or "") != session:
+            continue
+        files = rec.get("files") or {}
+        if files and all(f.get("undone") for f in files.values()):
+            st = "undone"
+        elif files and any(f.get("undone") for f in files.values()):
+            st = "partially undone"
+        else:
+            st = "applied"
+        try:
+            secs = max(0, int(time.time() - os.path.getmtime(hp)))
+        except OSError:
+            secs = 0
+        age = ("%dm ago" % (secs // 60)) if secs < 3600 else ("%dh ago" % (secs // 3600)) if secs < 86400 else ("%dd ago" % (secs // 86400))
+        print("  %s | %s | %s | %s" % (rec.get("id") or "?", rec.get("title") or "", age, st))
+        if show_files and files:
+            print("    files: %s" % ", ".join(sorted(files.keys())))
+        shown += 1
+        if shown >= limit:
+            break
+    if not shown:
+        print("  no journaled scripts for session '%s' (pure reads are not journaled)" % session)
+
 def print_help(name, shell):
     """@HELP <directive>: the syntax-card lines for one directive, taken from the card itself so the two never disagree."""
     import io, contextlib
@@ -6575,6 +6617,10 @@ def print_help(name, shell):
         return
     if re.match(r"(?is)^@?sessions\s*$", name.strip()):
         sessions_listing()
+        return
+    hi = re.match(r"(?is)^@?history(?:\s+(.*))?$", name.strip())
+    if hi:
+        history_listing(hi.group(1) or "")
         return
     if key.startswith("@L1-"):
         try:
@@ -6637,6 +6683,7 @@ def print_card(shell, workspace):
   @SCOPE_END    @SESSION_END                      release this session's scope / end the session; refused while its changes are uncommitted, unless followed by 'handover'; @SESSION_END also waits for blocked work listed under WAITING ON, unless followed by 'drop'
   @MESSAGE <session> | <text>                     a note for another session, shown in its footers until its next numbered script (labelled as from an AI, not the user)
   @SESSIONS                                       lists every session with its aim, write scope and chat address (the footer shows only a count of the others unless this chat is waiting, delegated or braked)
+  @HISTORY <session> [| files] [| n]              read-only list of a session's recent journaled scripts (id, title, age, status; '| files' adds changed paths; default 10)
   @SCOPE_REQUEST <session> | <paths> | <reason>   asks that session to give up those paths; only its owner or the user can
   @DELEGATE <session> | <paths> | <task>          hands those files (entries of your scope) and a task to that session at once, with your uncommitted work in them; its footer says INHERITED
   @SPLIT <name> | <aim> | <paths> | <brief>       sets up an UNCLAIMED session for a new chat and hands it those files the way @DELEGATE does, with the waits on them (leave <paths> empty for a session with no files); the brief (goal, decisions, what is done, code locations, what is left) prints once when a chat claims it with @SESSION <name>

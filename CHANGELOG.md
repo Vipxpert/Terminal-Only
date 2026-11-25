@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- `@HISTORY <session> [| files] [| n]`: read-only list of a session's recent journaled scripts (id, title, age, status — `applied`, `partially undone`, or `undone`), with optional `| files` for changed paths and `| n` to cap the count (default 10).
+
 - `MODE: chat` handshake line (symmetric with `MODE: auto-shell`) and a `MERGE_HEAD` guard in `setup.cmd` that skips `git pull --ff-only` mid-merge with a `@GIT_MERGE --continue/--abort` hint.
 
 - Auto-shell hardening and adaptive L1: `agent_mode` in `harness.py` refuses file-mutation directives (`@FILE`, `@NEW_FILE`, `@DELETE_FILE`, `@RENAME`, `@TEXT_REPLACE`) and session-management directives (`@SESSIONS`, `@SPLIT`, `@BORROW`, etc.), mirrored in the OpenCode plugin's `harnessCallProblem()` body check; `[L1-Sessions]` is tagged `(chat)` and `[L1-Harness] (agent)` tells auto-shell agents to inspect/plan only and hand ready-to-paste scripts to the user (using `@HUNK` for multi-line edits and `@TEXT_REPLACE` for single-line edits only).
