@@ -6966,6 +6966,10 @@ def main():
         return print_footer(None)
     print("  Workspace: %s | %s" % (os.path.abspath("."), mode_label()))
     state = load_state()
+    # Comment (decision): in agent mode the AI may inspect and plan but never apply code changes; the user pastes the script in their own terminal, where it runs as the user and applies
+    if agent_mode() and ({"@FILE", "@NEW_FILE", "@DELETE_FILE", "@RENAME", "@TEXT_REPLACE"} & (P.get("seen") or set())):
+        print("  [REFUSED] auto-shell: code changes are applied only when you run this script yourself in your terminal; paste it there. Nothing was run.")
+        return print_footer(state)
     name_session(P)
     if re.search(r"(?m)^@REDO\s+\d+\s*$", raw_txt):
         raw_txt, redo_err = expand_redo(raw_txt)
