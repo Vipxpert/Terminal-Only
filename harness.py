@@ -733,7 +733,7 @@ def check_files(changed, pre):
 # ---------------------------------------------------------------- Stage: Payload parser
 
 DIRECTIVES = ("@SCRIPT @WORKSPACE @GOAL @FILE @HUNK @NEW_FILE @DELETE_FILE @RENAME @RUN "
-              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
+              "@PROBE @XREF @FIND @GREP @LIST_DIR @LIST_RECURSIVE @INIT_DEBUG @UNDO @GIT_INIT @GIT_STATUS @GIT_COMMIT @GIT_FOLD @GIT_BRANCH @GIT_WORKTREE @GIT_TAG @GIT_PUSH @GIT_PULL @GIT_MERGE @GIT_ACCOUNT @GIT_REMOTE @STEWARD @TAKEOVER @CHAT_LINK @KB @PLAYBOOK @SESSIONS @SIDE "
               "@NOTE_ADD @NOTE_EDIT @NOTE_REMOVE @NOTE_PIN @NOTE_BRIEF @NOTE_LIST @HELP @SESSION @SCOPE @SCOPE_END @SESSION_END "
               "@MESSAGE @SCOPE_REQUEST @DELEGATE @SPLIT @BORROW @RECLAIM @UNCLAIM @GUIDE @ASK_USER @MILESTONE @RETURN @BRAKE @BRAKE_ACK @REPEATABLE @TEXT_REPLACE @VERDICT @VERDICTS @CAMPAIGN @CAMPAIGN_END @PART @REDO")
 DEBUG_SKELETON = """# Stage: Symptom & Target Invariant
@@ -1008,6 +1008,8 @@ def parse_payload(txt):
             P["git"].append({"kind": "push", "what": arg.strip()})
         elif d == "GIT_PULL":
             P["git"].append({"kind": "pull"})
+        elif d == "GIT_MERGE":
+            P["git"].append({"kind": "merge", "arg": arg.strip()})
         elif d == "GIT_ACCOUNT":
             P["git"].append({"kind": "account", "arg": arg.strip()})
         elif d == "GIT_REMOTE":
@@ -1620,7 +1622,7 @@ def git_status_report():
 MEMORY_FILES = {p: p for p in (WORKSPACE_NOTES_DIR + "/goal.md", WORKSPACE_NOTES_DIR + "/notes.md", WORKSPACE_NOTES_DIR + "/verdicts.json", ".gitignore")}
 
 COMMIT_TYPES = ("build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style", "test")
-REPO_KINDS = ("branch", "worktree", "tag", "push", "pull", "account")
+REPO_KINDS = ("branch", "worktree", "tag", "push", "pull", "merge", "account")
 ACTIVE_S = 15 * 60
 
 def park_tokens(incoming):
@@ -2088,6 +2090,73 @@ def run_repo_ops(ops):
             print("  -> where this branch was is bookmarked as %s; going back is the user's command (a hard reset), and @UNDO does not cover a pull" % bookmark)
             if tokens_note:
                 print("  -> .llm_harness/tokens.json: the local token counts were set aside for the pull and %s (still uncommitted)" % tokens_note)
+        elif op["kind"] == "merge":
+            arg = (op.get("arg") or "").strip()
+            in_merge = run_git(["rev-parse", "-q", "--verify", "MERGE_HEAD"])[0] == 0
+            if arg == "--abort":
+                if not in_merge:
+                    print("  [MERGE REFUSED] no merge is in progress. Nothing changed.")
+                    return False
+                rc, out, err = run_git(["merge", "--abort"])
+                if rc:
+                    print("  [MERGE FAILED] %s" % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                    return False
+                print("  [MERGE ABORTED] restored pre-merge state")
+                continue
+            if arg == "--continue":
+                if not in_merge:
+                    print("  [MERGE REFUSED] no merge is in progress. Nothing changed.")
+                    return False
+                unmerged = [p for p in run_git(["diff", "--name-only", "--diff-filter=U"])[1].splitlines() if p.strip()]
+                still = []
+                for p in unmerged:
+                    try:
+                        txt = open(p, "r", encoding="utf-8", errors="replace").read()
+                        if "<<<<<<<" in txt or ">>>>>>>" in txt:
+                            still.append(p)
+                    except OSError:
+                        still.append(p)
+                if still:
+                    print("  [MERGE REFUSED] conflict markers remain in: %s. Resolve them before '@GIT_MERGE --continue'." % ", ".join(still))
+                    return False
+                if unmerged:
+                    run_git(["add", "--"] + unmerged)
+                rc, out, err = run_git(["commit", "--no-edit"])
+                if rc:
+                    print("  [MERGE FAILED] %s" % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                    return False
+                print("  [MERGED] merge commit completed on %s" % here)
+                continue
+            ref = arg
+            if not ref:
+                rc_up, up, _ = run_git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+                if rc_up != 0:
+                    print("  [MERGE REFUSED] no ref given and this branch has no upstream. Nothing changed.")
+                    return False
+                ref = up
+            why = repo_guard("merging")
+            if why:
+                print("  [MERGE REFUSED] %s. Nothing changed." % why)
+                return False
+            bookmark = "refs/llm_harness/backup/" + time.strftime("%Y%m%d-%H%M%S")
+            run_git(["update-ref", bookmark, "HEAD"])
+            files = run_git(["diff", "--name-only", "HEAD..." + ref])[1].splitlines()
+            parked = park_tokens(files)
+            rc, out, err = run_git(["merge", "--no-edit", ref])
+            tokens_note = unpark_tokens(parked, rc == 0) if parked else ""
+            if rc == 0:
+                print("  [MERGED] merged %s into %s" % (ref, here))
+                print("  -> pre-merge HEAD is bookmarked as %s" % bookmark)
+                if tokens_note:
+                    print("  -> .llm_harness/tokens.json: the local token counts were set aside for the merge and %s (still uncommitted)" % tokens_note)
+                continue
+            conflicts = [p for p in run_git(["diff", "--name-only", "--diff-filter=U"])[1].splitlines() if p.strip()]
+            if conflicts:
+                print("  [MERGE CONFLICTS] merging %s stopped with conflicts in %d file(s): %s" % (ref, len(conflicts), ", ".join(conflicts)))
+                print("  -> resolve the conflict markers with @HUNK, then finish with '@GIT_MERGE --continue' (or undo with '@GIT_MERGE --abort'; pre-merge HEAD is bookmarked as %s)" % bookmark)
+                return False
+            print("  [MERGE FAILED] %s. Nothing changed." % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+            return False
         elif op["kind"] == "remote":
             words = list(op.get("args") or [])
             if words and words[0].lower() in ("add", "set-url"):
@@ -6021,6 +6090,7 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true
   @GIT_PUSH [tag <name>]                          publishes the current branch's commits to its upstream (origin the first time), or one tag; never forced, never a protected branch (git.json); a rejected push is reported, not overridden
   @GIT_PULL                                       fast-forwards a clean checkout to its upstream (bookmarking where it was); when the branches have diverged it only reports whether a merge would conflict, and changes nothing. The footer's UPSTREAM line says what is incoming
+  @GIT_MERGE [<ref> | --continue | --abort]       merges <ref> (default @{u}) into the current branch with a backup bookmark and tokens.json parking; stops cleanly on conflicts listing conflicted files so hunks can resolve them; --continue finishes the merge commit, --abort restores pre-merge state
   @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager, else the gh CLI, whose active account is then switched too) and, at a terminal, lets the user press a number to pin one for this project, or A to sign in another account first; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
   @GIT_REMOTE [<name> [<url>]]                    lists the remotes, shows one, or adds it / changes its address (an https:// or ssh address with no password or token in it; a remote is never removed or renamed); '@GIT_REMOTE origin <url>' prints the old and the new address, and @GIT_PUSH then publishes there
 """
