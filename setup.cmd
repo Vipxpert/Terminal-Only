@@ -114,6 +114,17 @@ if exist "%TEMP_DIR%\playbooks\" (
     xcopy "%TEMP_DIR%\playbooks" "%TARGET_DIR%\playbooks\" /e /i /y /q >nul
     if errorlevel 1 goto :failed
 )
+if exist "%SOURCE_DIR%adapters\claude-code\" (
+    copy /y "%SOURCE_DIR%adapters\claude-code\*.py" "%TARGET_DIR%\" >nul & copy /y "%SOURCE_DIR%adapters\claude-code\*.ps1" "%TARGET_DIR%\" >nul & copy /y "%SOURCE_DIR%adapters\claude-code\*.cmd" "%TARGET_DIR%\" >nul
+    python "%TARGET_DIR%\install_hooks.py"
+)
+set "OC_BASE=%XDG_CONFIG_HOME%"
+if not defined OC_BASE set "OC_BASE=%USERPROFILE%\.config"
+if exist "%SOURCE_DIR%adapters\opencode\terminal-only\" if exist "%OC_BASE%\opencode\" (
+    xcopy "%SOURCE_DIR%adapters\opencode\terminal-only" "%OC_BASE%\opencode\plugins\terminal-only\" /e /i /y /q >nul
+    if exist "%OC_BASE%\opencode\plugins\terminal-only\index.ts.disabled" del /q "%OC_BASE%\opencode\plugins\terminal-only\index.ts.disabled"
+    echo OpenCode: the Terminal-Only plugin was installed in %OC_BASE%\opencode\plugins\terminal-only
+)
 rd /s /q "%TEMP_DIR%" 2>nul
 
 echo.
