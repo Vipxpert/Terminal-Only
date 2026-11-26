@@ -4,6 +4,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Added a vertical-slice clause to `[L1-Scope]` instructing chats to implement, test, and commit one verifiable milestone at a time instead of getting stuck in multi-turn inspection loops.
 - Fixed `UnboundLocalError` on `git_ok` when `@GIT_*` directives are refused in a no-git workspace or agent mode, and kept rules whose brief trigger is active (e.g. dirty git workspace, multiple sessions) expanded during compact-L1 turns.
 - Fresh-chat `[KNOWLEDGE]` footer hint now includes an explicit fresh-chat handshake cue to search relevant `@KB` entries and pin key findings to the session; `@KB` output also displays `observed:` and `variables:` confidence fields.
 - Unacknowledged session messages (`queued` or `delivered`) now persist in `=== MESSAGES FOR THIS SESSION ===` across both stacked numbered scripts and `[REPLAY]` runs until `@MSG_ACK <id>` changes their receipt state.
