@@ -4,6 +4,10 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+## 3.16 (2026-11-26)
+
+- Compaction pattern knowledge base (`knowledge/compactor.txt`, searchable via `@KB compactor`): records multi-signal compaction cues (summary blocks, footer-only anchor, verbatim-rule paraphrase drift, 40-turn scheduled ceiling, host hooks) and confidence levels; compaction playbooks and `knowledge/compactor.txt` are updated only on the user's explicit directive.
+
 - `@RUN` failure gate, multi-line `@RUN_BLOCK`, and Python scope matching: `@RUN` / `@RUN_BLOCK` commands are skipped when an earlier `@GIT_COMMIT` or `@FILE` failed in the same script (override with `@RUN_ALWAYS` or `@RUN_BLOCK always`); `@RUN_BLOCK [always] [--timeout <s>] ... @END_RUN_BLOCK` runs multi-line blocks without temp files; `resolve_code_scope()` supports `<top>` and falls back to indented `def`/`async def` inside `Class.method`.
 
 - Cross-session message lifecycle & live waiting: `@MESSAGE` assigns stable idempotent IDs (`M-###`) and supports broadcast `@MESSAGE * | <text>` with per-recipient receipts (`queued -> delivered -> ack -> accepted/rejected -> completed`); `@MSG_ACK <id> [| ack|accept|reject|done] [| <note>]` updates receipts; auto-shell `@WAIT_MSG <id> [| delivered|ack|accepted|done] [| <sec>]` polls up to 90s (default); chat-mode `@PING` (compatible with `@REPEATABLE`) checks messages and receipts without printing the L1 footer.

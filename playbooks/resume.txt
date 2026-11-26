@@ -6,3 +6,4 @@ Resume another chat's work without getting lost. Change no project file until st
 3. Report in Talk before acting: its aim; the Todo steps done and left; uncommitted changes; open questions and decisions it left; the next step you propose. Tag each point seen or inferred.
 4. Continue from that next step only after the user agrees. Keep one Todo note for this work current (@NOTE_EDIT as steps finish), so the next chat can resume the same way.
 5. Stopping: borrowed work -> @RETURN <session> | <what was done> when finished, or @MESSAGE <session> | <what is done and what is left> when stopping early; work you claimed or took over stays with you.
+6. Compaction patterns: check '@KB compactor' for known host compaction signals and confidence levels; update compaction playbooks or knowledge/compactor.txt ONLY when the user explicitly directs it.
