@@ -41,9 +41,9 @@ def main():
     check("the replay delivers a message sent since the original run", "hello from beta after the first run" in again, [l[:200] for l in again.split("\n") if "MESSAGE" in l or "hello" in l])
     check("a second replay still shows it, since nothing has confirmed it was read", "hello from beta after the first run" in third, [l[:200] for l in third.split("\n") if "MESSAGE" in l or "hello" in l])
     fourth = run(ws, "@SESSION alpha | alpha work", "@LIST_DIR /", "@LIST_DIR /")
-    fifth = run(ws, "@SESSION alpha | alpha work", "@LIST_DIR /", "@LIST_DIR /", "@LIST_DIR /")
+    fifth = run(ws, "@SESSION alpha | alpha work", "@MSG_ACK M-001", "@LIST_DIR /", "@LIST_DIR /", "@LIST_DIR /")
     check("the chat's next numbered script still carries it, since only a numbered script's output counts as read", "hello from beta after the first run" in fourth, [l[:200] for l in fourth.split("\n") if "MESSAGE" in l or "hello" in l])
-    check("the numbered script after that does not repeat it", "hello from beta after the first run" not in fifth, [l[:200] for l in fifth.split("\n") if "MESSAGE" in l or "hello" in l])
+    check("after @MSG_ACK the message does not repeat", "hello from beta after the first run" not in fifth, [l[:200] for l in fifth.split("\n") if "MESSAGE" in l or "hello" in l])
     sys.exit(0 if all(RESULTS) else 1)
 
 

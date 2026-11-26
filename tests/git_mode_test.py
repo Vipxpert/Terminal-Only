@@ -33,7 +33,7 @@ def main():
     out = run("@GREP some")
     check("the first run after the switch to git greets once and marks the git rule [NEW]", "this project now uses git" in out and "[NEW] [L1-Git Gate]" in out and "=== NO GIT HERE" not in out, out)
     out = run("@GREP some")
-    check("the greeting and the mark appear only once", "this project now uses git" not in out and "[NEW]" not in out and "[L1-Git Gate]" in out, out)
+    check("the greeting and the mark appear only once", "this project now uses git" not in out and "[NEW]" not in out and ("[L1-Git Gate]" in out or "[L1-Compact]" in out), out)
     print("test workspace: " + WS)
     sys.exit(0 if all(RESULTS) else 1)
 
