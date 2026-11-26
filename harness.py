@@ -6784,7 +6784,7 @@ def kb_hint():
         return
     seen[key] = active
     save_json(path, seen)
-    print("[KNOWLEDGE] pitfalls on file for what this project uses: %s | search: @KB <technology or symptom words>" % ", ".join(active))
+    print("[KNOWLEDGE] pitfalls on file for what this project uses: %s | fresh-chat handshake: search relevant @KB <technology or symptom words> and pin key findings to this session" % ", ".join(active))
 
 def kb_stems(word):
     """The word and what it may be the plural of (freezes -> freeze, freez), so a plural finds its singular."""
@@ -6868,7 +6868,7 @@ def print_kb(words):
     used, shown = 0, 0
     for e in hits:
         lines = ["  [%s] %s%s" % (e["tech"], e["id"], "   (OBSOLETE: %s)" % e["obsolete"] if e.get("obsolete") else "")]
-        lines += ["    %s: %s" % (k, e[k]) for k in ("symptom", "trap", "fix", "versions", "verified") if e.get(k)]
+        lines += ["    %s: %s" % (k, e[k]) for k in ("symptom", "trap", "fix", "observed", "variables", "versions", "verified") if e.get(k)]
         block = "\n".join(lines)
         if shown >= 6 or (shown and used + len(block) > 5000):
             break
