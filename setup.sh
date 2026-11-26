@@ -26,7 +26,32 @@ SOURCE_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 # Comment (order): pull before anything is staged, then start this script again from the top, because the pull may have replaced this very file and a shell reads a script as it runs; LLM_SETUP_PULLED stops the second run from pulling again
 if [ "${LLM_SETUP_PULLED:-0}" != "1" ] && [ -e "$SOURCE_DIR/.git" ] && command -v git >/dev/null 2>&1; then
     echo "Pulling the latest harness from its repository..."
-    if git -C "$SOURCE_DIR" pull --ff-only; then
+    # Comment (decision): tokens.json is dirtied locally by paste counts and never committed alone, so park it before git pull --ff-only and 3-way merge it back afterward
+    TOK_STATUS=$(git -C "$SOURCE_DIR" status --porcelain -- .llm_harness/tokens.json 2>/dev/null || true)
+    TOK_LOCAL=""
+    TOK_BASE=""
+    if [ -n "$TOK_STATUS" ] && [ -f "$SOURCE_DIR/.llm_harness/tokens.json" ]; then
+        TOK_LOCAL=$(mktemp "${TMPDIR:-/tmp}/llm_harness_tok_local.XXXXXX")
+        TOK_BASE=$(mktemp "${TMPDIR:-/tmp}/llm_harness_tok_base.XXXXXX")
+        cp "$SOURCE_DIR/.llm_harness/tokens.json" "$TOK_LOCAL"
+        git -C "$SOURCE_DIR" show HEAD:.llm_harness/tokens.json > "$TOK_BASE" 2>/dev/null || : > "$TOK_BASE"
+        case "$TOK_STATUS" in
+            '??'*) rm -f "$SOURCE_DIR/.llm_harness/tokens.json" ;;
+            *) git -C "$SOURCE_DIR" checkout -- .llm_harness/tokens.json >/dev/null 2>&1 || true ;;
+        esac
+    fi
+    PULL_RC=0
+    git -C "$SOURCE_DIR" pull --ff-only || PULL_RC=$?
+    if [ -n "$TOK_LOCAL" ]; then
+        if [ "$PULL_RC" -eq 0 ] && [ -f "$SOURCE_DIR/.llm_harness/tokens.json" ] && command -v python3 >/dev/null 2>&1; then
+            python3 -c "import importlib.util,os,sys; h,bp,lp,tp=sys.argv[1:5]; s=importlib.util.spec_from_file_location('lh',h); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); r=lambda p: open(p,encoding='utf-8').read() if os.path.isfile(p) else ''; out=m.merge_tokens_text(r(bp),r(lp),r(tp)); open(tp,'w',encoding='utf-8',newline='\n').write(out)" "$SOURCE_DIR/harness.py" "$TOK_BASE" "$TOK_LOCAL" "$SOURCE_DIR/.llm_harness/tokens.json" >/dev/null 2>&1 || cp "$TOK_LOCAL" "$SOURCE_DIR/.llm_harness/tokens.json"
+        else
+            mkdir -p "$SOURCE_DIR/.llm_harness"
+            cp "$TOK_LOCAL" "$SOURCE_DIR/.llm_harness/tokens.json"
+        fi
+        rm -f "$TOK_LOCAL" "$TOK_BASE"
+    fi
+    if [ "$PULL_RC" -eq 0 ]; then
         LLM_SETUP_PULLED=1 exec sh "$0" "$@"
     fi
     echo "WARNING: git pull did not complete. Installing the files that are already here."

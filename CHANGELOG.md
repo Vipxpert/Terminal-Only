@@ -4,6 +4,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Hardened `setup.cmd` and `setup.sh` to park a dirty `.llm_harness/tokens.json` before `git pull --ff-only` and 3-way merge it back afterward so multi-machine upgrades no longer abort on local token counts.
 - Simplified `@HUNK` and `@TEXT_REPLACE` markers to uniform `=== OLD ===`, `=== NEW ===`, `=== LINE EDITS ===`, and `=== END ===` while keeping legacy `---`/`+++`/`===` markers (and `+++ ... ---` delimiter-mismatch typos) accepted as aliases.
 - Added a vertical-slice clause to `[L1-Scope]` instructing chats to implement, test, and commit one verifiable milestone at a time instead of getting stuck in multi-turn inspection loops.
 - Fixed `UnboundLocalError` on `git_ok` when `@GIT_*` directives are refused in a no-git workspace or agent mode, and kept rules whose brief trigger is active (e.g. dirty git workspace, multiple sessions) expanded during compact-L1 turns.

@@ -14,8 +14,33 @@ if exist "%~dp0.git\MERGE_HEAD" (
     goto :start
 )
 echo Pulling the latest harness from its repository...
+:: Comment (decision): tokens.json is dirtied locally by paste counts and never committed alone, so park it before git pull --ff-only and 3-way merge it back afterward
+set "TOK_STATUS="
+for /f "delims=" %%S in ('git -C "%~dp0." status --porcelain -- .llm_harness/tokens.json 2^>nul') do set "TOK_STATUS=%%S"
+set "TOK_LOCAL=%TEMP%\llm_harness_tok_local_%RANDOM%_%RANDOM%.json"
+set "TOK_BASE=%TEMP%\llm_harness_tok_base_%RANDOM%_%RANDOM%.json"
+if defined TOK_STATUS (
+    copy /y "%~dp0.llm_harness\tokens.json" "%TOK_LOCAL%" >nul 2>&1
+    git -C "%~dp0." show HEAD:.llm_harness/tokens.json > "%TOK_BASE%" 2>nul
+    if "%TOK_STATUS:~0,2%"=="??" (
+        del /q "%~dp0.llm_harness\tokens.json" >nul 2>&1
+    ) else (
+        git -C "%~dp0." checkout -- .llm_harness/tokens.json >nul 2>&1
+    )
+)
 git -C "%~dp0." pull --ff-only
-if errorlevel 1 (
+set "PULL_RC=%errorlevel%"
+if defined TOK_STATUS (
+    set "TOK_MERGED=0"
+    if "%PULL_RC%"=="0" if exist "%~dp0.llm_harness\tokens.json" (
+        python -c "import importlib.util,os,sys; h,bp,lp,tp=sys.argv[1:5]; s=importlib.util.spec_from_file_location('lh',h); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); r=lambda p: open(p,encoding='utf-8').read() if os.path.isfile(p) else ''; out=m.merge_tokens_text(r(bp),r(lp),r(tp)); open(tp,'w',encoding='utf-8',newline='\n').write(out)" "%~dp0harness.py" "%TOK_BASE%" "%TOK_LOCAL%" "%~dp0.llm_harness\tokens.json" >nul 2>&1 && set "TOK_MERGED=1"
+    )
+)
+if defined TOK_STATUS (
+    if not "%TOK_MERGED%"=="1" copy /y "%TOK_LOCAL%" "%~dp0.llm_harness\tokens.json" >nul 2>&1
+    del /q "%TOK_LOCAL%" "%TOK_BASE%" >nul 2>&1
+)
+if not "%PULL_RC%"=="0" (
     echo WARNING: git pull did not complete. Installing the files that are already here.
     set "PULL_FAILED=1"
     goto :start
