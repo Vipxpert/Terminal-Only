@@ -4,11 +4,13 @@
 # Compaction detection signals, host behaviors, and confidence levels. One entry per pattern.
 
 ## compactor-summary-block
-tags: compactor, summary, high-confidence, all-hosts
-symptom: Earlier raw turns or verbatim harness outputs are replaced by a condensed summary block while newer turns stay raw.
-trap: Treating a summary block as lossless memory or assuming L1 rules survived verbatim inside it.
-fix: Send '@L1_REFRESH <how detected> | High' on the next script and state in Talk how compaction was detected and how certain it is.
-verified: observed in production chat sessions, 2026-11
+tags: compactor, summary, high-confidence, all-hosts, gemini
+symptom: Earlier raw turns or verbatim harness outputs are replaced by a condensed summary block while newer turns stay raw, and the '[L1-Compact]' anchor has no matching raw 'full L1 printed' line in context.
+trap: Treating a summary block as lossless memory or assuming L1 rules and hidden pinned notes survived verbatim inside it.
+fix: Send '@L1_REFRESH' on the next script and state in Talk how compaction was detected; this restores full L1 and any compact-hidden pinned notes.
+observed: once by AI in production Gemini chat (PR-536, 2026-11-26: summary block + missing raw anchor triggered refresh, restoring full L1 and pinned note N011)
+variables: uncertain whether every host/compaction always emits a summary block vs. silently altering or dropping earlier text without a summary header
+verified: live-verified in production Gemini chat (PR-536, 2026-11-26)
 versions: all
 
 ## compactor-footer-anchor

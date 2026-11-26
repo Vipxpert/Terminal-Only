@@ -6012,19 +6012,24 @@ def print_goal(state):
     else:
         print("=== GOAL: not set -> pin the user's long-term goal with @GOAL <text> in the next script ===")
 
-def print_footer_notes():
+def print_footer_notes(hide_pinned=False):
     """The user's notes ride in every footer, so a chat keeps them in view without asking for @NOTE_LIST."""
     try:
         notes, _ = load_workspace_notes()
     except (OSError, ValueError):
         return
+    hidden_pinned = []
     for note in notes:
         if note_for(note, CURRENT_SESSION):
             # Comment (decision): the AI writes every note, so only the [own] mark it sets on its own to-do says who it belongs to; without it a chat that takes this one over would read the AI's plan as the owner's instruction
             if note.get("own"):
                 print("=== NOTE %s (this chat's own to-do, written by the AI, not the user's): %s ===" % (note["id"], brief_text(note)))
+            elif hide_pinned and note.get("for"):
+                hidden_pinned.append(note["id"])
             else:
                 print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", pinned to this chat" if note.get("for") else "", brief_text(note)))
+    if hidden_pinned:
+        print("=== PINNED NOTES: %d omitted during compact L1 (%s; @NOTE_LIST to view, restored on @L1_REFRESH) ===" % (len(hidden_pinned), ", ".join(hidden_pinned)))
 
 def rule_hash(body):
     return hashlib.sha1(body.strip().strip("`").strip().encode("utf-8")).hexdigest()[:12]
@@ -6242,7 +6247,12 @@ def print_footer_body(state):
             print("=== PART %d of %d: the goal, notes and standing rules follow after part %d ===" % (CURRENT_PART[0], CURRENT_PART[1], CURRENT_PART[1]))
             return
         print_goal(state)
-        print_footer_notes()
+        compact_hide_pinned = False
+        if (not agent_mode()) and bool(CURRENT_SESSION) and compact_on():
+            _s = load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}
+            _anc, _turns, _hook = _s.get("l1_anchor", ""), int(_s.get("l1_compact_turns") or 0), _s.get("compacted_reason", "")
+            compact_hide_pinned = bool(_anc and _s.get("rules_seen") and not L1_REFRESH and not _hook and (_turns + 1) < compact_max_turns())
+        print_footer_notes(hide_pinned=compact_hide_pinned)
         print_footer_campaigns()
     try:
         with open(RULES_PATH, "r", encoding="utf-8") as f:

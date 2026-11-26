@@ -31,12 +31,12 @@ def extract_anchor(out):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-compact-")
-    t1 = run(ws, "alpha", "@LIST_DIR /")
+    t1 = run(ws, "alpha", "@NOTE_ADD pin alpha | Pinned context for alpha\n@LIST_DIR /")
     anc1 = extract_anchor(t1)
-    check("Turn 1 prints full L1, initial-anchor reason, compactor instruction, and [L1-Syntax]", bool(anc1) and "[L1-Harness]" in t1 and "[L1-Compact] full L1 printed (reason: initial anchor" in t1 and "COMPACTOR INSTRUCTION: drop this anchor id" in t1 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t1, t1)
+    check("Turn 1 prints full L1, initial-anchor reason, compactor instruction, pinned note, and [L1-Syntax]", bool(anc1) and "[L1-Harness]" in t1 and "[L1-Compact] full L1 printed (reason: initial anchor" in t1 and "COMPACTOR INSTRUCTION: drop this anchor id" in t1 and "pinned to this chat): Pinned context for alpha" in t1 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t1, t1)
 
     t2 = run(ws, "alpha", "@LIST_DIR /")
-    check("Turn 2 omits all unchanged L1 rules with zero AI echo and keeps same anchor", "[L1-Harness]" not in t2 and ("anchor: %s" % anc1) in t2 and "turn 1/40 since full L1" in t2 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t2, t2)
+    check("Turn 2 omits unchanged L1 rules and hides pinned note while keeping same anchor", "[L1-Harness]" not in t2 and "Pinned context for alpha" not in t2 and "=== PINNED NOTES: 1 omitted during compact L1" in t2 and ("anchor: %s" % anc1) in t2 and "turn 1/40 since full L1" in t2 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t2, t2)
 
     tf = run(ws, "alpha", "@RUN python -c \"import sys; sys.exit(1)\"")
     check("routine run failure expands only [L1-Debug] without dumping [L1-Harness] or rotating anchor", "[L1-Debug] (expanded: this run had a failure)" in tf and "[L1-Harness]" not in tf and ("anchor: %s" % anc1) in tf, tf)
