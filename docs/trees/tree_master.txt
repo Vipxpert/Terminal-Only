@@ -119,7 +119,7 @@
     ├── cmd_front_test.py (Windows: the cmd front answers ordinary folders at once and reports the time, guards a project from its root, a nested folder and the home-fallback case, and ignores the install folder)
     ├── replay_note_test.py (A repeated paste gives a replay that explains itself to the AI)
     ├── history_test.py (@HISTORY <session> [| files] [| n] lists a session's recent journaled scripts, filters by session, supports '| files' and '| n', and reflects @UNDO status)
-    ├── compact_l1_test.py (Compaction-aware L1 with rotating @L1_PROOF verification, silent-compaction auto-restore, @L1_REFRESH, --compacted CLI, and --compact off opt-out)
+    ├── compact_l1_test.py (Compaction-aware L1 with footer-only anchor, @L1_REFRESH reason/certainty reporting, --compacted host-hook CLI, 40-turn periodic safety refresh, and --compact off opt-out)
     ├── msg_receipts_test.py (Message IDs M-###, delivered/accepted/completed receipts via @MSG_ACK, broadcast @MESSAGE *, auto-shell @WAIT_MSG, and lightweight @PING)
     ├── run_block_test.py (@RUN gate on failed @FILE with @RUN_ALWAYS override, multi-line @RUN_BLOCK ... @END_RUN_BLOCK, and Python Class.method + <top> scope resolution)
     ├── borrow_test.py (@BORROW lends work on the user's answer, LENT blocks the owner, the borrower stays author, a second borrower takes over the loan, @RETURN puts files back in the owner's scope, @RECLAIM n asks and Enter takes; the owner's undo of a borrower's script on returned work asks the user; @BORROW is never read-only)
