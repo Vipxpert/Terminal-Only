@@ -58,6 +58,16 @@ def main():
     run("@SESSION s1 | aim", "@FILE /a.txt", "@HUNK TOP | e", "--- [OLD CODE] ---", "d", "+++ [NEW CODE] +++", "e", "=== [END HUNK] ===")
     out = run("@SESSION s1 | aim", "@GIT_COMMIT chore: e", "/a.txt", "@END_GIT_COMMIT", "@SCOPE_END")
     check("a commit and a scope release in one script: the commit goes first", "[COMMITTED]" in out and "scope released" in out and "RELEASE REFUSED" not in out, out)
+    with open(os.path.join(WS, "markers.txt"), "w") as f:
+        f.write("alpha_long_token_12345\nbeta_line\n")
+    out = run("@FILE /markers.txt", "@HUNK TOP | uniform markers", "=== OLD ===", "beta_line", "=== NEW ===", "gamma_line", "=== END ===")
+    check("uniform === OLD === / === NEW === / === END === markers apply cleanly", "[OK] /markers.txt" in out and "gamma_line" in open(os.path.join(WS, "markers.txt")).read(), out)
+    out = run("@FILE /markers.txt", "@HUNK TOP | uniform line edits", "=== OLD ===", "gamma_line", "=== LINE EDITS ===", "1: delta_line", "=== END ===")
+    check("uniform === LINE EDITS === marker applies cleanly", "[OK] /markers.txt" in out and "delta_line" in open(os.path.join(WS, "markers.txt")).read(), out)
+    out = run("@TEXT_REPLACE /markers.txt | uniform text replace", "=== OLD ===", "alpha_long_token_12345", "=== NEW ===", "omega_long_token_67890", "=== END ===")
+    check("uniform === markers on @TEXT_REPLACE apply cleanly", "[OK" in out and "omega_long_token_67890" in open(os.path.join(WS, "markers.txt")).read(), out)
+    out = run("@FILE /markers.txt", "@HUNK TOP | delimiter mismatch tolerance", "--- [OLD CODE] ---", "delta_line", "+++ [NEW CODE] ---", "epsilon_line", "=== [END HUNK] ===")
+    check("legacy +++ [NEW CODE] --- right-side delimiter typo is tolerated", "[OK] /markers.txt" in out and "epsilon_line" in open(os.path.join(WS, "markers.txt")).read(), out)
     if shutil.which("gofmt"):
         with open(os.path.join(WS, "m.go"), "w", newline="\n") as f:
             f.write("package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n}\n")

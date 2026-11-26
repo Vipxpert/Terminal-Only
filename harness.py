@@ -29,10 +29,18 @@ SENT_BT3 = "@@" + "BT3" + "@@"
 T_MID = chr(0x251c) + chr(0x2500) * 2 + " "
 T_END = chr(0x2514) + chr(0x2500) * 2 + " "
 T_BAR = chr(0x2502)
-OLD_M, NEW_M, END_M = "--- [OLD CODE] ---", "+++ [NEW CODE] +++", "=== [END HUNK] ==="
-TXT_OLD, TXT_NEW, TXT_END = "--- [OLD TEXT] ---", "+++ [NEW TEXT] +++", "=== [END TEXT] ==="
+OLD_M, NEW_M, END_M = "=== OLD ===", "=== NEW ===", "=== END ==="
+TXT_OLD, TXT_NEW, TXT_END = "=== OLD ===", "=== NEW ===", "=== END ==="
 TEXT_MIN = 12
-LINE_M = "+++ [LINE EDITS] +++"
+LINE_M = "=== LINE EDITS ==="
+# Comment (decision): uniform === markers avoid ---/+++ left-right typos; keep legacy markers and +++ ... --- typos accepted so existing sessions never break mid-flight
+OLD_MS = {OLD_M, "--- [OLD CODE] ---", "=== [OLD CODE] ==="}
+NEW_MS = {NEW_M, "+++ [NEW CODE] +++", "+++ [NEW CODE] ---", "=== [NEW CODE] ==="}
+LINE_MS = {LINE_M, "+++ [LINE EDITS] +++", "+++ [LINE EDITS] ---", "=== [LINE EDITS] ==="}
+END_MS = {END_M, "=== [END HUNK] ==="}
+TXT_OLD_MS = {TXT_OLD, "--- [OLD TEXT] ---", "=== [OLD TEXT] ==="}
+TXT_NEW_MS = {TXT_NEW, "+++ [NEW TEXT] +++", "+++ [NEW TEXT] ---", "=== [NEW TEXT] ==="}
+TXT_END_MS = {TXT_END, "=== [END TEXT] ==="}
 
 def apply_line_edits(old, edits):
     """New lines from a hunk's verified OLD CODE plus 'N: text' (replace), 'N-' (delete) and 'N+ text' (insert after N; 0 = before line 1). -> (lines, error)"""
@@ -884,18 +892,18 @@ def parse_payload(txt):
             j = i + 1
             while j < n and not lines[j].strip():
                 j += 1
-            if j >= n or lines[j].rstrip() != OLD_M:
+            if j >= n or lines[j].rstrip() not in OLD_MS:
                 bad("hunk", cur_file, label, "expected '%s' right after @HUNK" % OLD_M, i)
             else:
                 k = j + 1
-                while k < n and lines[k].rstrip() not in (NEW_M, LINE_M):
+                while k < n and lines[k].rstrip() not in (NEW_MS | LINE_MS):
                     k += 1
                 e = k + 1
-                while e < n and lines[e].rstrip() != END_M:
+                while e < n and lines[e].rstrip() not in END_MS:
                     e += 1
                 old, new = lines[j + 1:k], lines[k + 1:e]
                 edit_err = None
-                if k < n and e < n and lines[k].rstrip() == LINE_M:
+                if k < n and e < n and lines[k].rstrip() in LINE_MS:
                     new, edit_err = apply_line_edits("\n".join(old).strip("\n").split("\n"), new)
                 if k >= n:
                     bad("hunk", cur_file, label, "missing '%s' (or '%s')" % (NEW_M, LINE_M), i)
@@ -904,7 +912,7 @@ def parse_payload(txt):
                 elif edit_err:
                     bad("hunk", cur_file, label, edit_err, i)
                     i = e
-                elif any(x.rstrip() in (OLD_M, NEW_M, LINE_M) for x in old + new) or any(x.rstrip() == END_M for x in old):
+                elif any(x.rstrip() in (OLD_MS | NEW_MS | LINE_MS) for x in old + new) or any(x.rstrip() in END_MS for x in old):
                     bad("hunk", cur_file, label, "a hunk terminator is missing before the next hunk; resend this hunk and the ones after it", i)
                     i = e
                 elif not cur_file:
@@ -913,7 +921,7 @@ def parse_payload(txt):
                 else:
                     find_s = "\n".join(old).strip("\n")
                     repl_s = "\n".join(new).strip("\n") if find_s else "\n".join(new).rstrip("\n")
-                    P["ops"].append({"type": "hunk", "file": cur_file, "scope": scope, "label": label, "find": find_s, "replace": repl_s, "line_edits": lines[k].rstrip() == LINE_M})
+                    P["ops"].append({"type": "hunk", "file": cur_file, "scope": scope, "label": label, "find": find_s, "replace": repl_s, "line_edits": lines[k].rstrip() in LINE_MS})
                     i = e
         elif d == "TEXT_REPLACE":
             target, _, rest = arg.partition("|")
@@ -924,14 +932,14 @@ def parse_payload(txt):
             j = i + 1
             while j < n and not lines[j].strip():
                 j += 1
-            if j >= n or lines[j].rstrip() != TXT_OLD:
+            if j >= n or lines[j].rstrip() not in TXT_OLD_MS:
                 bad("text", target.strip(), label, "expected '%s' right after @TEXT_REPLACE" % TXT_OLD, i)
             else:
                 k = j + 1
-                while k < n and lines[k].rstrip() != TXT_NEW:
+                while k < n and lines[k].rstrip() not in TXT_NEW_MS:
                     k += 1
                 e = k + 1
-                while e < n and lines[e].rstrip() != TXT_END:
+                while e < n and lines[e].rstrip() not in TXT_END_MS:
                     e += 1
                 old, new = lines[j + 1:k], lines[k + 1:e]
                 if k >= n or e >= n:
@@ -7074,23 +7082,23 @@ def print_card(shell, workspace):
   @NOTE_REMOVE <note-id>                          removes an existing note
   @NOTE_LIST [words]                              prints all workspace notes, or those whose category, pins or text contain every word
   @FILE /<path>                                   selects the file for the hunks that follow
-  @HUNK <scope> | <short label>                   then exactly these marker lines:
-  --- [OLD CODE] ---
+  @HUNK <scope> | <short label>                   then these marker lines (legacy ---/+++/=== markers also accepted):
+  === OLD ===
   <verbatim on-disk lines>
-  +++ [NEW CODE] +++
+  === NEW ===
   <replacement lines; leave empty to delete the old lines>
-  === [END HUNK] ===
-  (or, in place of +++ [NEW CODE] +++ and its lines: +++ [LINE EDITS] +++ then one edit per line: 'N: new text' replaces line N,
-   'N-' deletes it, 'N+ text' inserts after it (0 = before line 1); N counts the recited OLD CODE lines from 1, not counting blank lines before the first or after the last, so it is always verified)
+  === END ===
+  (or, in place of === NEW === and its lines: === LINE EDITS === then one edit per line: 'N: new text' replaces line N,
+   'N-' deletes it, 'N+ text' inserts after it (0 = before line 1); N counts the recited OLD lines from 1, not counting blank lines before the first or after the last, so it is always verified)
   @NEW_FILE /<path>  <content>  @END_NEW_FILE     each on its own line; rejected if the file exists
   @DELETE_FILE /<path, folder or glob>             each file goes into the script's journal first: recoverable with @UNDO <n> (or @UNDO <n> | /path); emptied folders are removed
-  @RENAME /<old> -> /<new>                        later hunks and @TEXT_REPLACE in the same script use the new path; a folder moves file by file through the journal (each file recoverable with @UNDO, refused whole if the destination exists); the line-1 path header is rewritten to the new path, so later OLD CODE shows the new header
-  @TEXT_REPLACE <file, file#Class.method, folder or glob> | expect <N> | <label>   then these marker lines (one line of text each):
-  --- [OLD TEXT] ---
+  @RENAME /<old> -> /<new>                        later hunks and @TEXT_REPLACE in the same script use the new path; a folder moves file by file through the journal (each file recoverable with @UNDO, refused whole if the destination exists); the line-1 path header is rewritten to the new path, so later OLD shows the new header
+  @TEXT_REPLACE <file, file#Class.method, folder or glob> | expect <N> | <label>   then these marker lines (one line of text each; legacy markers also accepted):
+  === OLD ===
   <exact text, at least 12 characters, found exactly N times in that scope (default N = 1)>
-  +++ [NEW TEXT] +++
+  === NEW ===
   <replacement; empty removes it>
-  === [END TEXT] ===
+  === END ===
   (for a small change inside a long line, or the same change across many files, e.g. import paths after a move; take N from a @GREP)
   @PROBE /<path> | Scope | <scope>                prints that scope (500-line cap)
   @PROBE /<path> | Lines | <start>-<end>
