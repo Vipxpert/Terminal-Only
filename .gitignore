@@ -6,3 +6,4 @@
 !.llm_harness/verdicts.json
 !.llm_harness/tokens.json
 __pycache__/
+tmp/
