@@ -25,6 +25,7 @@ def run(ws, session, *lines):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-pinact-")
+    subprocess.run([sys.executable, HARNESS, "--workspace", ws, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     run(ws, "alpha", "@NOTE_ADD pin alpha | Todo: PIN-NOTE")
     run(ws, "alpha", "@NOTE_PIN N001 *")
     out = run(ws, "beta", "@LIST_DIR /")

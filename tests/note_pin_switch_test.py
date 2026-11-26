@@ -23,6 +23,7 @@ def run(ws, session, *lines):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-pinswitch-")
+    subprocess.run([sys.executable, HARNESS, "--workspace", ws, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     run(ws, "alpha", "@NOTE_ADD pin * | Todo: WIDE-NOTE")
     out = run(ws, "beta", "@LIST_DIR /")
     check("a note pinned with * reaches a chat that appeared later", "WIDE-NOTE" in out, out)

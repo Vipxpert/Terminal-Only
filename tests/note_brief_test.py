@@ -23,6 +23,7 @@ def run(ws, session, *lines):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-brief-")
+    subprocess.run([sys.executable, HARNESS, "--workspace", ws, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     run(ws, "alpha", "@NOTE_ADD Env: LONG-DETAIL stays whole")
     out = run(ws, "alpha", "@NOTE_BRIEF N001 | SHORT-PART", "@LIST_DIR /")
     check("the footer prints only the short part, with a pointer", "SHORT-PART (more: @NOTE_LIST N001)" in out and "LONG-DETAIL" not in out.split("=== NOTE N001")[-1], out)

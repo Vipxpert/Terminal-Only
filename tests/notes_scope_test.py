@@ -4,6 +4,7 @@ import os, subprocess, sys, tempfile
 
 HARNESS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser("~"), ".llm_harness", "harness.py")
 WS = tempfile.mkdtemp(prefix="harness-notes-")
+subprocess.run([sys.executable, HARNESS, "--workspace", WS, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 RESULTS = []
 STEP = [0]
 

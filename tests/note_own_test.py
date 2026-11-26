@@ -23,6 +23,7 @@ def run(ws, *lines):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-ownnote-")
+    subprocess.run([sys.executable, HARNESS, "--workspace", ws, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     run(ws, "@SESSION alpha | alpha work", "@NOTE_ADD own | Todo: finish the alpha part", "@NOTE_ADD Todo: a note for every chat", "@NOTE_ADD pin alpha | Todo: the owner's pinned plan")
     out = run(ws, "@SESSION alpha | alpha work", "@NOTE_LIST")
     check("the own note prints as this chat's own; the pinned and the plain note stay the user's",

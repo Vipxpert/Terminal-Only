@@ -23,6 +23,7 @@ def run(ws, session, *lines):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-pincur-")
+    subprocess.run([sys.executable, HARNESS, "--workspace", ws, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     run(ws, "alpha", "@LIST_DIR /")
     run(ws, "beta", "@LIST_DIR /")
     run(ws, "alpha", "@NOTE_ADD Todo: CUR-NOTE")

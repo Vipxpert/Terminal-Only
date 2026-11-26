@@ -25,6 +25,7 @@ def notes(out):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-notepin-")
+    subprocess.run([sys.executable, HARNESS, "--workspace", ws, "--compact", "off"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     added = run(ws, "alpha adds", "@SESSION alpha | alpha work", "@NOTE_ADD zzplain note for everyone", "@NOTE_ADD pin * | zzstar note pinned to all", "@NOTE_ADD pin alpha | zzonly note pinned to alpha")
     late = run(ws, "omega late", "@SESSION omega | omega work", "@LIST_DIR /")
     alpha = run(ws, "alpha again", "@SESSION alpha | alpha work", "@LIST_DIR /")

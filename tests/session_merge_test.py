@@ -50,6 +50,7 @@ def main():
     git("config", "user.name", "t")
     git("add", "-A")
     git("commit", "-qm", "init")
+    user("--compact", "off")
 
     dead = "dead-chat | old stalled task"
     live = "live-chat | active continuation"
