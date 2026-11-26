@@ -94,6 +94,7 @@
     ├── session_count_test.py (The footer counts and names the other sessions instead of listing each; @SESSIONS lists them with their aims; a lone session prints nothing)
     ├── setup_version_test.py (setup.sh prints the available and the installed version before replacing anything and the version now installed, for a first install and an upgrade, in a temporary HOME with fake curl and xclip)
     ├── setup_cmd_getver_test.py (setup.cmd's :getver subroutine, cut out and run alone with cmd /c, reads a VERSION line, says none for a missing file and unknown for a file without a version line; Windows only)
+    ├── setup_pull_tokens_test.py (setup.cmd and setup.sh park a dirty .llm_harness/tokens.json before git pull --ff-only and 3-way merge local and incoming counts afterward)
     ├── gh_account_test.py (The gh CLI is a source of accounts for @GIT_ACCOUNT: the JSON parser keeps healthy accounts of the asked host; with a fake gh, accounts are listed, a pin also switches gh, and gh auth setup-git is named when git does not use gh as its helper)
     ├── note_pin_switch_test.py (A note pinned with * reaches a chat that appears later; @NOTE_EDIT narrows it to named chats and widens it back; a plain edit keeps the pin)
     ├── note_pin_action_test.py (@NOTE_PIN changes only a note's audience: *, names, all, own; a note's text before || is all a footer prints, and @NOTE_LIST <id> prints it whole)
