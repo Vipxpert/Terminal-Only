@@ -14,7 +14,7 @@ Optionally, allow at your own terminal each command the AI may run through `@RUN
 
 Both hooks start with a tiny `auto_shell_hook.cmd` that looks for the project from the working folder and its parents, so ordinary projects never start PowerShell or Python; inside a project (or when Claude Code falls back to the home or temp folder) it hands over to a PowerShell launcher (`auto_shell_hook.ps1`) that finds the project from the hook's cwd, still without Python: the nearest folder with `.llm_harness/` or `.git/llm_harness/` (never the harness's install folder or your home folder). Outside such a project they stay silent. Inside one, the `UserPromptSubmit` hook runs `harness.py --workspace <project> --new-turn <prompt_id>` and hands Claude Code `MODE: auto-shell`, the turn number, the harness session this Claude Code session works as, and the one command it may use; the first harness run of the prompt prints the full standing rules, later runs only new, changed or newly triggered ones. If the turn cannot start, the hook exits 2 and the prompt is held back. The `PreToolUse` hook (every tool) allows only that harness call through the PowerShell tool and denies every other tool, with the way to do it through the harness. The prompt hook briefs on every prompt, including scheduled tasks, subagent reports and messages from other sessions, because Claude Code does not reliably tell them apart.
 
-In agent mode the harness itself also refuses: terminal questions (they get no answer), every `@RUN` not on the allowlist or using shell operators, and every git change (commit, push, pull, branch, tag). The agent asks you in its reply for anything that needs approval; commit from the chat-browser flow or your own terminal.
+In agent mode the harness itself also refuses: terminal questions (they get no answer), file-mutation directives (`@FILE`, `@NEW_FILE`, `@DELETE_FILE`, `@TEXT_REPLACE`, etc.), every `@RUN` not on the allowlist or using shell operators, and every git change (commit, push, pull, branch, tag). For any code edit or action that needs approval, the agent hands you a ready-to-paste harness script to run in your own terminal (or commit from the chat-browser flow).
 
 ## Emergency exit
 
@@ -39,8 +39,9 @@ Must be refused:
 - fetch a web page (WebFetch, WebSearch)
 - a harness script with `@RUN` of a command that is not on the allowlist, or with `;` or `|` after an allowlisted one
 - a harness script with `@GIT_COMMIT` or `@GIT_PUSH`
+- a harness script that edits, creates, or deletes a file (even inside a claimed `@SCOPE` — auto-shell refuses file mutations and the agent must hand you a ready-to-paste script instead)
 
 Must work:
 - a harness script that lists, probes or searches the project
-- a harness script that edits a file inside a claimed `@SCOPE`
+- a harness script with an allowlisted `@RUN` command (if you configured `--agent-allow`)
 - the reply comes back as plain prose, and the full rules appear once per prompt; and in a project that is not Terminal-Only, Claude Code works as usual (no briefing, no refusals)
