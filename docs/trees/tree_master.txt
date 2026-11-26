@@ -29,6 +29,7 @@
     ├── ag-grid.txt (autoSizeColumns inside size events loops or right after column changes, column virtualisation, destroyed API, flex parent scrollbar, blank mount, JavaScript functions from Python)
     ├── quasar.txt (q-select loading bound to undefined, WebKit blur, menu collapse and filter autofill, dialog unmount emits, full-height in a flex layout)
     ├── chat-interfaces.txt (triple backticks end a code block, URLs are auto-linked in code)
+    ├── compactor.txt (multi-signal compaction cues, footer-only anchor, verbatim-rule paraphrase drift, 40-turn scheduled ceiling, host hooks)
     ├── google-api-python.txt (httplib2 is not thread-safe, 308 on resumable uploads)
     ├── nicegui.txt (page handler timeout, process-local storage, double session middleware, select options cap, spinner paint, rebinding a bound list)
     ├── vite.txt (HMR behind a TLS proxy, absolute API URLs drop cookies)
