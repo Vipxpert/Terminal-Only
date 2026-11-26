@@ -1,0 +1,44 @@
+# /llm_harness/knowledge/compactor.txt
+# tech: compactor
+# detect: *
+# Compaction detection signals, host behaviors, and confidence levels. One entry per pattern.
+
+## compactor-summary-block
+tags: compactor, summary, high-confidence, all-hosts
+symptom: Earlier raw turns or verbatim harness outputs are replaced by a condensed summary block while newer turns stay raw.
+trap: Treating a summary block as lossless memory or assuming L1 rules survived verbatim inside it.
+fix: Send '@L1_REFRESH <how detected> | High' on the next script and state in Talk how compaction was detected and how certain it is.
+verified: observed in production chat sessions, 2026-11
+versions: all
+
+## compactor-footer-anchor
+tags: compactor, anchor, echo-loophole, medium-confidence, gemini
+symptom: An AI echoes a proof token from a recent compact footer instead of detecting that earlier full-L1 turns were compacted away.
+trap: Repeating a token in compact footers and asking the AI to echo it back, or failing to tell the compactor to drop the id during summarization.
+fix: Print a footer-only '<num>-<6hex>' anchor in full L1, instruct compactors to omit it from summaries, forbid the AI from echoing it, and trigger '@L1_REFRESH' if the anchor in '[L1-Compact]' has no matching raw 'full L1 printed' line.
+verified: tested in compact_l1_test.py, 2026-11
+versions: all
+
+## compactor-verbatim-drift
+tags: compactor, paraphrase, synonym, verbatim, medium-confidence, heuristic
+symptom: Standing L1 rules in earlier context read like paraphrased prose or synonyms instead of terse pipe-delimited '[L1-*]' lines.
+trap: Relying on exact-wording recall alone (LLMs lack a checksum of 30-turn-old text) or ignoring subtle paraphrase drift.
+fix: Use verbatim-rule paraphrase drift as a third supporting signal alongside the footer anchor and missing-output/script-jump cues; when suspected, send '@L1_REFRESH <how detected> | Medium' and explain in Talk.
+verified: inferred design heuristic, 2026-11
+versions: all
+
+## compactor-periodic-ceiling
+tags: compactor, 40-turns, scheduled, low-false-positive
+symptom: Long sessions run 40+ clean turns without obvious compaction cues, risking silent rule drift.
+trap: Firing false-positive compaction alarms every few turns or on every triggered rule.
+fix: Keep compact omission active across clean turns up to 40 turns, then emit '[L1 PERIODIC REFRESH]' with certainty 'Scheduled' (not a compaction claim) and rotate the anchor.
+verified: tested in compact_l1_test.py, 2026-11
+versions: all
+
+## compactor-host-hook
+tags: compactor, claude, opencode, hook, compacted-cli, high-confidence
+symptom: A host runtime compacts or resets context out-of-band before the next harness script runs.
+trap: Relying only on the AI to notice an external compaction event.
+fix: Invoke 'harness.py --workspace <dir> --compacted [<session>] [<reason>]' from the host compaction hook so the next run prints '[COMPACTION DETECTED — host hook]', restores full L1, and rotates the anchor.
+verified: tested in compact_l1_test.py, 2026-11
+versions: all
