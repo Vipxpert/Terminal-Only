@@ -6322,7 +6322,7 @@ def print_footer_body(state):
         periodic_due = bool(compact_active and before and cur_anchor and not L1_REFRESH and not hook_reason and (cur_turns + 1) >= max_turns)
         compact_skip = set()
         if compact_active and before and cur_anchor and not L1_REFRESH and not hook_reason and not periodic_due:
-            compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new and not (failed_run and tag == "[L1-Debug]")}
+            compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new and not (failed_run and tag == "[L1-Debug]") and not (tag in briefs and brief_reason(briefs[tag][0]))}
         if compact_active:
             if hook_reason:
                 print("  [COMPACTION DETECTED — host hook] %s -> restoring full L1" % hook_reason)
@@ -7525,6 +7525,7 @@ def main():
         milestone_directive(P)
     if P["git_init"] and not agent_mode():
         git_init(P["git_init"])
+    git_ok = False
     if P["undo"] and (P["ops"] or P["git"]):
         print("  [REFUSED] @UNDO must be in its own script (probes, searches, notes and @RUN may ride along). No changes were made.")
         print("  -> resend the undo and the other changes as separate scripts with consecutive numbers.")
