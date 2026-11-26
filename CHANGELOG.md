@@ -4,6 +4,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- `@PROBE /file | Scope | <anchor> | <+N | -N | A-B | N>` now supports anchor-relative line slicing: top-down `+N` lines, bottom-up `-N` lines, relative range `A-B`, or single relative line `N` inside the resolved scope.
 - Pinned user notes (`for <session>`) are now omitted during compact-L1 turns (replaced by a single `=== PINNED NOTES: ... ===` line) and automatically restored whenever full L1 prints (`initial anchor`, `@L1_REFRESH`, `--compacted`, or 40-turn scheduled refresh).
 - Compaction-aware L1 no longer dumps all standing rules or rotates the anchor on a routine run failure (expands only `[L1-Debug]`), and every `[L1-Compact] full L1 printed` line now explicitly states its `reason:` (`initial anchor`, `AI @L1_REFRESH`, `host --compacted`, or `40-turn scheduled`) so non-compaction prints cannot be mistaken for compaction.
 

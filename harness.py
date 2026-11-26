@@ -3448,11 +3448,33 @@ def run_probe(spec):
             print_toc(lines)
             return
         hi = min(hi, tot)
-        cut = min(hi, lo + PROBE_CAP)
-        more = " | TRUNCATED at %dL: continue with Lines %d-%d" % (PROBE_CAP, cut + 1, hi) if cut < hi else ""
-        print("--- [On-Disk Lines %d-%d of %d | Scope: %s%s] ---" % (lo + 1, cut, tot, target or "TOP", more))
-        print("\n".join(lines[lo:cut]))
-        note_inspection(rel, lines, lo, cut)
+        rel_spec = parts[3].strip() if len(parts) > 3 else ""
+        s_lo, s_hi, applied_rel = lo, hi, ""
+        if rel_spec:
+            m_top = re.match(r"^\+(\d+)$", rel_spec)
+            m_bot = re.match(r"^-(\d+)$", rel_spec)
+            m_rng = re.match(r"^(\d+)\s*-\s*(\d+)$", rel_spec)
+            m_one = re.match(r"^(\d+)$", rel_spec)
+            if m_top:
+                s_hi = min(hi, lo + int(m_top.group(1)))
+                applied_rel = rel_spec
+            elif m_bot:
+                s_lo = max(lo, hi - int(m_bot.group(1)))
+                applied_rel = rel_spec
+            elif m_rng:
+                a, b = max(1, int(m_rng.group(1))), int(m_rng.group(2))
+                s_lo, s_hi = min(hi, lo + a - 1), min(hi, lo + max(a, b))
+                applied_rel = "%d-%d" % (a, max(a, b))
+            elif m_one:
+                a = max(1, int(m_one.group(1)))
+                s_lo, s_hi = min(hi, lo + a - 1), min(hi, lo + a)
+                applied_rel = str(a)
+        cut = min(s_hi, s_lo + PROBE_CAP)
+        more = " | TRUNCATED at %dL: continue with Lines %d-%d" % (PROBE_CAP, cut + 1, s_hi) if cut < s_hi else ""
+        scope_label = "%s (%s)" % (target or "TOP", applied_rel) if applied_rel else (target or "TOP")
+        print("--- [On-Disk Lines %d-%d of %d | Scope: %s%s] ---" % (s_lo + 1, cut, tot, scope_label, more))
+        print("\n".join(lines[s_lo:cut]))
+        note_inspection(rel, lines, s_lo, cut)
 
 # ---------------------------------------------------------------- Stage: Entry point
 
@@ -6613,7 +6635,7 @@ def print_languages():
     print("  symbols for @SCOPE file#Class.method, @XREF and @PROBE | Unused: %s" % " ".join(CODE_EXTS))
     print("  syntax check with rollback: Python (compile) and Go (gofmt); other languages are not compiled unless you set your own check command (the user's terminal command --check <.ext> <command>); otherwise build or test them with @RUN")
 
-KB_FIELDS = ("tags", "symptom", "trap", "fix", "verified", "versions", "replaces", "obsolete")
+KB_FIELDS = ("tags", "symptom", "trap", "fix", "observed", "variables", "verified", "versions", "replaces", "obsolete")
 
 def knowledge_dir():
     """The knowledge library: the 'knowledge' folder next to the running harness.py (LLM_HARNESS_KNOWLEDGE overrides it for tests)."""
