@@ -33,10 +33,13 @@ def main():
     ws = tempfile.mkdtemp(prefix="harness-compact-")
     t1 = run(ws, "alpha", "@LIST_DIR /")
     anc1 = extract_anchor(t1)
-    check("Turn 1 prints full L1, ephemeral footer anchor, and [L1-Syntax]", bool(anc1) and "[L1-Harness]" in t1 and "[L1-Compact] full L1 printed" in t1 and "omit from conversation summaries" in t1 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t1, t1)
+    check("Turn 1 prints full L1, initial-anchor reason, compactor instruction, and [L1-Syntax]", bool(anc1) and "[L1-Harness]" in t1 and "[L1-Compact] full L1 printed (reason: initial anchor" in t1 and "COMPACTOR INSTRUCTION: drop this anchor id" in t1 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t1, t1)
 
     t2 = run(ws, "alpha", "@LIST_DIR /")
     check("Turn 2 omits all unchanged L1 rules with zero AI echo and keeps same anchor", "[L1-Harness]" not in t2 and ("anchor: %s" % anc1) in t2 and "turn 1/40 since full L1" in t2 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t2, t2)
+
+    tf = run(ws, "alpha", "@RUN python -c \"import sys; sys.exit(1)\"")
+    check("routine run failure expands only [L1-Debug] without dumping [L1-Harness] or rotating anchor", "[L1-Debug] (expanded: this run had a failure)" in tf and "[L1-Harness]" not in tf and ("anchor: %s" % anc1) in tf, tf)
 
     t3 = run(ws, "alpha", "@L1_REFRESH anchor %s missing from raw history + summary header | High" % anc1, "@LIST_DIR /")
     anc2 = extract_anchor(t3)

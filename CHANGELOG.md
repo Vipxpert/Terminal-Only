@@ -4,6 +4,8 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Compaction-aware L1 no longer dumps all standing rules or rotates the anchor on a routine run failure (expands only `[L1-Debug]`), and every `[L1-Compact] full L1 printed` line now explicitly states its `reason:` (`initial anchor`, `AI @L1_REFRESH`, `host --compacted`, or `40-turn scheduled`) so non-compaction prints cannot be mistaken for compaction.
+
 ## 3.16 (2026-11-26)
 
 - Compaction pattern knowledge base (`knowledge/compactor.txt`, searchable via `@KB compactor`): records multi-signal compaction cues (summary blocks, footer-only anchor, verbatim-rule paraphrase drift, 40-turn scheduled ceiling, host hooks) and confidence levels; compaction playbooks and `knowledge/compactor.txt` are updated only on the user's explicit directive.

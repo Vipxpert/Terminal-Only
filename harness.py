@@ -6276,15 +6276,16 @@ def print_footer_body(state):
             print("  (this project now uses git: @GIT_* directives are on, and the rules marked [NEW] apply from here)")
         elif changed or new:
             print("  (rules marked [CHANGED] or [NEW] differ from what this chat saw last time: read them again)")
-        # Comment (decision): in agent mode a host runs many harness calls per user prompt, so a rule already in this prompt's briefing is not repeated unless it changed or its trigger did; in chat mode with compaction-aware L1 (ON by default, --compact off to opt out), full L1 sets a footer-only anchor (never echoed by the AI and marked ephemeral so compactors drop it) and clean turns omit all unchanged rules for up to 40 turns unless @L1_REFRESH, --compacted, or a failure restores full L1
+        # Comment (decision): in agent mode a host runs many harness calls per user prompt, so a rule already in this prompt's briefing is not repeated unless it changed or its trigger did; in chat mode with compaction-aware L1 (ON by default, --compact off to opt out), full L1 sets a footer-only anchor (never echoed by the AI and marked for compactors to drop) and subsequent turns omit unchanged rules for up to 40 turns (a routine run failure expands only [L1-Debug] without dumping full L1 or rotating the anchor) unless @L1_REFRESH or --compacted restores full L1
         quiet = agent_quiet(rules, briefs)
         compact_active = (not agent_mode()) and bool(CURRENT_SESSION) and compact_on()
         max_turns = compact_max_turns()
+        failed_run = bool(brief_reason(["failed"]))
         cur_anchor, cur_turns, hook_reason = session_l1_anchor(state, pop_compacted=True) if compact_active else ("", 0, "")
-        periodic_due = bool(compact_active and before and cur_anchor and not L1_REFRESH and not hook_reason and not brief_reason(["failed"]) and (cur_turns + 1) >= max_turns)
+        periodic_due = bool(compact_active and before and cur_anchor and not L1_REFRESH and not hook_reason and (cur_turns + 1) >= max_turns)
         compact_skip = set()
-        if compact_active and before and cur_anchor and not L1_REFRESH and not hook_reason and not periodic_due and not brief_reason(["failed"]):
-            compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new}
+        if compact_active and before and cur_anchor and not L1_REFRESH and not hook_reason and not periodic_due:
+            compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new and not (failed_run and tag == "[L1-Debug]")}
         if compact_active:
             if hook_reason:
                 print("  [COMPACTION DETECTED — host hook] %s -> restoring full L1" % hook_reason)
@@ -6318,7 +6319,8 @@ def print_footer_body(state):
                 print("[L1-Compact] %d unchanged standing rule%s omitted (turn %d/%d since full L1 | anchor: %s — AI: never echo this anchor; if this anchor has no matching 'full L1 printed (anchor: %s)' in your raw context, or summaries/missing outputs show compaction, send '@L1_REFRESH <how detected> | <High or Medium>' and explain in Talk)" % (compact_hidden, "" if compact_hidden == 1 else "s", turn_n, max_turns, anchor, anchor))
             else:
                 new_anchor, _, _ = session_l1_anchor(state, rotate=True)
-                print("[L1-Compact] full L1 printed (anchor: %s — ephemeral raw-footer id: omit from conversation summaries; AI: never echo this anchor, keep watching it + context continuity, and on compaction send '@L1_REFRESH <how detected> | <High or Medium>' and tell the user)" % new_anchor)
+                full_reason = "host --compacted" if hook_reason else ("AI @L1_REFRESH" if L1_REFRESH else ("40-turn scheduled" if periodic_due else "initial anchor"))
+                print("[L1-Compact] full L1 printed (reason: %s | anchor: %s — COMPACTOR INSTRUCTION: drop this anchor id when summarizing history; AI: never echo this anchor, watch for missing raw anchor or summary/gap cues, and on compaction send '@L1_REFRESH <how detected> | <High or Medium>' and explain in Talk)" % (full_reason, new_anchor))
             print("[L1-Syntax] @PROBE /file | Scope | symbol  |  @PROBE /tree | Tree | node | depth  |  @XREF symbol | callers")
     if state is not None:
         try:
