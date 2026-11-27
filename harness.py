@@ -1051,7 +1051,7 @@ def parse_payload(txt):
         elif d == "GIT_PUSH":
             P["git"].append({"kind": "push", "what": arg.strip()})
         elif d == "GIT_PULL":
-            P["git"].append({"kind": "pull"})
+            P["git"].append({"kind": "pull", "arg": arg.strip()})
         elif d == "GIT_MERGE":
             P["git"].append({"kind": "merge", "arg": arg.strip()})
         elif d == "GIT_ACCOUNT":
@@ -2088,6 +2088,58 @@ def run_repo_ops(ops):
                 print("  [PUSH FAILED] %s" % (text.splitlines()[-1] if text else "exit code %d" % rc))
                 return False
         elif op["kind"] == "pull":
+            mode = (op.get("arg") or "").strip().lower()
+            if mode not in ("", "rebase", "merge", "--continue", "--abort"):
+                print("  [PULL REFUSED] expected '@GIT_PULL [rebase | merge | --continue | --abort]'. Nothing changed.")
+                return False
+            in_rebase = run_git(["rev-parse", "-q", "--verify", "REBASE_HEAD"])[0] == 0
+            in_merge = run_git(["rev-parse", "-q", "--verify", "MERGE_HEAD"])[0] == 0
+            if mode == "--abort":
+                if not (in_rebase or in_merge):
+                    print("  [PULL REFUSED] no pull rebase or merge is in progress. Nothing changed.")
+                    return False
+                rc, out, err = run_git(["rebase" if in_rebase else "merge", "--abort"])
+                if rc:
+                    print("  [PULL FAILED] %s" % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                    return False
+                print("  [PULL ABORTED] restored pre-%s state" % ("rebase" if in_rebase else "merge"))
+                continue
+            if mode == "--continue":
+                if not (in_rebase or in_merge):
+                    print("  [PULL REFUSED] no pull rebase or merge is in progress. Nothing changed.")
+                    return False
+                unmerged = [p for p in run_git(["diff", "--name-only", "--diff-filter=U"])[1].splitlines() if p.strip()]
+                still = []
+                for p in unmerged:
+                    try:
+                        txt = open(p, "r", encoding="utf-8", errors="replace").read()
+                        if "<<<<<<<" in txt or ">>>>>>>" in txt:
+                            still.append(p)
+                    except OSError:
+                        still.append(p)
+                if still:
+                    print("  [PULL REFUSED] conflict markers remain in: %s. Resolve them before '@GIT_PULL --continue'." % ", ".join(still))
+                    return False
+                if unmerged:
+                    run_git(["add", "--"] + unmerged)
+                if in_rebase:
+                    rc, out, err = run_git(["-c", "core.editor=true", "rebase", "--continue"])
+                    if rc == 0:
+                        print("  [PULLED] rebase completed on %s" % here)
+                        continue
+                    conflicts = [p for p in run_git(["diff", "--name-only", "--diff-filter=U"])[1].splitlines() if p.strip()]
+                    if conflicts:
+                        print("  [PULL CONFLICTS] rebase stopped on the next commit with conflicts in %d file(s): %s" % (len(conflicts), ", ".join(conflicts)))
+                        print("  -> resolve the conflict markers with @HUNK, then run '@GIT_PULL --continue' (or undo with '@GIT_PULL --abort')")
+                        return False
+                    print("  [PULL FAILED] %s" % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                    return False
+                rc, out, err = run_git(["commit", "--no-edit"])
+                if rc:
+                    print("  [PULL FAILED] %s" % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                    return False
+                print("  [PULLED] merge commit completed on %s" % here)
+                continue
             rc_up, up, _ = run_git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
             why = "this branch has no upstream to pull from (the first @GIT_PUSH sets one)" if rc_up != 0 else repo_guard("pulling")
             if why:
@@ -2104,7 +2156,7 @@ def run_repo_ops(ops):
                 print("  [PULL] already up to date with %s" % up)
                 continue
             files = run_git(["diff", "--name-only", "HEAD...@{u}"])[1].splitlines()
-            if ahead:
+            if ahead and not mode:
                 rc, out, _ = run_git(["merge-tree", "--write-tree", "--name-only", "HEAD", up])
                 if rc == 1:
                     names = []
@@ -2117,21 +2169,47 @@ def run_repo_ops(ops):
                     verdict = "merging them would be clean"
                 else:
                     verdict = "this git cannot preview the merge"
-                print("  [PULL REFUSED] this branch is %d ahead and %d behind %s, so a fast-forward is impossible (%s). Nothing changed: tell the user, who decides between a merge and a rebase." % (ahead, behind, up, verdict))
+                print("  [PULL REFUSED] this branch is %d ahead and %d behind %s, so a fast-forward is impossible (%s). Nothing changed: tell the user, who decides between a merge and a rebase (apply with '@GIT_PULL rebase' or '@GIT_PULL merge')." % (ahead, behind, up, verdict))
                 return False
-            # Comment (invariant): a pull is a fast-forward of a clean checkout or nothing, so it never merges and never touches local work; the old position is bookmarked first
+            # Comment (invariant): plain @GIT_PULL only fast-forwards a clean checkout; explicit 'rebase' or 'merge' applies the user's chosen strategy after bookmarking HEAD and parking tokens.json
             bookmark = "refs/llm_harness/backup/" + time.strftime("%Y%m%d-%H%M%S")
             run_git(["update-ref", bookmark, "HEAD"])
             # Comment (decision): tokens.json changes with every paste on every machine and is never committed alone, so a pull whose incoming commits change it too would be refused by git; the local counts are set aside and merged back with the tokens merge rule
-            parked = park_tokens(files)
-            rc, out, err = run_git(["merge", "--ff-only", up])
-            tokens_note = unpark_tokens(parked, rc == 0) if parked else ""
-            if rc:
-                print("  [PULL FAILED] %s. Nothing changed." % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
-                return False
+            parked = park_tokens(files + ([WORKSPACE_NOTES_DIR + "/tokens.json"] if mode == "rebase" else []))
+            if mode == "rebase":
+                rc, out, err = run_git(["rebase", up])
+                tokens_note = unpark_tokens(parked, rc == 0) if parked else ""
+                if rc:
+                    conflicts = [p for p in run_git(["diff", "--name-only", "--diff-filter=U"])[1].splitlines() if p.strip()]
+                    if conflicts:
+                        print("  [PULL CONFLICTS] rebasing onto %s stopped with conflicts in %d file(s): %s" % (up, len(conflicts), ", ".join(conflicts)))
+                        print("  -> resolve the conflict markers with @HUNK, then finish with '@GIT_PULL --continue' (or undo with '@GIT_PULL --abort'; pre-pull HEAD is bookmarked as %s)" % bookmark)
+                        return False
+                    print("  [PULL FAILED] %s. Nothing changed." % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                    return False
+                verb = "rebased %d commit(s) onto %s (%d incoming commit(s))" % (ahead, up, behind)
+            elif mode == "merge":
+                rc, out, err = run_git(["merge", "--no-edit", up])
+                tokens_note = unpark_tokens(parked, rc == 0) if parked else ""
+                if rc:
+                    conflicts = [p for p in run_git(["diff", "--name-only", "--diff-filter=U"])[1].splitlines() if p.strip()]
+                    if conflicts:
+                        print("  [PULL CONFLICTS] merging %s stopped with conflicts in %d file(s): %s" % (up, len(conflicts), ", ".join(conflicts)))
+                        print("  -> resolve the conflict markers with @HUNK, then finish with '@GIT_PULL --continue' (or undo with '@GIT_PULL --abort'; pre-pull HEAD is bookmarked as %s)" % bookmark)
+                        return False
+                    print("  [PULL FAILED] %s. Nothing changed." % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                    return False
+                verb = "merged %d commit(s) from %s" % (behind, up)
+            else:
+                rc, out, err = run_git(["merge", "--ff-only", up])
+                tokens_note = unpark_tokens(parked, rc == 0) if parked else ""
+                if rc:
+                    print("  [PULL FAILED] %s. Nothing changed." % ((err or out).splitlines()[-1] if (err or out) else "exit code %d" % rc))
+                    return False
+                verb = "fast-forwarded %d commit(s) from %s" % (behind, up)
             mine = ((((load_json(sessions_path(), {}) or {}).get(CURRENT_SESSION) or {}).get("scope") or {}).get("paths", [])) if CURRENT_SESSION else []
             hit = [f for f in files if any(scope_path_covers(f, e) for e in mine)]
-            print("  [PULLED] fast-forwarded %d commit(s) from %s; %d file(s) changed: %s%s" % (behind, up, len(files), ", ".join(files[:8]) + (" +%d more" % (len(files) - 8) if len(files) > 8 else ""), "; INSIDE YOUR SCOPE: " + ", ".join(hit[:6]) if hit else ""))
+            print("  [PULLED] %s; %d file(s) changed: %s%s" % (verb, len(files), ", ".join(files[:8]) + (" +%d more" % (len(files) - 8) if len(files) > 8 else ""), "; INSIDE YOUR SCOPE: " + ", ".join(hit[:6]) if hit else ""))
             print("  -> where this branch was is bookmarked as %s; going back is the user's command (a hard reset), and @UNDO does not cover a pull" % bookmark)
             if tokens_note:
                 print("  -> .llm_harness/tokens.json: the local token counts were set aside for the pull and %s (still uncommitted)" % tokens_note)
@@ -6197,7 +6275,7 @@ def print_footer_notes(hide_pinned=False):
             # Comment (decision): the AI writes every note, so only the [own] mark it sets on its own to-do says who it belongs to; without it a chat that takes this one over would read the AI's plan as the owner's instruction
             if note.get("own"):
                 print("=== NOTE %s (this chat's own to-do, written by the AI, not the user's): %s ===" % (note["id"], brief_text(note)))
-            elif hide_pinned and note.get("for"):
+            elif hide_pinned:
                 hidden_pinned.append(note["id"])
             else:
                 print("=== NOTE %s (the user's%s): %s ===" % (note["id"], ", pinned to this chat" if note.get("for") else "", brief_text(note)))
@@ -6793,7 +6871,7 @@ GIT_CARD = """  @GIT_STATUS
   @GIT_WORKTREE add <branch> [from <base>] | list | remove <branch or path>   a separate folder per branch (../<project>.<branch>) so chats on different branches never share files; continue there with @WORKSPACE <path>
   @GIT_TAG <vX.Y.Z> [| <message>]                 annotated release tag on a clean checkout; git.json may require "tags_from": "main" (commit must be in main's history) and "tag_changelog": true
   @GIT_PUSH [tag <name>]                          publishes the current branch's commits to its upstream (origin the first time), or one tag; never forced, never a protected branch (git.json); a rejected push is reported, not overridden
-  @GIT_PULL                                       fast-forwards a clean checkout to its upstream (bookmarking where it was); when the branches have diverged it only reports whether a merge would conflict, and changes nothing. The footer's UPSTREAM line says what is incoming
+  @GIT_PULL [rebase | merge | --continue | --abort]  fast-forwards a clean checkout to its upstream by default; when diverged, refuses until the user chooses 'rebase' or 'merge', then applies that choice with a backup bookmark, tokens.json parking, and conflict recovery (--continue / --abort)
   @GIT_MERGE [<ref> | --continue | --abort]       merges <ref> (default @{u}) into the current branch with a backup bookmark and tokens.json parking; stops cleanly on conflicts listing conflicted files so hunks can resolve them; --continue finishes the merge commit, --abort restores pre-merge state
   @GIT_ACCOUNT [<account> | clear]                lists the accounts signed in for this remote's host (GitHub through Git Credential Manager, else the gh CLI, whose active account is then switched too) and, at a terminal, lets the user press a number to pin one for this project, or A to sign in another account first; '@GIT_ACCOUNT <account>' pins by name, 'clear' removes the pin (kept in this clone's git config, so git stops asking which account)
   @GIT_REMOTE [<name> [<url>]]                    lists the remotes, shows one, or adds it / changes its address (an https:// or ssh address with no password or token in it; a remote is never removed or renamed); '@GIT_REMOTE origin <url>' prints the old and the new address, and @GIT_PUSH then publishes there

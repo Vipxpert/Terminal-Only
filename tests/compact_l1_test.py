@@ -31,12 +31,12 @@ def extract_anchor(out):
 
 def main():
     ws = tempfile.mkdtemp(prefix="harness-compact-")
-    t1 = run(ws, "alpha", "@NOTE_ADD pin alpha | Pinned context for alpha\n@LIST_DIR /")
+    t1 = run(ws, "alpha", "@NOTE_ADD Project-wide user note\n@NOTE_ADD pin alpha | Pinned context for alpha\n@NOTE_ADD own | Todo: keep visible\n@LIST_DIR /")
     anc1 = extract_anchor(t1)
-    check("Turn 1 prints full L1, initial-anchor reason, compactor instruction, pinned note, and [L1-Syntax]", bool(anc1) and "[L1-Harness]" in t1 and "[L1-Compact] full L1 printed (reason: initial anchor" in t1 and "COMPACTOR INSTRUCTION: drop this anchor id" in t1 and "pinned to this chat): Pinned context for alpha" in t1 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t1, t1)
+    check("Turn 1 prints full L1, initial-anchor reason, compactor instruction, all user notes, and [L1-Syntax]", bool(anc1) and "[L1-Harness]" in t1 and "[L1-Compact] full L1 printed (reason: initial anchor" in t1 and "COMPACTOR INSTRUCTION: drop this anchor id" in t1 and "Project-wide user note" in t1 and "pinned to this chat): Pinned context for alpha" in t1 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t1, t1)
 
     t2 = run(ws, "alpha", "@LIST_DIR /")
-    check("Turn 2 omits unchanged L1 rules and hides pinned note while keeping same anchor", "[L1-Harness]" not in t2 and "Pinned context for alpha" not in t2 and "=== PINNED NOTES: 1 omitted during compact L1" in t2 and ("anchor: %s" % anc1) in t2 and "turn 1/40 since full L1" in t2 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t2, t2)
+    check("Turn 2 omits unchanged L1 rules and hides all pinned user notes while keeping own Todo and anchor", "[L1-Harness]" not in t2 and "Project-wide user note" not in t2 and "Pinned context for alpha" not in t2 and "Todo: keep visible" in t2 and "=== PINNED NOTES: 2 omitted during compact L1" in t2 and ("anchor: %s" % anc1) in t2 and "turn 1/40 since full L1" in t2 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t2, t2)
 
     run(ws, "beta", "@LIST_DIR /")
     t_b1 = run(ws, "alpha", "@LIST_DIR /")
