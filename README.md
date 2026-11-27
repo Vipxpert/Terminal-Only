@@ -12,10 +12,9 @@ A chat orchestrator, a code implementation tool that is...
 - Automated code edits, fewer AI turns
 - Undo, and a recycle bin for deleted files
 - Git actions done by the AI once you confirm
-- Several chats on one project, with conflict prevention. More specifically, each chat runs a session with its own purpose and file scope!
+- Several chats on one project, with conflict prevention
 - A code-relations search engine, [CBM](https://github.com/DeusData/codebase-memory-mcp), along with tree files that explain the code's meaning
 - Code-aware for C, C++, C#, Java, Kotlin, Scala, Go, Rust, Swift, Dart, PHP, Python, JavaScript, TypeScript and Vue; edits any other text file safely (SQL, Lua, CSS, HTML, XML, YAML, shell, PowerShell...)
-- New: works both in a normal chat interface and inside AI clients that run PowerShell themselves (Claude Code, OpenCode)!
 
 ### Get started
 
@@ -26,9 +25,11 @@ A chat orchestrator, a code implementation tool that is...
 
 3.  Bring the output to the AI with your needs laid out. Tada~ you can work on your project. Remember to read the Talk section of the AI.
 
+Manual chat mode:
 The AI'll give you a script, you give the AI the output, and it'll give you another until everything is done.
 
-If you're tired of copy-paste, use a chat client that runs PowerShell itself, like OpenCode or Claude Code. It runs the scripts in its own tool loop, one after another, until the work is finished, without disrupting your flow. Claude Code switches into a guarded auto-shell by itself in Terminal-Only projects once setup has run (the rules arrive once per prompt and the harness is the only command it may run); OpenCode works without that guard for now.
+Auto-shell mode:
+If you're tired of copy-paste, use a chat client that runs PowerShell itself, like OpenCode or Claude Code. It runs the scripts in its own tool loop, one after another, until the inspections are finished, without disrupting your flow. The desktop code client switches into a guarded auto-shell by itself in Terminal-Only projects once setup has run (the rules arrive once per prompt and the harness is the only command it may run).
 
 ### Runs by itself
 
@@ -41,7 +42,7 @@ These features are automatically run by the AI when needed:
 - a new chat taking over a dead one's session (you confirm)
 - chat addresses kept as reminders (a wrong one doesn't break the flow, it's just a label)
 
-If something should have run and did not, the rules have a gap: simply tell it to take note, activate bug-tracking protocol,... manually.
+If something should have run and did not, the rules have a gap, simply tell it to do the job manually. It's likely the note taking, bug-tracking protocol activation,... manually.
 
 ### Manually run by you
 
