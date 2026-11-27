@@ -4,6 +4,7 @@ Notable changes to llm_harness, newest first. Each `feat`, `fix` or `perf` commi
 
 ## Unreleased
 
+- Session-level `@WAIT_MSG` now works in both chat mode and auto-shell, supports same-turn `@MESSAGE` + `@WAIT_MSG last` reply/receipt satisfaction, persists `waiting_msg` across `Ctrl+C` and subsequent runs (`enforce_session_wait`), and requires typing `BREAK <M-###>` to break and report `[WAIT_BROKEN]` to the AI; compact-L1 mode now tracks `l1_shown_full` per anchor window so steady-state brief triggers (`sessions`, `dirty`, `ledger`) do not repeat expanded rules across turns.
 - Hardened `setup.cmd` and `setup.sh` to park a dirty `.llm_harness/tokens.json` before `git pull --ff-only` and 3-way merge it back afterward so multi-machine upgrades no longer abort on local token counts.
 - Simplified `@HUNK` and `@TEXT_REPLACE` markers to uniform `=== OLD ===`, `=== NEW ===`, `=== LINE EDITS ===`, and `=== END ===` while keeping legacy `---`/`+++`/`===` markers (and `+++ ... ---` delimiter-mismatch typos) accepted as aliases.
 - Added a vertical-slice clause to `[L1-Scope]` instructing chats to implement, test, and commit one verifiable milestone at a time instead of getting stuck in multi-turn inspection loops.
