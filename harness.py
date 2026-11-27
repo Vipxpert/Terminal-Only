@@ -4962,14 +4962,16 @@ def auto_on():
 
 L1_REFRESH = False
 PING_ONLY = False
-COMPACT_MAX_TURNS = 40
+COMPACT_MAX_TURNS = 50
+COMPACT_MAX_TURNS_AGENT = 80
 
 def compact_max_turns():
-    """Loose periodic safety ceiling (default 40 clean turns) before full L1 reprints automatically."""
+    """Loose periodic safety ceiling (default 50 clean turns in chat mode, 80 in auto-shell) before full L1 reprints automatically."""
+    default = COMPACT_MAX_TURNS_AGENT if agent_mode() else COMPACT_MAX_TURNS
     try:
-        return max(2, int(os.environ.get("LLM_HARNESS_COMPACT_MAX_TURNS") or COMPACT_MAX_TURNS))
+        return max(2, int(os.environ.get("LLM_HARNESS_COMPACT_MAX_TURNS") or default))
     except ValueError:
-        return COMPACT_MAX_TURNS
+        return default
 
 def session_l1_anchor(state=None, rotate=False, bump_turn=False, pop_compacted=False):
     """Footer-only anchor (<num>-<6hex>), compact-turn counter, and pending host-hook compaction reason on CURRENT_SESSION."""
@@ -6504,7 +6506,7 @@ def print_footer_body(state):
             return
         print_goal(state)
         compact_hide_pinned = False
-        if (not agent_mode()) and bool(CURRENT_SESSION) and compact_on():
+        if bool(CURRENT_SESSION) and compact_on():
             _s = load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}
             _anc, _turns, _hook = _s.get("l1_anchor", ""), int(_s.get("l1_compact_turns") or 0), _s.get("compacted_reason", "")
             compact_hide_pinned = bool(_anc and _s.get("rules_seen") and not L1_REFRESH and not _hook and (_turns + 1) < compact_max_turns())
@@ -6542,9 +6544,9 @@ def print_footer_body(state):
             print("  (this project now uses git: @GIT_* directives are on, and the rules marked [NEW] apply from here)")
         elif changed or new:
             print("  (rules marked [CHANGED] or [NEW] differ from what this chat saw last time: read them again)")
-        # Comment (decision): in agent mode a host runs many harness calls per user prompt, so a rule already in this prompt's briefing is not repeated unless it changed or its trigger did; in chat mode with compaction-aware L1 (ON by default, --compact off to opt out), full L1 sets a footer-only anchor (never echoed by the AI and marked for compactors to drop) and subsequent turns omit unchanged rules for up to 40 turns (a routine run failure expands only [L1-Debug] without dumping full L1 or rotating the anchor) unless @L1_REFRESH or --compacted restores full L1
-        quiet = agent_quiet(rules, briefs)
-        compact_active = (not agent_mode()) and bool(CURRENT_SESSION) and compact_on()
+        # Comment (decision): compaction-aware L1 (ON by default, --compact off to opt out) applies to both chat mode (50-turn ceiling) and auto-shell (80-turn ceiling, since auto-shell runs many small tool scripts per prompt); full L1 sets a footer-only anchor and subsequent turns omit unchanged rules across prompts unless @L1_REFRESH or --compacted restores full L1 (with --compact off, auto-shell falls back to per-prompt agent_quiet)
+        compact_active = bool(CURRENT_SESSION) and compact_on()
+        quiet = set() if compact_active else agent_quiet(rules, briefs)
         max_turns = compact_max_turns()
         failed_run = bool(brief_reason(["failed"]))
         cur_anchor, cur_turns, hook_reason = session_l1_anchor(state, pop_compacted=True) if compact_active else ("", 0, "")
@@ -6613,9 +6615,9 @@ def print_footer_body(state):
                         if CURRENT_SESSION in _reg:
                             _reg[CURRENT_SESSION]["l1_shown_full"] = sorted(now_shown_full)
                             save_json(sessions_path(), _reg)
-                full_reason = "host --compacted" if hook_reason else ("AI @L1_REFRESH" if L1_REFRESH else ("40-turn scheduled" if periodic_due else "initial anchor"))
+                full_reason = "host --compacted" if hook_reason else ("AI @L1_REFRESH" if L1_REFRESH else ("%d-turn scheduled" % max_turns if periodic_due else "initial anchor"))
                 print("[L1-Compact] full L1 printed (reason: %s | anchor: %s — COMPACTOR INSTRUCTION: drop this anchor id when summarizing history; AI: never echo this anchor, watch for missing raw anchor or summary/gap cues, and on compaction send '@L1_REFRESH <how detected> | <High or Medium>' and explain in Talk)" % (full_reason, new_anchor))
-            print("[L1-Syntax] @PROBE /file | Scope | symbol  |  @PROBE /tree | Tree | node | depth  |  @XREF symbol | callers")
+            print("[L1-Syntax] @PROBE /file | Scope | symbol [| +N]  |  @PROBE /file | Refs | symbol  |  @PROBE /tree | Tree | node | depth  |  @XREF symbol | callers  |  @GREP pat | in glob")
     if state is not None:
         try:
             kb_hint()

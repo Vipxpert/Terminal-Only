@@ -36,7 +36,13 @@ def main():
     check("Turn 1 prints full L1, initial-anchor reason, compactor instruction, all user notes, and [L1-Syntax]", bool(anc1) and "[L1-Harness]" in t1 and "[L1-Compact] full L1 printed (reason: initial anchor" in t1 and "COMPACTOR INSTRUCTION: drop this anchor id" in t1 and "Project-wide user note" in t1 and "pinned to this chat): Pinned context for alpha" in t1 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t1, t1)
 
     t2 = run(ws, "alpha", "@LIST_DIR /")
-    check("Turn 2 omits unchanged L1 rules and hides all pinned user notes while keeping own Todo and anchor", "[L1-Harness]" not in t2 and "Project-wide user note" not in t2 and "Pinned context for alpha" not in t2 and "Todo: keep visible" in t2 and "=== PINNED NOTES: 2 omitted during compact L1" in t2 and ("anchor: %s" % anc1) in t2 and "turn 1/40 since full L1" in t2 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t2, t2)
+    check("Turn 2 omits unchanged L1 rules and hides all pinned user notes while keeping own Todo and anchor", "[L1-Harness]" not in t2 and "Project-wide user note" not in t2 and "Pinned context for alpha" not in t2 and "Todo: keep visible" in t2 and "=== PINNED NOTES: 2 omitted during compact L1" in t2 and ("anchor: %s" % anc1) in t2 and "turn 1/50 since full L1" in t2 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t2, t2)
+
+    ag_env = {"LLM_HARNESS_AGENT": "test-host", "LLM_HARNESS_HOST_SESSION": "h-compact"}
+    a1 = run(ws, "agent-s", "@LIST_DIR /", env_extra=ag_env)
+    subprocess.run([sys.executable, HARNESS, "--workspace", ws, "--new-turn", "ev-1"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60, env=dict(os.environ, **ag_env))
+    a2 = run(ws, "agent-s", "@LIST_DIR /", env_extra=ag_env)
+    check("auto-shell follows compaction-aware L1 across --new-turn prompts with an 80-turn ceiling", "[L1-Harness]" in a1 and "@L1_REFRESH" in a1 and "[L1-Harness]" not in a2 and "turn 1/80 since full L1" in a2 and "@GREP pat | in glob" in a2, a1[-400:] + "\n---\n" + a2[-600:])
 
     run(ws, "beta", "@LIST_DIR /")
     t_b1 = run(ws, "alpha", "@LIST_DIR /")
