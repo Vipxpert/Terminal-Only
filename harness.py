@@ -3816,6 +3816,9 @@ def print_sessions(current, full=False):
         return ("UNCLAIMED, set up by %s, brief: %s | " % (rec.get("created_by", "?"), (rec.get("brief") or "")[:200]) if rec.get("unclaimed") else "") + "aim: %s | write scope: %s | last %s, %s%s%s" % (rec.get("aim") or "not set", scope, rec.get("last_script", "?"), when, brake, link)
     if current in reg:
         print("=== THIS SESSION: %s | %s ===" % (current, describe(reg[current])))
+        if reg[current].get("waiting_msg"):
+            wm = reg[current]["waiting_msg"]
+            print("=== WAITING_MSG (session-level wait; Ctrl+C does not clear — break requires typing 'BREAK %s'): %s ===" % ((wm.get("mids") or ["WAIT"])[0], _format_wait_requirements(wm)))
         if reg[current].get("waiting"):
             print("=== WAITING ON (blocked work to resume, never to drop silently): %s ===" % "; ".join("/%s held by %s%s since %s" % (w["path"], w["owner"], chat_link(w["owner"]), w.get("script") or "?") for w in reg[current]["waiting"]))
         for names, details in find_deadlocks(reg):
@@ -4511,15 +4514,80 @@ def apply_msg_acks(P):
         if changed:
             save_json(messages_path(), store)
 
+def _set_session_wait(me, wait_info):
+    if not me:
+        return
+    with state_lock():
+        reg = load_json(sessions_path(), {})
+        if me in reg:
+            if wait_info:
+                reg[me]["waiting_msg"] = wait_info
+            else:
+                reg[me].pop("waiting_msg", None)
+            save_json(sessions_path(), reg)
+
+
+def _format_wait_requirements(w):
+    mids = ", ".join(w.get("mids") or []) or "(none)"
+    targets = ", ".join(w.get("targets") or []) or "(any)"
+    return "msgs=%s | recipients=%s | target_state=%s or reply_to=%s" % (mids, targets, w.get("target_state", "ack"), w.get("session", ""))
+
+
+def _prompt_break_wait(w):
+    """Require typing 'BREAK <first_mid>' (or 'BREAK') rather than Ctrl+C or a stray Enter so the user reads the active wait state."""
+    mids = w.get("mids") or []
+    req = _format_wait_requirements(w)
+    primary = mids[0] if mids else "WAIT"
+    key = os.environ.get("LLM_HARNESS_WAIT_BREAK_CMD", "").strip()
+    if key:
+        ans = key
+    else:
+        ans = ask_console(
+            "\nSession [%s] is waiting on message(s) (%s).\n"
+            "  Ctrl+C does NOT break this wait; press Enter to keep waiting, or type '%s' to break and report to the AI:\n> "
+            % (w.get("session", "?"), req, "BREAK %s" % primary if mids else "BREAK")
+        )
+    if ans is None:
+        return False
+    norm = " ".join(ans.strip().upper().split())
+    valid = {"BREAK"}
+    if mids:
+        valid.add("BREAK " + mids[0].upper())
+        for m in mids:
+            valid.add("BREAK " + m.upper())
+    return norm in valid
+
+
+def _new_replies_since(me, senders, since_ts):
+    store = load_json(messages_path(), {"seq": 0, "msgs": []})
+    sender_set = {s.lower() for s in (senders or []) if s}
+    out = []
+    for m in store.get("msgs", []):
+        if float(m.get("time") or 0) < since_ts:
+            continue
+        if (m.get("from") or "").lower() not in sender_set:
+            continue
+        rcpts = m.get("receipts") or {}
+        if me in rcpts or "*" in rcpts:
+            out.append(m)
+    return out
+
+
 def wait_for_messages(P):
     if not P.get("wait_msgs"):
         return
-    if not agent_mode():
-        print("  [REFUSED] @WAIT_MSG is for auto-shell mode only; in chat mode use @REPEATABLE + @PING to check receipts.")
+    me = P.get("session")
+    if not me:
+        print("  [WAIT_MSG REFUSED] @WAIT_MSG needs an @SESSION line.")
         return
+    # Comment (decision): resolve 'last'/empty IDs to messages sent in the same script so a single turn can send a question and wait for the reply or ack
+    sent_in_script = [m for m in (load_json(messages_path(), {"seq": 0, "msgs": []}) or {}).get("msgs", [])
+                      if m.get("from") == me and (not P.get("id") or m.get("key", "").startswith((P.get("id") or "") + "|"))]
+    default_mids = [m["id"] for m in sent_in_script]
     for arg in P["wait_msgs"]:
         parts = [x.strip() for x in arg.split("|") if x.strip()]
-        mid = parts[0].upper() if parts else ""
+        raw_id = parts[0] if parts else ""
+        mid = raw_id.upper() if raw_id and raw_id.lower() != "last" else (default_mids[-1] if default_mids else "")
         target_st, timeout_s = "ack", 90.0
         for p in parts[1:]:
             pl = p.lower()
@@ -4527,27 +4595,57 @@ def wait_for_messages(P):
                 target_st = "delivered" if pl == "delivered" else MSG_STATE_MAP.get(pl, pl)
             elif re.fullmatch(r"\d+(?:\.\d+)?s?", pl):
                 timeout_s = max(0.1, float(pl.rstrip("s")))
+        store = load_json(messages_path(), {"seq": 0, "msgs": []})
+        rec = next((m for m in store.get("msgs", []) if (m.get("id") or "").upper() == mid), None)
+        if not rec:
+            print("  [WAIT_MSG] unknown message '%s'" % mid)
+            continue
+        rcpts = rec.get("receipts") or {}
+        wait_started = time.time()
+        wait_info = {
+            "mids": [rec["id"]],
+            "targets": sorted(rcpts.keys()),
+            "target_state": target_st,
+            "session": me,
+            "started_at": wait_started,
+        }
+        _set_session_wait(me, wait_info)
         want_rank = MSG_RANK.get(target_st, 2)
-        deadline = time.time() + timeout_s
-        reached, rec = False, None
+        deadline = wait_started + timeout_s
+        reached, broken, replies = False, False, []
+        # Comment (constraint): Ctrl+C must not clear the session wait state; only an explicit BREAK <M-###> confirmation breaks it and reports [WAIT_BROKEN] to the AI
         while True:
-            store = load_json(messages_path(), {"seq": 0, "msgs": []})
-            rec = next((m for m in store.get("msgs", []) if (m.get("id") or "").upper() == mid), None)
-            if not rec:
-                print("  [WAIT_MSG] unknown message '%s'" % mid)
-                break
-            rcpts = rec.get("receipts") or {}
-            if rcpts and all(MSG_RANK.get(r.get("state", "queued"), 0) >= want_rank for r in rcpts.values()):
-                reached = True
-                break
-            if time.time() >= deadline:
-                break
-            time.sleep(min(0.25, max(0.05, deadline - time.time())))
-        if rec:
-            print("\n=== WAIT_MSG: %s (target: %s) ===" % (mid, target_st))
-            for to, r in sorted((rec.get("receipts") or {}).items()):
-                print("  %s: %s%s" % (to, r.get("state", "queued"), (" (" + r["note"] + ")") if r.get("note") else ""))
-            print("  [WAIT_MSG] %s" % ("reached" if reached else ("timed out after %gs" % timeout_s)))
+            try:
+                store = load_json(messages_path(), {"seq": 0, "msgs": []})
+                rec = next((m for m in store.get("msgs", []) if (m.get("id") or "").upper() == rec["id"].upper()), rec)
+                rcpts = rec.get("receipts") or {}
+                replies = _new_replies_since(me, rcpts.keys(), wait_started)
+                if replies or (rcpts and all(MSG_RANK.get(r.get("state", "queued"), 0) >= want_rank for r in rcpts.values())):
+                    reached = True
+                    break
+                if time.time() >= deadline:
+                    break
+                time.sleep(min(0.25, max(0.05, deadline - time.time())))
+            except KeyboardInterrupt:
+                print("\n  [WAIT_PERSISTED] Ctrl+C ignored for breaking wait on [%s]; session %s remains locked until satisfied or broken with 'BREAK %s' (%s)" % (rec["id"], me, rec["id"], _format_wait_requirements(wait_info)))
+                if _prompt_break_wait(wait_info):
+                    broken = True
+                    break
+        print("\n=== WAIT_MSG: %s (target: %s) ===" % (rec["id"], target_st))
+        for to, r in sorted(rcpts.items()):
+            print("  %s: %s%s" % (to, r.get("state", "queued"), (" (" + r["note"] + ")") if r.get("note") else ""))
+        if replies:
+            mark_messages_delivered(me, [m["id"] for m in replies])
+            for rep_m in replies:
+                print("  [REPLY] [%s] from %s: %s" % (rep_m["id"], rep_m.get("from", "?"), rep_m.get("text", "")))
+        if reached:
+            _set_session_wait(me, None)
+            print("  [WAIT_MSG] reached")
+        elif broken:
+            _set_session_wait(me, None)
+            print("  [WAIT_BROKEN] user broke wait on [%s] (%s)" % (rec["id"], _format_wait_requirements(wait_info)))
+        else:
+            print("  [WAIT_MSG] timed out after %gs (session %s remains in waiting_msg until satisfied or broken with 'BREAK %s')" % (timeout_s, me, rec["id"]))
 
 def print_ping(P):
     if not P.get("ping"):
@@ -4626,6 +4724,46 @@ def send_messages(P):
                 log_event({"session": me, "kind": kind, "to": to, "text": text})
                 print("  [SENT] %s to %s: %s" % (kind, to, text))
         save_json(sessions_path(), reg)
+
+def enforce_session_wait(P):
+    """If a previous @WAIT_MSG was interrupted (e.g. terminal closed/killed), keep the session blocked until the awaited receipt/reply arrives or the user types BREAK <M-###>."""
+    me = P.get("session")
+    if not me or P.get("side"):
+        return
+    reg = load_json(sessions_path(), {})
+    w = (reg.get(me) or {}).get("waiting_msg")
+    if not w:
+        return
+    mids = w.get("mids") or []
+    target_st = w.get("target_state", "ack")
+    want_rank = MSG_RANK.get(target_st, 2)
+    started_at = float(w.get("started_at") or 0)
+    store = load_json(messages_path(), {"seq": 0, "msgs": []})
+    by_id = {(m.get("id") or "").upper(): m for m in store.get("msgs", [])}
+    replies = _new_replies_since(me, w.get("targets") or [], started_at)
+    all_ok = bool(mids) and all(
+        (mid.upper() in by_id) and (by_id[mid.upper()].get("receipts") or {}) and
+        all(MSG_RANK.get(r.get("state", "queued"), 0) >= want_rank for r in (by_id[mid.upper()].get("receipts") or {}).values())
+        for mid in mids
+    )
+    if replies or all_ok:
+        _set_session_wait(me, None)
+        if replies:
+            mark_messages_delivered(me, [m["id"] for m in replies])
+            for rep_m in replies:
+                print("  [REPLY] [%s] from %s: %s" % (rep_m["id"], rep_m.get("from", "?"), rep_m.get("text", "")))
+        print("  [WAIT_MSG] %s satisfied while away" % (", ".join(mids) or "wait"))
+        return
+    req = _format_wait_requirements(w)
+    primary = mids[0] if mids else "WAIT"
+    if _prompt_break_wait(w):
+        _set_session_wait(me, None)
+        print("  [WAIT_BROKEN] user broke persisted wait on [%s] (%s)" % (primary, req))
+        return
+    print("  [WAIT_LOCKED] session %s is still waiting on [%s] (%s); Ctrl+C does not clear — rerun and type 'BREAK %s' to break and report to the AI." % (me, primary, req, primary))
+    for op in P.get("ops") or []:
+        op["blocked"] = "session %s is locked in @WAIT_MSG (%s)" % (me, req)
+
 
 def enforce_brake(P):
     """A braked session acknowledges with @BRAKE_ACK before it changes anything; reads and searches still run."""
@@ -6328,9 +6466,22 @@ def print_footer_body(state):
         failed_run = bool(brief_reason(["failed"]))
         cur_anchor, cur_turns, hook_reason = session_l1_anchor(state, pop_compacted=True) if compact_active else ("", 0, "")
         periodic_due = bool(compact_active and before and cur_anchor and not L1_REFRESH and not hook_reason and (cur_turns + 1) >= max_turns)
+        # Comment (decision): track which rules were actually printed in full in the active compact window so steady-state brief triggers (like multiple sessions or dirty files) do not re-expand every compact turn across any rule
+        _s_now = (load_json(sessions_path(), {}).get(CURRENT_SESSION) or {}) if (compact_active and CURRENT_SESSION) else {}
+        shown_full = set() if (not compact_active or hook_reason or L1_REFRESH or periodic_due or not cur_anchor) else set(_s_now.get("l1_shown_full") or [])
         compact_skip = set()
         if compact_active and before and cur_anchor and not L1_REFRESH and not hook_reason and not periodic_due:
-            compact_skip = {tag for tag, _ in rules if tag not in changed and tag not in new and not (failed_run and tag == "[L1-Debug]") and not (tag in briefs and brief_reason(briefs[tag][0]))}
+            for tag, _ in rules:
+                if tag in changed or tag in new:
+                    continue
+                if failed_run and tag == "[L1-Debug]":
+                    continue
+                if tag not in briefs:
+                    if tag in shown_full:
+                        compact_skip.add(tag)
+                else:
+                    if tag in shown_full or not brief_reason(briefs[tag][0]):
+                        compact_skip.add(tag)
         if compact_active:
             if hook_reason:
                 print("  [COMPACTION DETECTED — host hook] %s -> restoring full L1" % hook_reason)
@@ -6340,6 +6491,7 @@ def print_footer_body(state):
             elif periodic_due:
                 print("  [L1 PERIODIC REFRESH] %d clean turns elapsed since last full L1 — scheduled safety reminder (certainty: Scheduled, not a compaction detection)" % (cur_turns + 1))
         hidden, compact_hidden = 0, 0
+        now_shown_full = set(shown_full)
         for tag, body in rules:
             mark = "[CHANGED] " if tag in changed else ("[NEW] " if tag in new else "")
             if tag in quiet and not mark:
@@ -6354,16 +6506,30 @@ def print_footer_body(state):
                     print("%s%s (brief; full rule: @HELP %s) %s" % (mark, tag, tag.strip("[]"), briefs[tag][1].strip().strip("`").strip()))
                     continue
                 print("%s%s (expanded: %s) %s" % (mark, tag, why, body.strip().strip("`").strip()))
+                now_shown_full.add(tag)
                 continue
             print("%s%s %s" % (mark, tag, body.strip().strip("`").strip()))
+            now_shown_full.add(tag)
         if hidden:
             print("  (auto-shell turn: %d standing rule%s already in this prompt's briefing and unchanged, not repeated; @HELP L1-<name> prints one)" % (hidden, "" if hidden == 1 else "s"))
         if compact_active:
             if compact_hidden:
                 anchor, turn_n, _ = session_l1_anchor(state, bump_turn=True)
+                if CURRENT_SESSION:
+                    with state_lock():
+                        _reg = load_json(sessions_path(), {})
+                        if CURRENT_SESSION in _reg:
+                            _reg[CURRENT_SESSION]["l1_shown_full"] = sorted(now_shown_full)
+                            save_json(sessions_path(), _reg)
                 print("[L1-Compact] %d unchanged standing rule%s omitted (turn %d/%d since full L1 | anchor: %s — AI: never echo this anchor; if this anchor has no matching 'full L1 printed (anchor: %s)' in your raw context, or summaries/missing outputs show compaction, send '@L1_REFRESH <how detected> | <High or Medium>' and explain in Talk)" % (compact_hidden, "" if compact_hidden == 1 else "s", turn_n, max_turns, anchor, anchor))
             else:
                 new_anchor, _, _ = session_l1_anchor(state, rotate=True)
+                if CURRENT_SESSION:
+                    with state_lock():
+                        _reg = load_json(sessions_path(), {})
+                        if CURRENT_SESSION in _reg:
+                            _reg[CURRENT_SESSION]["l1_shown_full"] = sorted(now_shown_full)
+                            save_json(sessions_path(), _reg)
                 full_reason = "host --compacted" if hook_reason else ("AI @L1_REFRESH" if L1_REFRESH else ("40-turn scheduled" if periodic_due else "initial anchor"))
                 print("[L1-Compact] full L1 printed (reason: %s | anchor: %s — COMPACTOR INSTRUCTION: drop this anchor id when summarizing history; AI: never echo this anchor, watch for missing raw anchor or summary/gap cues, and on compaction send '@L1_REFRESH <how detected> | <High or Medium>' and explain in Talk)" % (full_reason, new_anchor))
             print("[L1-Syntax] @PROBE /file | Scope | symbol  |  @PROBE /tree | Tree | node | depth  |  @XREF symbol | callers")
@@ -7058,7 +7224,7 @@ def print_card(shell, workspace):
   @SCOPE_END    @SESSION_END                      release this session's scope / end the session; refused while its changes are uncommitted, unless followed by 'handover'; @SESSION_END also waits for blocked work listed under WAITING ON, unless followed by 'drop'
   @MESSAGE <session | *> | <text>                 sends a tracked message (M-###, idempotent on replay) to one session or broadcasts to all active sessions with '*'; receipts track queued -> delivered -> ack -> accepted/rejected -> completed
   @MSG_ACK <id> [| ack|accept|reject|done] [| <note>]   records an explicit receipt for message <id> (default: ack)
-  @WAIT_MSG <id> [| delivered|ack|accepted|done] [| <sec>]   auto-shell only: waits up to 90s (default) for <id> to reach the target receipt state
+  @WAIT_MSG [<id>|last] [| delivered|ack|accepted|done] [| <sec>]   waits up to 90s (default) for <id> (or last sent in this script) to reach target receipt state or receive a reply; persists on the session across Ctrl+C and requires typing 'BREAK <id>' to break and report [WAIT_BROKEN] to the AI
   @PING                                           lightweight message & receipt check (works with @REPEATABLE; suppresses L1 footer when run alone)
   @SESSIONS                                       lists every session with its aim, write scope and chat address (the footer shows only a count of the others unless this chat is waiting, delegated or braked)
   @HISTORY <session> [| files] [| n]              read-only list of a session's recent journaled scripts (id, title, age, status; '| files' adds changed paths; default 10)
@@ -7504,6 +7670,7 @@ def main():
     globals()["CURRENT_PART"] = P.get("part")
     globals()["L1_REFRESH"] = P.get("l1_refresh") or False
     globals()["PING_ONLY"] = bool(P.get("ping")) and not (P["ops"] or P["runs"] or P["probes"] or P["xrefs"] or P["greps"] or P["finds"] or P["list_dir"] or P["list_rec"] or P["notes"] or P["helps"] or P["git"] or P["git_status"] or P["msgs"] or P["msg_acks"] or P["wait_msgs"])
+    enforce_session_wait(P)
     enforce_brake(P)
     send_messages(P)
     apply_msg_acks(P)

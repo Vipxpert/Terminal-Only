@@ -48,9 +48,6 @@ def main():
     bmid = bm.group(1) if bm else ""
     check("@MESSAGE * broadcasts to beta and gamma", bool(bmid) and "beta, gamma" in bcast, bcast)
 
-    refused = run(ws, "alpha", CHAT, "@WAIT_MSG %s | ack | 1" % bmid)
-    check("@WAIT_MSG is refused in chat mode", "[REFUSED] @WAIT_MSG is for auto-shell mode only" in refused, refused)
-
     def ack_later():
         time.sleep(0.4)
         run(ws, "beta", CHAT, "@MSG_ACK %s | done | beta ok" % bmid)
@@ -58,9 +55,30 @@ def main():
 
     t = threading.Thread(target=ack_later)
     t.start()
-    waited = run(ws, "alpha", AGENT, "@WAIT_MSG %s | done | 5" % bmid)
+    waited = run(ws, "alpha", CHAT, "@WAIT_MSG %s | done | 5" % bmid)
     t.join()
-    check("auto-shell @WAIT_MSG blocks until both broadcast recipients reach done", "[WAIT_MSG] reached" in waited and "beta: completed (beta ok)" in waited and "gamma: completed (gamma ok)" in waited, waited)
+    check("chat-mode @WAIT_MSG blocks until both broadcast recipients reach done", "[WAIT_MSG] reached" in waited and "beta: completed (beta ok)" in waited and "gamma: completed (gamma ok)" in waited, waited)
+
+    def reply_later():
+        time.sleep(0.35)
+        run(ws, "beta", CHAT, "@MESSAGE alpha | answer from beta")
+
+    t2 = threading.Thread(target=reply_later)
+    t2.start()
+    sw = run(ws, "alpha", CHAT, "@MESSAGE beta | quick question", "@WAIT_MSG last | done | 4")
+    t2.join()
+    check("same-turn @MESSAGE + @WAIT_MSG last wakes on reply and delivers it", "[REPLY]" in sw and "answer from beta" in sw and "[WAIT_MSG] reached" in sw, sw)
+
+    to_out = run(ws, "alpha", CHAT, "@MESSAGE beta | hang test", "@WAIT_MSG last | done | 0.2")
+    hm = re.search(r"\[(M-\d+)\]", to_out)
+    hmid = hm.group(1) if hm else ""
+    check("timed-out @WAIT_MSG persists waiting_msg on session", bool(hmid) and "WAITING_MSG" in to_out, to_out)
+
+    locked = run(ws, "alpha", dict(CHAT, LLM_HARNESS_WAIT_BREAK_CMD="BREAK M-999"), "@LIST_DIR /")
+    check("wrong BREAK ID keeps session locked in WAITING_MSG", "[WAIT_LOCKED]" in locked and "WAITING_MSG" in locked, locked)
+
+    broken = run(ws, "alpha", dict(CHAT, LLM_HARNESS_WAIT_BREAK_CMD="BREAK %s" % hmid), "@LIST_DIR /")
+    check("exact BREAK <id> clears persisted wait and reports [WAIT_BROKEN] to the AI", "[WAIT_BROKEN]" in broken and hmid in broken and "WAITING_MSG" not in broken, broken)
 
     sys.exit(0 if all(RESULTS) else 1)
 

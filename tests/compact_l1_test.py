@@ -38,6 +38,11 @@ def main():
     t2 = run(ws, "alpha", "@LIST_DIR /")
     check("Turn 2 omits unchanged L1 rules and hides pinned note while keeping same anchor", "[L1-Harness]" not in t2 and "Pinned context for alpha" not in t2 and "=== PINNED NOTES: 1 omitted during compact L1" in t2 and ("anchor: %s" % anc1) in t2 and "turn 1/40 since full L1" in t2 and "[L1-Syntax] @PROBE /file | Scope | symbol" in t2, t2)
 
+    run(ws, "beta", "@LIST_DIR /")
+    t_b1 = run(ws, "alpha", "@LIST_DIR /")
+    t_b2 = run(ws, "alpha", "@LIST_DIR /")
+    check("steady-state trigger (multiple sessions) expands once in compact mode and is omitted on the next compact turn", "[L1-Sessions] (expanded:" in t_b1 and "[L1-Sessions]" not in t_b2, t_b1 + "\n---\n" + t_b2)
+
     tf = run(ws, "alpha", "@RUN python -c \"import sys; sys.exit(1)\"")
     check("routine run failure expands only [L1-Debug] without dumping [L1-Harness] or rotating anchor", "[L1-Debug] (expanded: this run had a failure)" in tf and "[L1-Harness]" not in tf and ("anchor: %s" % anc1) in tf, tf)
 
