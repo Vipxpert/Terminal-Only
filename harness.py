@@ -2123,9 +2123,14 @@ def run_repo_ops(ops):
                 if unmerged:
                     run_git(["add", "--"] + unmerged)
                 if in_rebase:
+                    # Comment (decision): clipboard pastes between a rebase pause and --continue dirty tokens.json again, and git rebase --continue refuses with a misleading "mark them as resolved" error if any tracked file is unstaged
+                    parked = park_tokens([WORKSPACE_NOTES_DIR + "/tokens.json"])
                     rc, out, err = run_git(["-c", "core.editor=true", "rebase", "--continue"])
+                    tokens_note = unpark_tokens(parked, rc == 0) if parked else ""
                     if rc == 0:
                         print("  [PULLED] rebase completed on %s" % here)
+                        if tokens_note:
+                            print("  -> .llm_harness/tokens.json: the local token counts were set aside for the rebase and %s (still uncommitted)" % tokens_note)
                         continue
                     conflicts = [p for p in run_git(["diff", "--name-only", "--diff-filter=U"])[1].splitlines() if p.strip()]
                     if conflicts:
